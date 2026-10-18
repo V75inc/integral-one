@@ -4,7 +4,7 @@
 
 ## Source and responsibility
 
-Core commit: `be5cc5931fd072457831054670939d42121d10a7` on
+Core commit: `0b45c1b22368706a22facac402eef8395c7e39b5` on
 `codex/runtime-composition`, based on public main `40f29395ccd6e77d69a710c8902dbfe4eca89249`.
 One composes this candidate through its recorded wheel/UI hashes and owns the
 Apache desktop host source at `packages/desktop-host` (version `0.1.7-dev.3`).
@@ -32,12 +32,12 @@ and a newly versioned Core release must precede production dependency promotion.
 | Check | Result |
 | --- | --- |
 | Desktop host source | 32 tests passed |
-| One distribution/install/account regressions | 36 Node and three Python tests passed |
+| One distribution/install/account regressions | 39 Node and three Python tests passed |
 | Composed One frontend | 1,888 tests across 332 files passed; TypeScript/Vite build passed |
 | Pinned runtime startup | Actual bundled runtime boot, local API contract and native controller session passed |
 | Unsigned macOS arm64 package | Built and inspected for contract, provenance, notices and excluded internal files |
-| Core default backend | 6,827 passed; 100 skipped |
-| Core CI-faithful smoke | 1,955 passed; 26 skipped (initial candidate; current-head remote CI pending) |
+| Core default backend | 6,837 passed; 100 skipped |
+| Core CI-faithful smoke | 1,955 passed; 26 skipped (initial local candidate; current-head remote results are recorded on Core PR #153) |
 | Real PostgreSQL local/hosted authority contracts | 38 passed |
 | Public extension contracts on PostgreSQL | 57 passed |
 | Core frontend | 1,882 tests passed |
@@ -52,8 +52,9 @@ or count a signup. Private logs and synthetic fixtures remain under `.local/`.
 
 ## Scope and remaining gates
 
-The current local candidate has not yet received remote CI. Earlier green checks
-on draft PR #1 and earlier unsigned artifacts do not qualify this candidate.
+Current-head remote results are recorded on [One draft PR #1](https://github.com/V75inc/integral-one/pull/1)
+and [Core draft PR #153](https://github.com/V75inc/integral-core/pull/153). Earlier
+green checks and unsigned artifacts do not qualify a changed candidate.
 Windows/Linux installer behavior and a fresh live Clerk social-provider callback
 were not rerun locally. The unsigned Mac package is artifact evidence, not a
 signed installer or an installation/GUI acceptance test.
@@ -78,10 +79,21 @@ All 29 worker tests pass; production worker behavior is unchanged. Core's dated
 record retains the initial failure (6,826 passed, one failed) and clean rerun.
 The 38 authority and 57 extension PostgreSQL contracts, managed data/key upgrade,
 hosted tenant denials, reproducible wheel/import proof and frontend were rerun.
-One's 36 Node/three Python checks and bundled startup/session check pass again.
+One's 39 Node/three Python checks and bundled startup/session check pass again.
 
 No fresh live social-provider callback or real user installation migration was
 performed. Current-head remote matrix results will be linked from the paired
 PRs; previous-head green checks do not qualify these changes.
 
-Final unsigned macOS arm64 ASAR SHA-256: `cecd717742937db35792af5198929c4ee68ed75fbfc080af67635b59ba5b69af`. Signing is not qualified.
+Final unsigned macOS arm64 ASAR SHA-256: `82f13685c959c27dfa9dc135c1174d885b276cd4803ec1b943213078f65ec77e`. Signing is not qualified.
+
+## Windows runtime correction
+
+The native matrix exposed a PostgreSQL initialization failure with the original
+private-directory handling on an elevated Windows runner. Core now applies an
+explicit protected user-SID DACL, keeping access limited to the current user,
+SYSTEM and Administrators. POSIX owner-only permissions are preserved.
+A native differential probe identified the cause; run `39177802964` then verified
+the exact managed helper reaches readiness and stops cleanly with the correction.
+The temporary probe workflow and source copies were removed. The final bundled
+One matrix remains required; this probe does not qualify an installer.
