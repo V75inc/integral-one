@@ -9,14 +9,14 @@
     "sha256": "bfb245a84f0e015c70afb26399220dd82e627d9ce58295ec7b0105f3083c120c"
   },
   "core": {
-    "version": "0.1.1rc21",
-    "source_commit": "4c93fb97a33922ea4da11be34a979834e1c77777",
-    "source_state": "qualified local Core commit; unreleased; not registry rc21 replacement",
+    "version": "0.1.1rc22",
+    "source_commit": "be5cc5931fd072457831054670939d42121d10a7",
+    "source_state": "unreleased runtime-composition snapshot on rc22; not the TestPyPI rc22 release",
     "desktop_contract_version": 1,
-    "wheel_sha256": "1c43957191d4a1c04f2e6e56990593be19e394a14957319c0a642a03e60985bc",
-    "wheel_filename": "integral_core-0.1.1rc21-py3-none-any.whl",
-    "ui_manifest_sha256": "9123aafe176bfcd9648577a6afb8620d6b2a6b6d6481323133d2b3f7d85d535a",
-    "base_wheel": "vendor/core-runtime/integral_core-0.1.1rc21-py3-none-any.whl",
+    "wheel_sha256": "e3de82fa51e4880e4aee6b885b5d1341150daa5a2e5ff344a3ec3f48d66c955e",
+    "wheel_filename": "integral_core-0.1.1rc22-py3-none-any.whl",
+    "ui_manifest_sha256": "9595c691d069f6c839eaedce04ce675d4bddc65d55dfabc124756c851e27f3ea",
+    "base_wheel": "vendor/core-runtime/integral_core-0.1.1rc22-py3-none-any.whl",
     "runtime_contract_version": 1,
     "runtime_preset": "local"
   },

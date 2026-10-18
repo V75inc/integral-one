@@ -42,16 +42,16 @@
   },
   "runtime_composition_candidate": {
     "date": "2026-10-18",
-    "base_commit": "31190c06275332ff44637b6afa6fb068f6444c13",
-    "status": "qualified local Core commit, pending independent review and publication",
+    "base_commit": "40f29395ccd6e77d69a710c8902dbfe4eca89249",
+    "status": "rebased development candidate; independent runtime-composition draft review required",
     "contract_version": 1,
     "presets": [
       "local",
       "hosted"
     ],
     "data_migration": false,
-    "wheel_sha256": "1c43957191d4a1c04f2e6e56990593be19e394a14957319c0a642a03e60985bc",
+    "wheel_sha256": "e3de82fa51e4880e4aee6b885b5d1341150daa5a2e5ff344a3ec3f48d66c955e",
     "frontend_boundary": "Core-owned session contract; One-owned session implementation and sign-in/offline return view",
-    "source_commit": "4c93fb97a33922ea4da11be34a979834e1c77777"
+    "source_commit": "be5cc5931fd072457831054670939d42121d10a7"
   }
 }

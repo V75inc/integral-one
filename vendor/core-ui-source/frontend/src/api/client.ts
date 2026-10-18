@@ -36,8 +36,9 @@ const apiClient = axios.create({
   baseURL: getApiBaseURL(),
   headers: { 'Content-Type': 'application/json' },
   // A stalled API worker used to hold the browser's six HTTP/1.1 connections
-  // until a full reload. Chat streams use fetch, not this client.
-  timeout: 30_000,
+  // until a full reload. Allow slower installations and bulk operations while
+  // retaining a finite deadline. Chat streams use fetch, not this client.
+  timeout: 120_000,
 });
 
 // Active workspace scope is published into a module-level slot by the
@@ -147,6 +148,12 @@ apiClient.interceptors.response.use(
     return r;
   },
   async (err: AxiosError) => {
+    // A deadline only stops waiting in the browser; it cannot roll back work
+    // already accepted by the server. Never replay a timed-out mutation.
+    if ((err.code === 'ECONNABORTED' || err.code === 'ETIMEDOUT') &&
+        !['get', 'head', 'options'].includes(err.config?.method?.toLowerCase() ?? 'get')) {
+      err.message = 'Integral took too long to respond. The change may still complete. Check the records or Background Tasks before submitting it again.';
+    }
     if (err.response && shouldNormalizeResponseData(err.response.data)) {
       err.response.data = normalizeDeepStrings(err.response.data);
     }

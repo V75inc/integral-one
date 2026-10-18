@@ -7,6 +7,19 @@ import { notifyApiFailure } from './apiErrorNotifier';
 afterEach(cleanup);
 
 describe('API error notices', () => {
+  it.each(['ECONNABORTED', 'ETIMEDOUT'])('does not offer Retry for an uncertain write after %s', code => {
+    render(<SystemNotificationsProvider><SystemNotificationBar /></SystemNotificationsProvider>);
+    act(() => notifyApiFailure({ code, config: { method: 'post' } }, { onRetry: vi.fn() }));
+    expect(screen.getByRole('status')).toHaveTextContent('The change may still complete');
+    expect(screen.queryByRole('button', { name: 'Retry' })).not.toBeInTheDocument();
+  });
+
+  it('allows a timed-out read to be retried', () => {
+    render(<SystemNotificationsProvider><SystemNotificationBar /></SystemNotificationsProvider>);
+    act(() => notifyApiFailure({ code: 'ECONNABORTED', config: { method: 'get' } }, { onRetry: vi.fn() }));
+    expect(screen.getByRole('status')).toHaveTextContent('refresh to check for updates');
+    expect(screen.getByRole('button', { name: 'Retry' })).toBeEnabled();
+  });
   it.each([
     [408, 'Slow connection', 'Try again when your connection improves.'],
     [429, 'Too many requests', 'Wait a moment, then try again.'],

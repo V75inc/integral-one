@@ -38,6 +38,18 @@ function classify(err: unknown, contextLabel?: string): {
     return { title: '', body: '', severity: 'warning', skip: true };
   }
 
+  if (ax?.code === 'ECONNABORTED' || ax?.code === 'ETIMEDOUT') {
+    const isRead = ['get', 'head', 'options'].includes(ax.config?.method?.toLowerCase() ?? 'get');
+    return {
+      title: `Integral took too long to respond${ctx}`,
+      body: isRead
+        ? 'Wait a moment, then refresh to check for updates.'
+        : 'The change may still complete. Check the records or Background Tasks before submitting it again.',
+      severity: 'warning',
+      skip: false,
+    };
+  }
+
   if (!ax?.response) {
     if (typeof navigator !== 'undefined' && !navigator.onLine) {
       return { title: '', body: '', severity: 'error', skip: true };
@@ -101,7 +113,10 @@ export function notifyApiFailure(err: unknown, opts: NotifyApiFailureOptions = {
   const { title, body, severity, skip } = classify(err, opts.context);
   if (skip) return;
 
-  const actions = opts.onRetry
+  const ax = err as AxiosError | undefined;
+  const uncertainWrite = (ax?.code === 'ECONNABORTED' || ax?.code === 'ETIMEDOUT') &&
+    !['get', 'head', 'options'].includes(ax.config?.method?.toLowerCase() ?? 'get');
+  const actions = opts.onRetry && !uncertainWrite
     ? [{ label: 'Retry', onClick: opts.onRetry }]
     : undefined;
 

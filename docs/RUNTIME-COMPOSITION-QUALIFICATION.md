@@ -4,15 +4,15 @@
 
 ## Source and responsibility
 
-Core commit: `4c93fb97a33922ea4da11be34a979834e1c77777` on
-`codex/runtime-composition`, based on public main `31190c06275332ff44637b6afa6fb068f6444c13`.
+Core commit: `be5cc5931fd072457831054670939d42121d10a7` on
+`codex/runtime-composition`, based on public main `40f29395ccd6e77d69a710c8902dbfe4eca89249`.
 One composes this candidate through its recorded wheel/UI hashes and owns the
 Apache desktop host source at `packages/desktop-host` (version `0.1.7-dev.3`).
 Core now exposes neutral local/hosted presets and a protected host-session UI
 contract. The native bridge and sign-in/offline return view belong to One.
 
-The bundled rc21-named wheel is an explicitly recorded development snapshot,
-not a replacement published under the existing registry version. Reviewed source
+The bundled rc22-named wheel is an explicitly recorded development snapshot,
+not the separately published rc22 patch release consumed by Business. Reviewed source
 and a newly versioned Core release must precede production dependency promotion.
 
 ## Preserved behavior
@@ -33,14 +33,14 @@ and a newly versioned Core release must precede production dependency promotion.
 | --- | --- |
 | Desktop host source | 32 tests passed |
 | One distribution/install/account regressions | 36 Node and three Python tests passed |
-| Composed One frontend | 1,881 tests across 331 files passed; TypeScript/Vite build passed |
+| Composed One frontend | 1,888 tests across 332 files passed; TypeScript/Vite build passed |
 | Pinned runtime startup | Actual bundled runtime boot, local API contract and native controller session passed |
 | Unsigned macOS arm64 package | Built and inspected for contract, provenance, notices and excluded internal files |
-| Core default backend | 6,816 passed; 100 skipped |
-| Core CI-faithful smoke | 1,955 passed; 26 skipped |
+| Core default backend | 6,827 passed; 100 skipped |
+| Core CI-faithful smoke | 1,955 passed; 26 skipped (initial candidate; current-head remote CI pending) |
 | Real PostgreSQL local/hosted authority contracts | 38 passed |
 | Public extension contracts on PostgreSQL | 57 passed |
-| Core frontend | 1,875 tests passed |
+| Core frontend | 1,882 tests passed |
 | Core integrity gates | 16 guards, pinned lint/format, mypy, core-only boundary and four composition tests passed |
 | Core wheel | Isolated import passed; repeat builds byte-identical |
 | Managed hosted API | Two accounts with private records; foreign workspace/record requests denied; local controller unavailable |
@@ -68,3 +68,20 @@ license review, approved Core release pins, signed installers, Apple notarizatio
 and SignPath eligibility/approval remain independent release gates. This work did
 not deploy an account service, use signing keys, submit an application, migrate a
 real user store or approve release.
+
+## Rebase follow-up
+
+The candidate now includes rc22's API-timeout and chat-continuation patches.
+The full backend rerun is clean after stabilizing an inherited worker test that
+used a 150ms real lease; lease loss is now injected only after handler admission.
+All 29 worker tests pass; production worker behavior is unchanged. Core's dated
+record retains the initial failure (6,826 passed, one failed) and clean rerun.
+The 38 authority and 57 extension PostgreSQL contracts, managed data/key upgrade,
+hosted tenant denials, reproducible wheel/import proof and frontend were rerun.
+One's 36 Node/three Python checks and bundled startup/session check pass again.
+
+No fresh live social-provider callback or real user installation migration was
+performed. Current-head remote matrix results will be linked from the paired
+PRs; previous-head green checks do not qualify these changes.
+
+Final unsigned macOS arm64 ASAR SHA-256: `cecd717742937db35792af5198929c4ee68ed75fbfc080af67635b59ba5b69af`. Signing is not qualified.

@@ -60,7 +60,8 @@
     "frontend/src/api/attachments.ts": "12f0aa307003008e90ba2700453b0503f939b257efb64910760eb4605ad0da69",
     "frontend/src/api/auditLog.ts": "af54170a1fea8ef09750129a5e30de215560cab4544fb9c3945654bbf0316b62",
     "frontend/src/api/auth.ts": "253c3e1e32ffd6bb93620082a58746f5b5413c6054f9271c1846678389174e1c",
-    "frontend/src/api/client.ts": "3e27574782d179a0868765384bf31a5663fecccf767326fc0a59eb59e630d609",
+    "frontend/src/api/client.test.ts": "c9a65c51d2050425e985d9162b0df6b6065221f2804419c4f367dd9a0da9d25d",
+    "frontend/src/api/client.ts": "2550fabed20278a3ebaf5695543197abcaaa82c953288bfe5efef4395c70418b",
     "frontend/src/api/comments.ts": "f355d57f6833f9f26488904b261b6c3554e760e85c718b379a5a0e2d662d584c",
     "frontend/src/api/conflicts.ts": "6ca6817d521d1ac9a2a9ed0b63db38d8c613b51c20f82626b6b8b9594b6320cc",
     "frontend/src/api/connectedAgents.ts": "e254f695be465d11fe5aa79c7985e188844d0dc9fc4b3a714acdf53fb4be9a8f",
@@ -956,8 +957,8 @@
     "frontend/src/lib/__tests__/apiResponseMessage.test.ts": "9c9c897aeb8550c4480df1becab048cc6bb8141bdfa5faa1a68a742f50b37b16",
     "frontend/src/lib/__tests__/buildVersion.test.ts": "6bf587cd7be72df388f82a4c8b48b0c979eeb0fd539885a72b6a6c8836ffcd9c",
     "frontend/src/lib/__tests__/pdfjsLoader.test.ts": "deff8243ab6befbebf77046927270a21e207600017f9ff6039f948ede0cbd3e1",
-    "frontend/src/lib/apiErrorNotifier.test.tsx": "875bcd84d119da11ec8927596acdf5348fe391f24d6491fa4509bf0e3434c6e2",
-    "frontend/src/lib/apiErrorNotifier.ts": "0135ded27445439c530d48a56f6c761c772cd290afbce0cf3bb6eb4bbde48f47",
+    "frontend/src/lib/apiErrorNotifier.test.tsx": "5e1063e641e616e146b53656660fd7c101bd580401d0b1219782034575cd7881",
+    "frontend/src/lib/apiErrorNotifier.ts": "9653217297f4d709652e2e7aa992ae71b48fadb299c4658931455b8e7d94748b",
     "frontend/src/lib/apiResponseMessage.ts": "0448b88162bd76eac8cd96d54eea113e6f82120bb6f654f06a1182d3827a94ff",
     "frontend/src/lib/buildVersion.ts": "d2ed0059d7fb55b263a17ede1d78e722fb9824f029e56708cedaedbf73d1542d",
     "frontend/src/lib/cn.ts": "f0cda5f65d11303f2c776c0e744e6bda95d1235c87dd08ddc46ab69c96e5712b",
@@ -1166,6 +1167,6 @@
     "frontend/vitest.config.ts": "dc30f85d8f79fb42754fbac3bcd7a05e6a5b4bcb0f38a04da958a8fd0f056419"
   },
   "license_state": "Apache-2.0 Core and One; inherited component grants retained",
-  "source_commit": "4c93fb97a33922ea4da11be34a979834e1c77777",
-  "source_tree_sha256": "a0ad1cc7f5053db912eb25fd5f8e9c322a4575f51a362238ed8ea8bcbe45d29d"
+  "source_commit": "be5cc5931fd072457831054670939d42121d10a7",
+  "source_tree_sha256": "b6047ccd6b8c76729fe25e786f6d55cd3399dd8e7b48199d83b3fe91544e8fcd"
 }
