@@ -1,50 +1,35 @@
-"""Temporary native investigation of pgserver initdb path/locale behavior."""
+"""Temporary native qualification of the exact managed PostgreSQL helper."""
 import json
-import csv
-import io
 import os
+import secrets
 import shutil
 import subprocess
-import tempfile
+import sys
+import time
 import uuid
 from pathlib import Path
+from local_permissions import private_directory
 
-import pgserver
-from probe_private_permissions import private_directory
-
-if os.name != "nt":
-    raise SystemExit("This probe requires a native Windows runner")
-exe = Path(pgserver.__file__).parent / "pginstall/bin/initdb.exe"
-cases = [
-    ("private-directory", "private", False, []),
-    ("default-directory", "default", False, []),
-    ("missing-directory", "missing", False, []),
-    ("no-locale", "missing", False, ["--no-locale"]),
-    ("C-locale", "missing", False, ["--locale=C"]),
-    ("relative-directory", "missing", True, []),
-]
-cases = [("explicit-user-private-root", "explicit", False, [])]
-for name, creation, relative, extra in cases:
-    root = Path(os.environ["RUNNER_TEMP"]) / ("one-pg-inherited-" + uuid.uuid4().hex)
-    root.mkdir()
-    private_directory(root)
+root = Path(os.environ['RUNNER_TEMP']) / ('one-pg-helper-' + uuid.uuid4().hex)
+root.mkdir()
+private_directory(root)
+(root / 'installation.json').write_text(json.dumps({'database_password': secrets.token_hex(32)}))
+with (root / 'helper.log').open('w') as log:
+    process = subprocess.Popen([sys.executable, str(Path(__file__).with_name('probe_local_postgres.py')), str(root)], stdout=log, stderr=log)
     try:
-        print(subprocess.run(["icacls", str(root)], capture_output=True, text=True).stdout, flush=True)
-        data = root / "postgres"
-        if creation == "explicit":
-            data.mkdir()
-            private_directory(data)
-        elif creation == "private":
-            data.mkdir(mode=0o700)
-            data.chmod(0o700)
-        elif creation == "default":
-            data.mkdir()
-        args = [str(exe), "-D", "postgres" if relative else str(data),
-                "--auth=trust", "--auth-local=trust", "--encoding=utf8", "-U", "postgres", *extra]
-        result = subprocess.run(args, cwd=root, capture_output=True, timeout=40)
-        print(json.dumps({"case": name, "returncode": result.returncode,
-                          "stdout": result.stdout.decode("utf-8", errors="replace")[-1800:],
-                          "stderr": result.stderr.decode("utf-8", errors="replace")[-1800:]}), flush=True)
-        assert result.returncode == 0, "Private owner SID initialization failed"
+        for _ in range(60):
+            if (root / 'database.json').exists():
+                break
+            if process.poll() is not None:
+                raise RuntimeError('Helper exited before readiness: ' + (root / 'helper.log').read_text())
+            time.sleep(1)
+        assert (root / 'database.json').exists(), 'Database readiness timed out'
+        print('Native protected-directory PostgreSQL helper reached readiness (credentials omitted)', flush=True)
+        (root / 'database.stop.request').touch()
+        process.wait(timeout=30)
+        assert process.returncode == 0, 'Helper did not stop cleanly'
     finally:
-        shutil.rmtree(root)
+        if process.poll() is None:
+            process.terminate()
+            process.wait(timeout=30)
+shutil.rmtree(root)
