@@ -104,3 +104,20 @@ Update dependencies through their upstream source and regenerate pins/manifests.
 ## End-user release
 
 Source setup is separate from the [one-command installer](INSTALL.md). See [installer release](INSTALLER-RELEASE.md) for production account/signing inputs, native architecture jobs and verified release manifests.
+
+
+### Shared desktop host
+
+The reusable Apache host source and tests are maintained here in
+`packages/desktop-host`. Run `npm run test:host` after changes. Preserve its
+LICENSE/NOTICE and stable runtime/session contracts. Pack a reviewed version into
+`vendor/`, update the distribution hash and npm lockfile, and qualify consumers.
+Business can consume the host without importing One's account UI. Core's legacy
+Electron product is retired in the runtime-composition candidate; its neutral
+local/hosted engine contracts and storage/recovery remain supported.
+
+After `npm run build:runtime`, `npm run qualify:runtime` boots the pinned engine
+in a new temporary installation, checks its running local contract and controller
+session, then stops/removes that synthetic home. It does not open signup or use
+your existing workspace. Initial runtime provisioning can download dependencies.
+PR CI runs this check on each native runner before packaging.

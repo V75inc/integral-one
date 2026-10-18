@@ -1,5 +1,5 @@
 import { useDeployment } from './hooks/useDeployment';
-import { DesktopAccessPage } from './pages/DesktopAccessPage';
+import { HostAccessPage } from './host/access';
 import { lazy, Suspense } from 'react';
 import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from './context/AuthContext';
@@ -289,13 +289,13 @@ export default function App() {
     <AppErrorBoundary scope="routes" resetKey={pathname}>
     <Suspense fallback={<PageFallback />}>
     <Routes>
-      <Route path="/login" element={singleUser ? <DesktopAccessPage /> : <LoginPage />} />
-      <Route path="/signup" element={singleUser ? <DesktopAccessPage /> : <SignupPage />} />
-      <Route path="/forgot-password" element={singleUser ? <DesktopAccessPage /> : <ForgotPasswordPage />} />
+      <Route path="/login" element={singleUser ? <HostAccessPage /> : <LoginPage />} />
+      <Route path="/signup" element={singleUser ? <HostAccessPage /> : <SignupPage />} />
+      <Route path="/forgot-password" element={singleUser ? <HostAccessPage /> : <ForgotPasswordPage />} />
       <Route path="/credentials-delivery-verify" element={<CredentialsDeliveryPage />} />
       <Route path="/credentials-delivery-verify.html" element={<CredentialsDeliveryPage />} />
-      <Route path="/reset-password" element={singleUser ? <DesktopAccessPage /> : <ResetPasswordPage />} />
-      <Route path="/verify-email" element={singleUser ? <DesktopAccessPage /> : <VerifyEmailPage />} />
+      <Route path="/reset-password" element={singleUser ? <HostAccessPage /> : <ResetPasswordPage />} />
+      <Route path="/verify-email" element={singleUser ? <HostAccessPage /> : <VerifyEmailPage />} />
       <Route
         path="/invitations/received/:invitationId"
         element={

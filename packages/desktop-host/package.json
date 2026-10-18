@@ -1,0 +1,30 @@
+{
+  "name": "@integral/desktop-host",
+  "version": "0.1.7-dev.3",
+  "description": "Neutral Integral Electron host, origin/permission boundaries and optional local runtime adapter.",
+  "license": "Apache-2.0",
+  "main": "lib/host.js",
+  "exports": {
+    ".": "./lib/host.js",
+    "./core-runtime": "./lib/core-runtime.js",
+    "./permissions": "./lib/permissions.js",
+    "./theme-icons": "./lib/theme-icons.js",
+    "./local-session": "./lib/local-session.js",
+    "./bundle-runtime": "./lib/bundle-runtime.js"
+  },
+  "files": [
+    "lib",
+    "LICENSE",
+    "NOTICE",
+    "README.md"
+  ],
+  "scripts": {
+    "test": "node --test scripts/*.test.js"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "peerDependencies": {
+    "electron": ">=44 <45"
+  }
+}

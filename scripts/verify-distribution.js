@@ -25,6 +25,7 @@ function verifyDistribution(root) {
   const pins = JSON.parse(fs.readFileSync(path.join(root,'distribution.json'),'utf8'));
   const pkg = JSON.parse(fs.readFileSync(path.join(root,'package.json'),'utf8'));
   if (pins.contract_version !== 1 || pins.mode !== 'local' || pins.product !== 'integral-one') throw new Error('Unsupported One distribution contract.');
+  if (pins.core.runtime_contract_version !== 1 || pins.core.runtime_preset !== 'local') throw new Error('One requires the neutral local runtime contract.');
   if (pkg.license !== 'Apache-2.0') throw new Error('The adopted product license is Apache-2.0.');
   if (hash(relativeFile(root,pins.desktop_host.artifact)) !== pins.desktop_host.sha256) throw new Error('Desktop host differs from the reviewed pin.');
   if (hash(relativeFile(root,pins.core.base_wheel)) !== pins.core.wheel_sha256) throw new Error('Core wheel differs from the reviewed pin.');

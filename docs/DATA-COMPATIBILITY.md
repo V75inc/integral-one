@@ -19,3 +19,13 @@ The currently qualified backup/recovery path uses the Core CLI. It preserves the
 Core's backup archive does **not** include One's separate `one-account/activation.json` receipt. Preserve the complete `one-account` directory privately alongside the backup for offline recovery, or sign into the same account again to obtain a receipt bound to the retained installation. Do not publish backups, receipt files or keys in an issue.
 
 Desktop backup/restore convenience and clean-machine upgrade/recovery remain launch work. See [first-release qualification](FIRST-RELEASE-QUALIFICATION.md) for the actual checks and limitations; request maintainer assistance before attempting recovery of a real workspace.
+
+
+## Neutral runtime composition
+
+The new Core preset keeps existing `desktop_single_user` installation records,
+owner/workspace IDs, data directories, encryption/recovery keys and offline
+receipts. The reusable host now requires runtime composition contract v1; this
+is a packaged-engine compatibility check and does not rewrite user data.
+Hosted stores require their own configuration and remain separate. Moving local
+records to Business remains a future explicit export/import operation.

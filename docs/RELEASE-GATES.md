@@ -31,3 +31,13 @@ an authoritative completion report. It is not background sync. The marketplace, 
 Fresh macOS development install, account, local record, outage, backup/recovery and icon results are recorded in [FIRST-RELEASE-QUALIFICATION.md](FIRST-RELEASE-QUALIFICATION.md). These results do not remove the production gates above.
 
 The end-user bootstrap and manual signed-candidate workflow are prepared; see [installer release](INSTALLER-RELEASE.md). They have not been published or qualified against a complete signed release. Never present the source `npm run setup` command as a lay-user installer.
+
+
+## Runtime composition dependency
+
+Before production, replace the development Core snapshot with reviewed/released
+artifacts implementing the accepted neutral local/hosted runtime contract. Require
+local fixed-owner/bootstrap/session and hosted tenant/workspace authorization
+proofs, existing-store/receipt compatibility, and One signup/offline/package
+qualification. Native host source ownership now belongs to One. An engine update
+must not rotate installation IDs, owner IDs, data paths or recovery/receipt keys.

@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Immutable source composition for independently built Integral distributions."""
+
 from __future__ import annotations
 
 import argparse
@@ -53,7 +54,9 @@ def snapshot(output: Path) -> None:
         source = root / "backend" / name
         shutil.copy2(source, output / name)
     shutil.copy2(__file__, output / "compose.py")
-    inventory = {p.relative_to(output).as_posix(): digest(p) for p in safe_files(output)}
+    inventory = {
+        p.relative_to(output).as_posix(): digest(p) for p in safe_files(output)
+    }
     tree = hashlib.sha256(json.dumps(inventory, sort_keys=True).encode()).hexdigest()
     write_json(
         output / "core-source.json",
@@ -89,7 +92,9 @@ def compose(core: Path, output: Path, overlay: Path | None, product: str) -> Non
             or digest(p) != expected
         ):
             raise ValueError(f"Core source integrity mismatch: {name}")
-    actual = {p.relative_to(core).as_posix() for p in safe_files(core)} - {"core-source.json"}
+    actual = {p.relative_to(core).as_posix() for p in safe_files(core)} - {
+        "core-source.json"
+    }
     if actual != set(inventory):
         raise ValueError("Core snapshot contains unrecorded files")
     if output.exists():
@@ -99,11 +104,11 @@ def compose(core: Path, output: Path, overlay: Path | None, product: str) -> Non
     if overlay:
         for p in safe_files(overlay):
             rel = p.relative_to(overlay)
-            if rel.parts[0] in {"registry.ts", "registry.tsx"} or any(
+            if rel.parts[0] in {"registry.ts", "registry.tsx", "session-contract.ts"} or any(
                 part.startswith(".env") for part in rel.parts
             ):
                 raise ValueError(
-                    "Overlay cannot replace the host registry or include environment secrets"
+                    "Overlay cannot replace the host registry/session contract or include environment secrets"
                 )
             extra[rel.as_posix()] = digest(p)
     shutil.copytree(core / "frontend", output)

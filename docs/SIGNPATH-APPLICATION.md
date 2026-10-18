@@ -113,3 +113,11 @@ for native engineering; its artifacts are not public trusted installers.
 References: [Application](https://signpath.org/apply),
 [Foundation conditions](https://signpath.org/terms.html),
 [Windows preparation](WINDOWS-SIGNING.md), [release gates](RELEASE-GATES.md).
+
+
+### Runtime-composition follow-up
+
+A subsequent local candidate moves the native host source into One and adopts
+Core's neutral local/hosted runtime contract. It is not yet the public PR head.
+Rebuild and record an unsigned Windows artifact from the eventual published
+candidate; the earlier foundation artifact cannot qualify changed source.

@@ -1,22 +1,12 @@
+import { getHostSession } from '../host/session';
 import { useEffect, useSyncExternalStore } from 'react';
 import apiClient from '../api/client';
 
 export interface DeploymentCapabilities {
   profile: 'server' | 'desktop_single_user';
   identity: 'account' | 'local_owner';
+  runtime?: { contract_version: 1; preset: 'local' | 'hosted'; identity: 'installation_owner' | 'accounts'; workspace_kinds: string[] };
   features: { collaboration: boolean; public_sharing: boolean; organization_workspaces: boolean; app_extensions: boolean; app_authoring: boolean; manual_records: boolean };
-}
-
-declare global {
-  interface Window {
-    integralDesktop?: {
-      session(): Promise<import('../api/auth').LoginResponse>;
-      profile?(): Promise<{email: string; name: string} | null>;
-      signOut?(): Promise<void>;
-      signIn?(): Promise<void>;
-      resumeOffline?(): Promise<void>;
-    };
-  }
 }
 
 let snapshot: { data?: DeploymentCapabilities; error?: unknown } = {};
@@ -36,6 +26,6 @@ export function useDeployment() {
   }, []);
   // Native presence only supplies a conservative UI default while Core responds.
   // The backend remains authoritative, including for browser access.
-  const singleUser = state.data?.profile === 'desktop_single_user' || Boolean(window.integralDesktop);
+  const singleUser = state.data?.runtime?.identity === 'installation_owner' || state.data?.identity === 'local_owner' || getHostSession()?.identity === 'installation_owner';
   return { ...state, singleUser, collaboration: !singleUser && state.data?.features?.collaboration !== false };
 }

@@ -25,6 +25,8 @@ assert.equal(hash(path.join(resources,'notices/uv/LICENSE-MIT')),hash(path.join(
 for(const name of ['THIRD-PARTY-NOTICES.txt','inventory.json','electron/LICENSE','electron/LICENSES.chromium.html'])assert.equal(hash(path.join(resources,'notices',name)),hash(path.join(root,'resources/notices',name)),`Packaged dependency notice differs: ${name}`);
 const runtime=JSON.parse(fs.readFileSync(path.join(resources,'core/runtime.json'),'utf8'));
 assert.equal(runtime.deployment_profile,'desktop_single_user');
+assert.equal(runtime.runtime_contract_version,1);
+assert.equal(runtime.runtime_preset,'local');
 for(const [name,key] of [[runtime.coreWheel,runtime.coreWheel],[process.platform==='win32'?'uv.exe':'uv','uv']])assert.equal(hash(path.join(resources,'core',name)),runtime.sha256[key]);
 // ASAR also resolves nested extraction paths with the host OS separator.
 assert.match(asar.extractFile(archive,path.join('desktop','main.js')).toString(),/Integral \| one/);

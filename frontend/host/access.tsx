@@ -1,3 +1,4 @@
+import { getHostSession } from './session';
 import { useState } from 'react';
 import { Navigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
@@ -5,7 +6,7 @@ import { AuthPageLayout } from '../components/ui/AuthPageLayout';
 import { Button, PageMeta } from '../components/ui';
 import { Text } from '../ui';
 
-export function DesktopAccessPage() {
+export function HostAccessPage() {
   const { user } = useAuth();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -13,8 +14,8 @@ export function DesktopAccessPage() {
   const reopen = async (offline: boolean) => {
     setBusy(true); setError('');
     try {
-      if (offline) await window.integralDesktop?.resumeOffline?.();
-      else await window.integralDesktop?.signIn?.();
+      if (offline) await getHostSession()?.resumeOffline?.();
+      else await getHostSession()?.signIn?.();
       window.location.replace('/');
     } catch {
       setError('Could not reopen your workspace. Try again. Your local data is unchanged.');
@@ -28,7 +29,7 @@ export function DesktopAccessPage() {
         <Text as="p" variant="body-sm" tone="muted">Your workspace is right where you left it.</Text>
       </header>
       {error && <div role="alert"><Text as="p" variant="body-sm" tone="danger">{error}</Text></div>}
-      {window.integralDesktop ? <div className="auth-compact-actions">
+      {getHostSession() ? <div className="auth-compact-actions">
         <Button size="lg" loading={busy} disabled={busy} onClick={() => void reopen(false)}>Sign in</Button>
         <Button size="lg" variant="outline" disabled={busy} onClick={() => void reopen(true)}>Continue offline</Button>
       </div> : <PageMeta as="p">Open the Integral desktop app to access this installation.</PageMeta>}

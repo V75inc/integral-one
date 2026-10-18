@@ -39,7 +39,7 @@ export function AuthPageLayout({
 }: AuthPageLayoutProps) {
   if (compact) return (
     <main className="auth-page auth-page--compact">
-      <section className="auth-compact-content" aria-label="Desktop account">
+      <section className="auth-compact-content" aria-label="Account access">
         <div className="auth-compact-brand"><Logo size="md" /></div>
         {children}
       </section>

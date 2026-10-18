@@ -163,3 +163,22 @@ boundary, not filesystem protection or a global Google/Business sign-out.
 ## Launch simplification review — 18 October 2026
 
 Clerk already supplies authentication and a registered-user directory. A separate registration service is required by the current signed-receipt implementation, not by signup counting itself. For a smaller launch, consider Clerk directory counts with a qualified desktop-owned offline setup mechanism; retain existing receipt compatibility and account binding. This is proposed, not implemented. See [the production walkthrough](CLERK-CLOUDFLARE-SETUP.md) before provisioning hosting.
+
+
+## Accepted Core/runtime boundary — 18 October 2026
+
+One composes the shared Core engine using the local runtime preset. Core enforces
+installation identity and operation limits; One owns native transport/session
+bridging, Clerk signup, the signed offline setup record, branding and installers.
+The reusable Apache desktop-host source/tests now live in `packages/desktop-host`.
+Business may reuse the host package independently of One's account views.
+
+Signup remains signup, with automatic completion. No new activation screen,
+recurring cloud authorization, data migration or account-to-workspace reassignment
+is introduced by runtime composition. Keep application/data paths, installation
+and owner IDs, private recovery keys and receipt verification keys unchanged.
+See [accepted architecture and migration](CORE-HOST-BOUNDARY-PROPOSAL.md).
+
+The Core candidate is an explicit development snapshot pending independent source
+review and release. Qualify both local and hosted configurations before replacing
+One's pinned engine; a hosted preset never substitutes for tenant/resource checks.

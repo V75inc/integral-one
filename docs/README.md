@@ -23,6 +23,7 @@
 | Guide | Covers |
 | --- | --- |
 | [Clerk and Cloudflare walkthrough](CLERK-CLOUDFLARE-SETUP.md) | Production account/domain setup and the service simplification decision |
+| [Runtime composition qualification](RUNTIME-COMPOSITION-QUALIFICATION.md) | Local/hosted boundary, data continuity and paired Core candidate evidence |
 | [First-release qualification](FIRST-RELEASE-QUALIFICATION.md) | What passed, what was not tested and remaining gaps |
 | [macOS signing walkthrough](MACOS-SIGNING.md) | Finish Apple Developer signing/notarization for the initial Mac launch |
 | [Windows signing walkthrough](WINDOWS-SIGNING.md) | V75 Inc. publisher enrollment, cloud signing and native Windows qualification |
@@ -40,3 +41,5 @@
 | [Qualification history](QUALIFICATION.md) | Earlier checks and source-import evidence |
 
 User instructions describe the current preview unless explicitly marked as a future release path. Qualification evidence does not imply a signed or production-ready release.
+
+Architecture: [accepted Core/host boundary](CORE-HOST-BOUNDARY-PROPOSAL.md).

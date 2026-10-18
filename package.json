@@ -18,11 +18,13 @@
     "test:ui": "npm run test:run --prefix .build/frontend -- --maxWorkers=2",
     "build:accounts": "node scripts/build-accounts.js",
     "build:installers": "node scripts/build-installers.js",
-    "release:manifest": "node scripts/installer-manifest.js"
+    "release:manifest": "node scripts/installer-manifest.js",
+    "test:host": "npm test --prefix packages/desktop-host",
+    "qualify:runtime": "node scripts/qualify-runtime.js"
   },
   "dependencies": {
     "@clerk/electron": "0.1.1",
-    "@integral/desktop-host": "file:vendor/integral-desktop-host-0.1.7-dev.0.tgz",
+    "@integral/desktop-host": "file:vendor/integral-desktop-host-0.1.7-dev.3.tgz",
     "react": "18.3.1",
     "react-dom": "18.3.1"
   },

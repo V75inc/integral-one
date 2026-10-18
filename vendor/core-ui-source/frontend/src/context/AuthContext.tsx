@@ -1,3 +1,4 @@
+import { getHostSession } from '../host/session';
 import '../hooks/useDeployment';
 import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
@@ -54,9 +55,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     let active = true;
     let cleanupHydration = () => {};
     const begin = async () => {
-      if (window.integralDesktop) {
+      const hostSession = getHostSession();
+      if (hostSession) {
         try {
-          const session = await window.integralDesktop.session();
+          const session = await hostSession.session();
           if (!active) return;
           setTokens(session);
         } catch {
@@ -201,7 +203,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const logout = useCallback(async () => {
     try {
-      await window.integralDesktop?.signOut?.();
+      await getHostSession()?.signOut?.();
       if (getAccessToken()) {
         await authApi.logout();
       }
