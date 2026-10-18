@@ -53,7 +53,7 @@ def snapshot(output: Path) -> None:
         source = root / "backend" / name
         shutil.copy2(source, output / name)
     shutil.copy2(__file__, output / "compose.py")
-    inventory = {str(p.relative_to(output)): digest(p) for p in safe_files(output)}
+    inventory = {p.relative_to(output).as_posix(): digest(p) for p in safe_files(output)}
     tree = hashlib.sha256(json.dumps(inventory, sort_keys=True).encode()).hexdigest()
     write_json(
         output / "core-source.json",
@@ -89,7 +89,7 @@ def compose(core: Path, output: Path, overlay: Path | None, product: str) -> Non
             or digest(p) != expected
         ):
             raise ValueError(f"Core source integrity mismatch: {name}")
-    actual = {str(p.relative_to(core)) for p in safe_files(core)} - {"core-source.json"}
+    actual = {p.relative_to(core).as_posix() for p in safe_files(core)} - {"core-source.json"}
     if actual != set(inventory):
         raise ValueError("Core snapshot contains unrecorded files")
     if output.exists():
@@ -105,7 +105,7 @@ def compose(core: Path, output: Path, overlay: Path | None, product: str) -> Non
                 raise ValueError(
                     "Overlay cannot replace the host registry or include environment secrets"
                 )
-            extra[str(rel)] = digest(p)
+            extra[rel.as_posix()] = digest(p)
     shutil.copytree(core / "frontend", output)
     if overlay:
         shutil.copytree(overlay, output / "src/host", dirs_exist_ok=True)

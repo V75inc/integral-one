@@ -26,5 +26,11 @@
     "icons/mac/integral-light.png": "f6f5943535fa392b2d3b040372bcc84ffed26b177236e31329659cdb287ed416"
   },
   "shared_implementation": "Integrity-pinned @integral/desktop-host tarball; source lives in Core packages/desktop-host",
-  "new_product_entrypoint": "Product-owned composition; generic host and runtime remain inventoried Core dependencies."
+  "new_product_entrypoint": "Product-owned composition; generic host and runtime remain inventoried Core dependencies.",
+  "composition_helper_refresh": {
+    "source": "integral-core scripts/distribution.py",
+    "status": "uncommitted upstream compatibility fix; included in this explicit development snapshot",
+    "change": "Canonical POSIX inventory paths on Windows; frontend file contents unchanged",
+    "sha256": "760f5210a307105b87f76e77bbf49eb5d59a844aeb1bab7321f5bf05314b2dd4"
+  }
 }

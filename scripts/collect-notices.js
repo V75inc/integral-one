@@ -2,6 +2,7 @@
 // Collect from the exact installed trees used to build, retaining upstream text.
 const fs = require('node:fs');
 const path = require('node:path');
+const { execFileSync } = require('node:child_process');
 const root = path.join(__dirname, '..');
 const output = path.join(root, 'resources/notices');
 fs.mkdirSync(output, { recursive: true });
@@ -24,6 +25,9 @@ for (const [scope, base] of [['desktop', root], ['core-ui', path.join(root, '.bu
   }
 }
 const electron = path.dirname(require.resolve('electron/package.json'));
+// Electron 44 has no npm postinstall; materialize its checksum-verified pinned
+// runtime archive before copying notices on clean build runners too.
+execFileSync(process.execPath, [require.resolve('electron/install.js')], { stdio: 'inherit' });
 fs.mkdirSync(path.join(output, 'electron'), { recursive: true });
 for (const name of ['LICENSE', 'LICENSES.chromium.html']) {
   fs.copyFileSync(path.join(electron, 'dist', name), path.join(output, 'electron', name));

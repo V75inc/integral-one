@@ -27,6 +27,7 @@
 | [macOS signing walkthrough](MACOS-SIGNING.md) | Finish Apple Developer signing/notarization for the initial Mac launch |
 | [Windows signing walkthrough](WINDOWS-SIGNING.md) | V75 Inc. publisher enrollment, cloud signing and native Windows qualification |
 | [SignPath application preparation](SIGNPATH-APPLICATION.md) | Selected free-signing investigation, eligibility gaps and draft application |
+| [SignPath eligibility inquiry](SIGNPATH-ELIGIBILITY-INQUIRY.md) | Prepared questions about signup, the private service boundary and first-release evidence |
 | [Installer release runbook](INSTALLER-RELEASE.md) | Native builds, signing, verified manifests and deliberate publication |
 | [Release gates](RELEASE-GATES.md) | Requirements before a public installer release |
 | [Dependency review](DEPENDENCY-REVIEW.md) | Outstanding advisories and exposure |

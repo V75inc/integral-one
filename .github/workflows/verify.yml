@@ -32,4 +32,14 @@ jobs:
       - run: npm run build:accounts
       - run: npx electron-builder --dir --publish never
       - run: node scripts/inspect-package.js
+      - name: Build unsigned Windows development installer
+        if: runner.os == 'Windows'
+        run: npm run build:installers
+      - uses: actions/upload-artifact@v4
+        if: runner.os == 'Windows'
+        with:
+          name: integral-one-windows-x64-UNSIGNED-${{ github.sha }}
+          retention-days: 7
+          if-no-files-found: error
+          path: release/integral-one-*-win-x64.exe
 # No release/publish job: official registration and signed installer qualification remain gates.

@@ -11,6 +11,9 @@ has been published. Apple notarization does not gate Windows engineering.
 - A separate manual **Windows development installer (unsigned, manual)** workflow
   can build an internal candidate without Apple credentials or production secrets.
   It has not been dispatched. It uploads a seven-day development artifact only.
+- PR qualification also builds an unsigned Windows installer and retains it for
+  seven days after a successful Windows job. This provides review evidence before
+  the manual workflow is available on main; it is not a public installer release.
 - Native Windows installation, signup, offline restart and recovery remain
   unqualified. macOS PowerShell parsing/download checks do not establish them.
 - V75 Inc. does not yet have a Windows signing certificate/provider configured.

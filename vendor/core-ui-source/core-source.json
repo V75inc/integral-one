@@ -3,7 +3,7 @@
   "files": {
     "LICENSE": "edae8d0a61f1e409ef29e5fd25e00498d7416eba71a173c8fb37a226ed1ec829",
     "NOTICE": "f2cc49b4cbede379bb64849dacd70f700c43dd4151eed43e9b989c6ec2827aaf",
-    "compose.py": "1264293c07e53d4ed27490eae7bd8be566ca6a76ca7a643254cb2634e829fbc2",
+    "compose.py": "760f5210a307105b87f76e77bbf49eb5d59a844aeb1bab7321f5bf05314b2dd4",
     "frontend/.dockerignore": "7e327de03358abf2ea8d6f6b5365a45e20ee84ba83f8719e6a3eccdb4952e2b5",
     "frontend/.npmrc": "68941968b4a14f95ca14b855c19a423e227141f955b4e4a9f004e69d5cf0dc71",
     "frontend/Dockerfile": "d1b6f4ccb1a3eaa38885959be1aff557d189e05b2d72dc56574484d971559a4b",
@@ -1165,5 +1165,5 @@
   },
   "license_state": "Apache-2.0 Core and One; inherited component grants retained",
   "source_commit": "31190c06275332ff44637b6afa6fb068f6444c13",
-  "source_tree_sha256": "1ff98e9732ff06001efa250197496d327f9316b7a9eacbbb037872f37a369054"
+  "source_tree_sha256": "308f9f48e3b5c82b236bffbe0f95dd0a1199d763fa163af5c26082ae94d9b6cc"
 }

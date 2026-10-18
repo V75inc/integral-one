@@ -15,7 +15,7 @@
     "desktop_contract_version": 1,
     "wheel_sha256": "f91329dabc5514cc413f619b946cafd073bf2daad20cadd5d1ad292720dbe892",
     "wheel_filename": "integral_core-0.1.1rc21-py3-none-any.whl",
-    "ui_manifest_sha256": "1ab0e3eb1c8c9f86d6d1a82ef317b5527821d0833b4fbe5ce5a2923d578ff808",
+    "ui_manifest_sha256": "ef853359d32a5fc0eaf6d817af3b583d03895fe334ed85931902eceedb90a38b",
     "base_wheel": "vendor/core-runtime/integral_core-0.1.1rc21-py3-none-any.whl"
   },
   "data_compatibility": {
