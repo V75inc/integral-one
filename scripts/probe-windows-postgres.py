@@ -4,6 +4,7 @@ import os
 import shutil
 import subprocess
 import tempfile
+import uuid
 from pathlib import Path
 
 import pgserver
@@ -19,9 +20,12 @@ cases = [
     ("C-locale", "missing", False, ["--locale=C"]),
     ("relative-directory", "missing", True, []),
 ]
+cases = [("inherited-root", "missing", False, []), ("inherited-root-private-child", "private", False, [])]
 for name, creation, relative, extra in cases:
-    root = Path(tempfile.mkdtemp(prefix="one-pg-probe-"))
+    root = Path(os.environ["RUNNER_TEMP"]) / ("one-pg-inherited-" + uuid.uuid4().hex)
+    root.mkdir()
     try:
+        print(subprocess.run(["icacls", str(root)], capture_output=True, text=True).stdout, flush=True)
         data = root / "postgres"
         if creation == "private":
             data.mkdir(mode=0o700)
