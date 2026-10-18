@@ -1,5 +1,7 @@
 """Temporary native investigation of pgserver initdb path/locale behavior."""
 import json
+import csv
+import io
 import os
 import shutil
 import subprocess
@@ -20,14 +22,18 @@ cases = [
     ("C-locale", "missing", False, ["--locale=C"]),
     ("relative-directory", "missing", True, []),
 ]
-cases = [("inherited-root", "missing", False, []), ("inherited-root-private-child", "private", False, [])]
+cases = [("explicit-user-private-root", "explicit", False, [])]
 for name, creation, relative, extra in cases:
     root = Path(os.environ["RUNNER_TEMP"]) / ("one-pg-inherited-" + uuid.uuid4().hex)
     root.mkdir()
+    sid = list(csv.reader(io.StringIO(subprocess.check_output(["whoami", "/user", "/fo", "csv", "/nh"], text=True))))[0][1]
+    subprocess.run(["icacls", str(root), "/inheritance:r", "/grant:r", f"*{sid}:(OI)(CI)F", "*S-1-5-18:(OI)(CI)F"], check=True, capture_output=True)
     try:
         print(subprocess.run(["icacls", str(root)], capture_output=True, text=True).stdout, flush=True)
         data = root / "postgres"
-        if creation == "private":
+        if creation == "explicit":
+            data.mkdir()
+        elif creation == "private":
             data.mkdir(mode=0o700)
             data.chmod(0o700)
         elif creation == "default":
