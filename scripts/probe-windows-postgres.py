@@ -10,6 +10,7 @@ import uuid
 from pathlib import Path
 
 import pgserver
+from probe_private_permissions import private_directory
 
 if os.name != "nt":
     raise SystemExit("This probe requires a native Windows runner")
@@ -26,13 +27,13 @@ cases = [("explicit-user-private-root", "explicit", False, [])]
 for name, creation, relative, extra in cases:
     root = Path(os.environ["RUNNER_TEMP"]) / ("one-pg-inherited-" + uuid.uuid4().hex)
     root.mkdir()
-    sid = list(csv.reader(io.StringIO(subprocess.check_output(["whoami", "/user", "/fo", "csv", "/nh"], text=True))))[0][1]
-    subprocess.run(["icacls", str(root), "/inheritance:r", "/grant:r", f"*{sid}:(OI)(CI)F", "*S-1-5-18:(OI)(CI)F"], check=True, capture_output=True)
+    private_directory(root)
     try:
         print(subprocess.run(["icacls", str(root)], capture_output=True, text=True).stdout, flush=True)
         data = root / "postgres"
         if creation == "explicit":
             data.mkdir()
+            private_directory(data)
         elif creation == "private":
             data.mkdir(mode=0o700)
             data.chmod(0o700)
@@ -44,5 +45,6 @@ for name, creation, relative, extra in cases:
         print(json.dumps({"case": name, "returncode": result.returncode,
                           "stdout": result.stdout.decode("utf-8", errors="replace")[-1800:],
                           "stderr": result.stderr.decode("utf-8", errors="replace")[-1800:]}), flush=True)
+        assert result.returncode == 0, "Private owner SID initialization failed"
     finally:
         shutil.rmtree(root)

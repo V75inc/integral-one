@@ -4,6 +4,7 @@ on:
     paths:
       - '.github/workflows/windows-postgres-probe.yml'
       - 'scripts/probe-windows-postgres.py'
+      - 'scripts/probe_private_permissions.py'
 permissions:
   contents: read
 jobs:
