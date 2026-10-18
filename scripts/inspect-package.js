@@ -26,8 +26,9 @@ for(const name of ['THIRD-PARTY-NOTICES.txt','inventory.json','electron/LICENSE'
 const runtime=JSON.parse(fs.readFileSync(path.join(resources,'core/runtime.json'),'utf8'));
 assert.equal(runtime.deployment_profile,'desktop_single_user');
 for(const [name,key] of [[runtime.coreWheel,runtime.coreWheel],[process.platform==='win32'?'uv.exe':'uv','uv']])assert.equal(hash(path.join(resources,'core',name)),runtime.sha256[key]);
-assert.match(asar.extractFile(archive,'desktop/main.js').toString(),/Integral \| one/);
-const accountConfig=JSON.parse(asar.extractFile(archive,'desktop/accounts/config.runtime.json').toString());
+// ASAR also resolves nested extraction paths with the host OS separator.
+assert.match(asar.extractFile(archive,path.join('desktop','main.js')).toString(),/Integral \| one/);
+const accountConfig=JSON.parse(asar.extractFile(archive,path.join('desktop','accounts','config.runtime.json')).toString());
 require('../desktop/accounts/config').validateConfig(accountConfig);
 assert.ok(!JSON.stringify(accountConfig).includes('sk_live_') && !JSON.stringify(accountConfig).includes('sk_test_'),'Service secret must not enter the app');
 console.log(JSON.stringify({result:'pass',platform:process.platform,arch:process.arch,asar_sha256:hash(archive),runtime_profile:runtime.deployment_profile,apache_notices:true,internal_files_excluded:true,signing:'not qualified'},null,2));
