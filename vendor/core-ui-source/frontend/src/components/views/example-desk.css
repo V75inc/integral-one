@@ -1,0 +1,29 @@
+/**
+ * example-desk — pack-scoped stylesheet for the "example-desk" reference UI
+ * pack (docs/operational-models/UI_PACKS.md). Every rule is wrapped in the
+ * pack's own namespace class so it can never leak onto unrelated DOM —
+ * the standard's convention for a pack's own CSS.
+ */
+
+.example-desk-board {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.example-desk-board__group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.example-desk-board__group-label {
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.example-desk-board__cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 0.5rem;
+}

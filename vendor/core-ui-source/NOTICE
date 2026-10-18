@@ -1,0 +1,3 @@
+This tree was extracted from the Integral monorepo for the open integral-core
+release. Commercial Apps live in a separate private repository and are not
+bundled here. See docs/product/INTEGRAL_CORE_EXTRACT.md.

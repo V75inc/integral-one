@@ -1,0 +1,17 @@
+# The image installs its own Linux dependencies with npm ci; never copy host modules.
+node_modules
+dist
+coverage
+.vite
+.vitest
+test-results
+playwright-report
+.env
+.env.*
+.DS_Store
+.nyc_output
+**/.nyc_output
+.eslintcache
+**/.eslintcache
+*.log
+**/*.log

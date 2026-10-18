@@ -1,0 +1,112 @@
+/* Agent inbox rows and controls.
+   Hover/disabled states live here because they belong to the interactive
+   element rather than a text node, which is what <Text>/<Surface> style. */
+
+.inbox-row {
+  border: 1px solid var(--panel-border);
+}
+
+.inbox-row:hover {
+  background: var(--panel-2);
+}
+
+.inbox-section-link:hover {
+  text-decoration: underline;
+}
+
+.inbox-inline-link {
+  color: var(--link);
+}
+
+.inbox-inline-link:hover {
+  text-decoration: underline;
+}
+
+.inbox-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.25rem;
+  border-radius: var(--radius-input);
+  transition: background-color var(--duration-fast, 120ms) ease;
+}
+
+.inbox-action:hover:not(:disabled) {
+  background: var(--panel);
+}
+
+.inbox-action:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.inbox-action--approve {
+  color: var(--success-fg);
+}
+
+.inbox-action--reject {
+  color: var(--danger-fg);
+}
+
+/* Dock header tabs. */
+.dock-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+}
+
+.dock-tab:hover {
+  background: var(--panel-2);
+}
+
+.dock-tab[aria-pressed='true'] {
+  background: var(--panel-2);
+}
+
+.dock-tab-count {
+  display: inline-flex;
+  min-width: 1.05rem;
+  justify-content: center;
+  border-radius: var(--radius-pill);
+  background: var(--brand-accent);
+  padding: 0 0.3rem;
+  font-size: 10px;
+  line-height: 1.05rem;
+  color: var(--cta-fg);
+}
+
+/* Count on the closed-dock toggle. */
+.dock-toggle-count {
+  position: absolute;
+  top: -2px;
+  right: -2px;
+  display: inline-flex;
+  min-width: 1.1rem;
+  justify-content: center;
+  border-radius: var(--radius-pill);
+  background: var(--danger-fg);
+  padding: 0 0.3rem;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1.1rem;
+  color: #fff;
+}
+
+/* Chrome variant — the switch sitting in the app top bar beside the theme and
+   notification buttons. Matches their height, radius and surface so the three
+   read as one cluster. Lives here rather than as Tailwind literals because the
+   ui-drift guard reserves raw --panel/--text tokens for src/ui/. */
+.assistant-view-tabs--chrome {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.125rem;
+  height: 2.25rem;
+  padding: 0.125rem;
+  border: 1px solid var(--panel-border);
+  border-radius: 0.5rem;
+  background: var(--panel-2);
+}
+
+.assistant-view-tabs--chrome .dock-tab[aria-pressed='true'] {
+  background: var(--panel);
+}

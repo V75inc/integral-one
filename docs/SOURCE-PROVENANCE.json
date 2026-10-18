@@ -1,0 +1,30 @@
+{
+  "date": "2026-10-18",
+  "source_repository": "integral-core",
+  "source_base_commit": "31190c06275332ff44637b6afa6fb068f6444c13",
+  "inherited_shell_origin": [
+    "integral-business 513a090edf4d6777289525db1cc79c8b7326f5cb",
+    "integral-core gd/desktop f2d52283cf3e3ad2b4a354c55fc4ee402d5adbc8"
+  ],
+  "source_changes_snapshot": {
+    "sha256": "92847dec130b44de7fb954c69e9b5c0c20c661472b044be7b80673757031116d",
+    "description": "Recoverable source snapshot retained by maintainers; hash identifies the pre-extraction state."
+  },
+  "history": "Original source repositories preserve their history. This initial product import preserves Apache notices and the inherited source lineage; provenance is not an IP assignment.",
+  "license_state": "Apache-2.0; earlier SUL proposal superseded",
+  "copied_branding_build_assets": {
+    "icons/integral-light.svg": "cb4c5e7fa927f0b0550be178760e3d32a2fa7e28551b64f937fd025d0d4f2204",
+    "icons/integral-dark.png": "9aac06578462be179b222579b8a605a611bfc81aece214ef94b8b139215a7ec3",
+    "icons/integral-dark.svg": "f0ea528f86feb93166c40be7a884776a61fbb62797de95c28d608a29eb38a173",
+    "icons/integral-light.png": "2394911db90305b4e3ec3b8398859b8674d8796d6a5c63c3058da12ec00a5ce1",
+    "build/icon.png": "6c4bb565e4817b5ea327deb4246f9bdd4c696c2a1dc383cb1f13de31f8a09c61",
+    "build/entitlements.mac.plist": "e2f05215344870e8929843f58bf130ae6df34dd0346a4a98e43d87dc424af583",
+    "build/icon.ico": "1a195e04da6a90c9170e245af1c2ce7ae7542ae9d77e93047e9317bfc8f9c041",
+    "icons/mac/integral-light.svg": "1a8f4b6ad304777f22d0180669b0c556d18b7a18134810e8551312bfb016ee68",
+    "icons/mac/integral-dark.png": "1df5a517ba2b21ad423fcac7c9644135225bc5c9df9a3cf096f5a2cc0c11dd90",
+    "icons/mac/integral-dark.svg": "0e19d7642c1e48d209bbe88cda1a10340687b68fa55f67d16a7fe6e643c8ab06",
+    "icons/mac/integral-light.png": "f6f5943535fa392b2d3b040372bcc84ffed26b177236e31329659cdb287ed416"
+  },
+  "shared_implementation": "Integrity-pinned @integral/desktop-host tarball; source lives in Core packages/desktop-host",
+  "new_product_entrypoint": "Product-owned composition; generic host and runtime remain inventoried Core dependencies."
+}

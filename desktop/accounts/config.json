@@ -1,0 +1,9 @@
+{
+  "contractVersion": 1,
+  "provider": "clerk",
+  "configured": false,
+  "publishableKey": "",
+  "clerkIssuer": "",
+  "activationUrl": "",
+  "publicKeys": {}
+}

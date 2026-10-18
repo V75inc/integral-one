@@ -1,0 +1,18 @@
+{
+  "fields": [
+    { "id": "fld.asset.registration", "key": "registration_number", "name": "Registration number", "renamed_label": "Licence plate", "type": "text" },
+    { "id": "fld.asset.workflow_state", "key": "workflow_state", "name": "Workflow state", "type": "text" },
+    { "id": "fld.business.status", "key": "status", "name": "Business status", "type": "text" }
+  ],
+  "entry": {
+    "id": "n.Entry.c6-a05",
+    "title": "Van 14",
+    "status": "active",
+    "custom_fields": {
+      "registration_number": "ABC-014",
+      "workflow_state": null,
+      "status": "awaiting_parts",
+      "fixture_key": "c6-a05"
+    }
+  }
+}

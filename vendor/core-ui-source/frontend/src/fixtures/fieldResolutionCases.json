@@ -1,0 +1,34 @@
+[
+  {
+    "name": "colliding_status_with_null_business_value",
+    "entry": {
+      "status": "active",
+      "custom_fields": {
+        "status": null,
+        "rental_status": null
+      }
+    },
+    "expectations": {
+      "status": "active",
+      "custom_fields.status": null,
+      "custom_fields.rental_status": null
+    }
+  },
+  {
+    "name": "populated_business_and_platform_values",
+    "entry": {
+      "title": "Vehicle PZZ 1234",
+      "status": "active",
+      "custom_fields": {
+        "status": "available",
+        "registration": "PZZ 1234"
+      }
+    },
+    "expectations": {
+      "title": "Vehicle PZZ 1234",
+      "status": "active",
+      "custom_fields.status": "available",
+      "custom_fields.registration": "PZZ 1234"
+    }
+  }
+]

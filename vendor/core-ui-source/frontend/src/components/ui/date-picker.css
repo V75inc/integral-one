@@ -1,0 +1,32 @@
+/* Integral date picker popover shell */
+.integral-date-picker-popover {
+  color: var(--text);
+  background: var(--panel);
+}
+
+.integral-calendar {
+  min-width: 252px;
+}
+
+/* Field shell + input tone.
+   These live in CSS rather than as <Surface>/<Text> because the popover is
+   positioned via a portal (it needs ref + inline style, which Surface does
+   not forward) and because an <input> renders no child node for <Text> to
+   wrap. Keeping them here also gives the picker a single source of truth
+   for its own surface colors. */
+.integral-date-picker-shell {
+  background: var(--panel);
+}
+
+.integral-date-picker-input {
+  color: var(--text);
+}
+
+/* Placeholder-ish state: empty and not being edited. */
+.integral-date-picker-input[data-empty='true'] {
+  color: var(--text-muted);
+}
+
+.integral-date-picker-input[data-invalid='true'] {
+  color: var(--danger-fg);
+}

@@ -1,0 +1,118 @@
+name: Signed installer candidate (manual)
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Stable version already present in package.json and distribution.json
+        required: true
+        type: string
+      include_windows:
+        description: Include Windows x64 only after its signing certificate and qualification are ready
+        required: true
+        type: boolean
+        default: false
+permissions:
+  contents: read
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.targets.outputs.matrix }}
+    steps:
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - id: targets
+        env:
+          INCLUDE_WINDOWS: ${{ inputs.include_windows }}
+        run: >-
+          node -e "const fs=require('fs');const include=[
+          {runner:'macos-15',platform:'darwin',arch:'arm64',certificate:'MACOS_CSC_LINK',password:'MACOS_CSC_KEY_PASSWORD'},
+          {runner:'macos-15-intel',platform:'darwin',arch:'x64',certificate:'MACOS_CSC_LINK',password:'MACOS_CSC_KEY_PASSWORD'}];
+          if(process.env.INCLUDE_WINDOWS==='true')include.push({runner:'windows-latest',platform:'win32',arch:'x64',certificate:'WINDOWS_CSC_LINK',password:'WINDOWS_CSC_KEY_PASSWORD'});
+          fs.appendFileSync(process.env.GITHUB_OUTPUT,'matrix='+JSON.stringify({include})+'\n');"
+  build:
+    needs: plan
+    environment: desktop-release
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
+    runs-on: ${{ matrix.runner }}
+    env:
+      INTEGRAL_ACCOUNT_CONFIG: ${{ github.workspace }}/.local/public-production.json
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          architecture: ${{ matrix.arch }}
+          cache: npm
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install uv==0.11.3
+      - name: Require exact stable version and native architecture
+        env:
+          EXPECTED_VERSION: ${{ inputs.version }}
+          EXPECTED_PLATFORM: ${{ matrix.platform }}
+          EXPECTED_ARCH: ${{ matrix.arch }}
+        run: >-
+          node -e "const p=require('./package.json'),d=require('./distribution.json');
+          if(!/^\d+\.\d+\.\d+$/.test(p.version)||p.version!==process.env.EXPECTED_VERSION||d.product_version!==p.version||process.platform!==process.env.EXPECTED_PLATFORM||process.arch!==process.env.EXPECTED_ARCH)throw Error('Stable version/native runner mismatch');"
+      - name: Write public production account configuration
+        env:
+          PUBLIC_ACCOUNT_CONFIG: ${{ vars.ONE_PRODUCTION_ACCOUNT_CONFIG }}
+        run: >-
+          node -e "const fs=require('fs');
+          const c=require('./desktop/accounts/config').validateConfig(JSON.parse(process.env.PUBLIC_ACCOUNT_CONFIG));
+          if(!c.configured||c.environment!=='production')throw Error('Production accounts required');
+          fs.mkdirSync('.local',{recursive:true});fs.writeFileSync(process.env.INTEGRAL_ACCOUNT_CONFIG,JSON.stringify(c));"
+      - run: npm run setup
+      - run: npm run verify
+      - run: npm run test:ui
+      - name: Build signed candidate (does not publish)
+        env:
+          CSC_LINK: ${{ secrets[matrix.certificate] }}
+          CSC_KEY_PASSWORD: ${{ secrets[matrix.password] }}
+          APPLE_ID: ${{ matrix.platform == 'darwin' && secrets.APPLE_ID || '' }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ matrix.platform == 'darwin' && secrets.APPLE_APP_SPECIFIC_PASSWORD || '' }}
+          APPLE_TEAM_ID: ${{ matrix.platform == 'darwin' && secrets.APPLE_TEAM_ID || '' }}
+        run: npm run build:installers -- --signed
+      - run: node scripts/inspect-package.js
+      - run: npm run release:manifest
+      - uses: actions/upload-artifact@v4
+        with:
+          name: installer-${{ matrix.platform }}-${{ matrix.arch }}
+          retention-days: 14
+          if-no-files-found: error
+          path: |
+            release/integral-one-*.zip
+            release/integral-one-*.exe
+            release/install-manifest-*.json
+  assemble:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: installer-*
+          merge-multiple: true
+          path: release-assets
+      - run: node scripts/installer-manifest.js merge release-assets release-assets/install-manifest.json
+      - name: Include reviewed bootstrap and notices
+        run: >-
+          node -e "const fs=require('fs');
+          for(const n of ['install.sh','install.ps1'])fs.copyFileSync('install/'+n,'release-assets/'+n);
+          for(const n of ['LICENSE','NOTICE','LICENSING.md','PRIVACY.md','CODE_SIGNING.md'])fs.copyFileSync(n,'release-assets/'+n);"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: integral-one-${{ inputs.version }}-release-candidate
+          path: release-assets/
+          if-no-files-found: error
+          retention-days: 14
+# Deliberately no release creation, upload-to-GitHub-Release or publication step.
+# Configure desktop-release reviewers before enabling access to signing material.

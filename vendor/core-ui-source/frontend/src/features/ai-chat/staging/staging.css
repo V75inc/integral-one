@@ -1,0 +1,24 @@
+/* Colour for the review dialog's controls.
+   Lives in CSS because the ui-drift guard reserves raw --text tokens for
+   src/ui/, and these are interactive states on buttons rather than text nodes
+   <Text> can own. Layout and sizing stay in Tailwind. */
+
+.staged-review-diff {
+  color: var(--text-muted);
+}
+
+.staged-review-secondary {
+  color: var(--text-muted);
+}
+
+.staged-review-secondary:hover:not(:disabled) {
+  color: var(--text);
+}
+
+.staged-review-reject {
+  color: var(--text-subtle);
+}
+
+.staged-review-reject:hover:not(:disabled) {
+  color: var(--danger-fg);
+}

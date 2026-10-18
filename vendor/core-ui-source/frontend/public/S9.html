@@ -1,0 +1,1175 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>S9 · Solar Zoom · Integral</title>
+  <link rel="stylesheet" href="https://rsms.me/inter/inter.css" />
+  <style>
+    :root {
+      --bg: #1a1a1a;
+      --bg-soft: #212121;
+      --bg-card: #272727;
+      --ink: #ededed;
+      --ink-2: #a3a3a3;
+      --ink-3: #6b6b6b;
+      --line: #2d2d2d;
+      --line-2: #232323;
+      --orbit-line: rgba(180, 180, 180, 0.10);
+      --orbit-add: rgba(180, 180, 180, 0.18);
+      --accent: #ff8552;
+      --accent-soft: rgba(255, 133, 82, 0.10);
+      --accent-line: rgba(255, 133, 82, 0.28);
+      --ai: #b59cd6;
+      --presence: #65d895;
+
+      /* Motion language — single curve family for coherence */
+      --zoom-duration: 540ms;
+      --zoom-curve: cubic-bezier(0.22, 1, 0.36, 1); /* smooth ease-out, dolly-in feel */
+      --fade-duration: 320ms; /* siblings fade faster than zoom */
+      --enter-duration: 280ms; /* new content materializes quick */
+      --transition-fast: 220ms cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0; padding: 0; height: 100%;
+      overflow: hidden; overscroll-behavior: none;
+    }
+    body {
+      font-family: 'Inter', system-ui, -apple-system, sans-serif;
+      letter-spacing: -0.011em;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at 50% 50%, #1f1f1f 0%, var(--bg) 65%);
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* ============ Top chrome ============ */
+    .chrome {
+      position: fixed; top: 0; left: 0; right: 0;
+      padding: 16px 24px;
+      display: flex; align-items: center; gap: 12px;
+      z-index: 30;
+    }
+    .brand {
+      display: flex; align-items: center; gap: 8px;
+      font-weight: 600; font-size: 14px; letter-spacing: -0.015em;
+      cursor: pointer;
+      color: var(--ink);
+      transition: opacity var(--transition-fast);
+    }
+    .brand:hover { opacity: 0.85; }
+    .brand-mark {
+      width: 18px; height: 18px; border-radius: 5px;
+      background: linear-gradient(135deg, #ededed, #c8c8c8);
+      position: relative;
+    }
+    .brand-mark::after {
+      content: ''; position: absolute; inset: 4px;
+      border-radius: 1px; background: var(--bg);
+    }
+    .scope-line {
+      flex: 1;
+      font-size: 12px;
+      color: var(--ink-3);
+      text-align: center;
+    }
+    .scope-line strong { color: var(--ink); font-weight: 500; }
+    .search {
+      padding: 6px 12px; border-radius: 100px;
+      background: var(--bg-soft); border: 1px solid var(--line);
+      font-size: 12px; color: var(--ink-3);
+      display: flex; align-items: center; gap: 6px;
+      width: 220px;
+      cursor: text;
+    }
+    .av-me {
+      width: 28px; height: 28px; border-radius: 50%;
+      background: linear-gradient(135deg, #ffa57f, var(--accent));
+      color: white; display: grid; place-items: center;
+      font-size: 11px; font-weight: 600;
+      flex-shrink: 0;
+      cursor: pointer;
+    }
+
+    /* ============ Parent corner ============ */
+    .parent-corner {
+      position: fixed;
+      top: -110px; left: -90px;
+      width: 200px; height: 200px;
+      border-radius: 50%;
+      cursor: pointer;
+      z-index: 26;
+      display: flex; align-items: flex-end; justify-content: flex-end;
+      padding: 0 22px 22px 0;
+      transition:
+        opacity var(--enter-duration) ease-out,
+        transform var(--transition-fast);
+      box-shadow: 4px 4px 24px rgba(0,0,0,0.25);
+    }
+    .parent-corner:hover { transform: translate(4px, 4px); }
+    .parent-corner.hidden {
+      opacity: 0; pointer-events: none;
+      transform: translate(-25px, -25px);
+    }
+    /* Parent corner appears only after the zoom completes */
+    .parent-corner.materializing {
+      opacity: 0;
+      transform: translate(-15px, -15px) scale(0.92);
+    }
+    .parent-corner.materializing-active {
+      opacity: 1;
+      transform: translate(0, 0) scale(1);
+      transition: opacity 240ms ease-out, transform 320ms cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    .parent-corner-text {
+      text-align: right;
+      color: white;
+      max-width: 95px;
+      line-height: 1.2;
+      pointer-events: none;
+    }
+    .parent-corner-type {
+      display: block;
+      font-size: 9px;
+      text-transform: uppercase; letter-spacing: 0.08em;
+      font-weight: 500;
+      opacity: 0.75;
+      margin-bottom: 2px;
+    }
+    .parent-corner-title {
+      display: block;
+      font-size: 12px;
+      font-weight: 600;
+      letter-spacing: -0.01em;
+    }
+    .parent-corner-back {
+      position: absolute;
+      bottom: 22px; right: 22px;
+      transform: translateY(-26px);
+      width: 18px; height: 18px;
+      border-radius: 50%;
+      background: rgba(255, 255, 255, 0.18);
+      backdrop-filter: blur(4px);
+      display: grid; place-items: center;
+      font-size: 9px;
+      color: white;
+      pointer-events: none;
+    }
+
+    .cosmic-lines {
+      position: fixed; inset: 0;
+      width: 100vw; height: 100vh;
+      pointer-events: none;
+      z-index: 4;
+    }
+    .parent-line {
+      stroke: rgba(180, 180, 180, 0.20);
+      stroke-width: 1;
+      transition: opacity var(--enter-duration) ease-out;
+    }
+
+    /* ============ Layout ============ */
+    .layout {
+      position: fixed; inset: 0;
+      display: grid;
+      grid-template-columns: 1fr 0px;
+      transition: grid-template-columns var(--zoom-duration) var(--zoom-curve);
+    }
+    .layout.panel-open {
+      grid-template-columns: 1fr clamp(640px, 52vw, 880px);
+    }
+    .stage {
+      position: relative;
+      display: grid; place-items: center;
+      overflow: hidden;
+    }
+    .universe {
+      position: relative;
+      width: 800px; height: 800px;
+      max-width: 92vw; max-height: 92vh;
+      transition: transform var(--zoom-duration) var(--zoom-curve);
+    }
+    .layout.panel-open .universe {
+      transform: scale(0.78) translateX(-50px);
+    }
+
+    .ring {
+      position: absolute;
+      left: 50%; top: 50%;
+      transform: translate(-50%, -50%);
+      width: 540px; height: 540px;
+      border-radius: 50%;
+      border: 1px solid var(--orbit-line);
+      pointer-events: none;
+      transition: opacity var(--fade-duration) ease-out;
+    }
+    .ring.fading-out { opacity: 0; }
+
+    .add-slot {
+      position: absolute;
+      left: 50%; top: 50%;
+      width: 22px; height: 22px;
+      margin-left: -11px; margin-top: -11px;
+      border-radius: 50%;
+      display: grid; place-items: center;
+      color: var(--orbit-add);
+      font-size: 14px;
+      font-weight: 300;
+      cursor: pointer;
+      pointer-events: auto;
+      transition: color var(--transition-fast), opacity var(--fade-duration) ease-out;
+      z-index: 3;
+    }
+    .add-slot:hover { color: var(--ink-2); }
+    .add-slot.fading-out { opacity: 0; pointer-events: none; }
+
+    /* ============ Center ============ */
+    .center {
+      position: absolute;
+      left: 50%; top: 50%;
+      transform: translate(-50%, -50%);
+      width: 220px; height: 220px;
+      border-radius: 50%;
+      background: radial-gradient(circle at 30% 30%, var(--bg-card), var(--bg-soft));
+      border: 1px solid var(--line);
+      box-shadow: 0 0 80px rgba(255, 133, 82, 0.06), inset 0 0 40px rgba(255, 133, 82, 0.04);
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      gap: 5px;
+      cursor: pointer;
+      padding: 18px;
+      text-align: center;
+      transition:
+        transform var(--zoom-duration) var(--zoom-curve),
+        opacity var(--zoom-duration) ease-out,
+        box-shadow var(--transition-fast),
+        border-color var(--transition-fast);
+      z-index: 10;
+    }
+    .center::before {
+      content: '';
+      position: absolute; inset: -3px;
+      border-radius: 50%;
+      border: 1px solid var(--accent-soft);
+      animation: pulse-ring 4s ease-in-out infinite;
+      pointer-events: none;
+    }
+    @keyframes pulse-ring {
+      0%, 100% { opacity: 0.25; transform: scale(1); }
+      50% { opacity: 0.55; transform: scale(1.04); }
+    }
+    .center.expandable::after {
+      content: 'Tap to open ▸';
+      position: absolute;
+      bottom: -28px;
+      left: 50%; transform: translateX(-50%);
+      font-size: 10px;
+      color: var(--ink-3);
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      font-weight: 500;
+      white-space: nowrap;
+      opacity: 0;
+      transition: opacity var(--transition-fast);
+    }
+    .center.expandable:hover::after { opacity: 1; }
+    .center-type {
+      font-size: 10px; color: var(--accent);
+      text-transform: uppercase; letter-spacing: 0.12em;
+      font-weight: 600;
+    }
+    .center-title {
+      font-size: 22px; font-weight: 600;
+      letter-spacing: -0.025em;
+      color: var(--ink);
+      line-height: 1.15;
+    }
+    .center-meta {
+      font-size: 11px; color: var(--ink-3);
+      margin-top: 2px;
+    }
+    .center-presence {
+      display: flex; align-items: center; gap: 5px;
+      font-size: 10px; color: var(--presence);
+      margin-top: 4px;
+    }
+    .live-dot {
+      width: 6px; height: 6px; border-radius: 50%;
+      background: var(--presence);
+      box-shadow: 0 0 8px rgba(101, 216, 149, 0.6);
+      animation: blink 2s ease-in-out infinite;
+    }
+    @keyframes blink {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.5; }
+    }
+
+    /* OLD center flying to parent corner */
+    .center.flying-to-parent {
+      pointer-events: none;
+    }
+    .center.flying-to-parent::before { display: none; }
+
+    /* NEW center materializing — quick crossfade */
+    .center.entering {
+      opacity: 0;
+      transform: translate(-50%, -50%) scale(0.92);
+    }
+    .center.entering-active {
+      opacity: 1;
+      transform: translate(-50%, -50%) scale(1);
+      transition: opacity var(--enter-duration) ease-out, transform var(--enter-duration) ease-out;
+    }
+
+    /* ============ Orbiters ============ */
+    .orbiter {
+      position: absolute;
+      left: 50%; top: 50%;
+      width: 110px; height: 110px;
+      margin-left: -55px; margin-top: -55px;
+      border-radius: 50%;
+      background: var(--bg-soft);
+      border: 1px solid var(--line);
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      gap: 2px;
+      cursor: pointer;
+      padding: 8px;
+      text-align: center;
+      transform: var(--orbit-pos, translate(0, 0));
+      transition:
+        transform var(--zoom-duration) var(--zoom-curve),
+        opacity var(--fade-duration) ease-out,
+        border-color var(--transition-fast),
+        box-shadow var(--transition-fast);
+      z-index: 5;
+    }
+    .orbiter:hover {
+      border-color: var(--ink-3);
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+    }
+    .orbiter-label {
+      font-size: 10px;
+      color: var(--ink-3);
+      text-transform: uppercase; letter-spacing: 0.06em;
+      font-weight: 500;
+    }
+    .orbiter-title {
+      font-size: 12px; font-weight: 500;
+      color: var(--ink);
+      line-height: 1.2;
+      letter-spacing: -0.005em;
+    }
+    .orbiter-meta {
+      font-size: 9px; color: var(--ink-3);
+      margin-top: 1px;
+    }
+    .orbiter-dot {
+      position: absolute; top: 8px; right: 8px;
+      width: 6px; height: 6px; border-radius: 50%;
+    }
+    .grandchildren {
+      position: absolute;
+      bottom: -2px;
+      left: 50%; transform: translateX(-50%);
+      display: flex; gap: 3px;
+    }
+    .gc-dot {
+      width: 4px; height: 4px; border-radius: 50%;
+      background: var(--line);
+    }
+
+    /* THE CLICKED ORBITER ZOOMS IN — translates to center, scales 2x, STAYS OPAQUE */
+    .orbiter.zooming-in {
+      transform: translate(0, 0) scale(2) !important;
+      z-index: 15;
+      pointer-events: none;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.35);
+      transition:
+        transform var(--zoom-duration) var(--zoom-curve),
+        box-shadow var(--zoom-duration) ease-out;
+    }
+
+    /* OTHER ORBITERS FADE OUT — quicker than the zoom */
+    .orbiter.fading-out {
+      opacity: 0;
+      transform: var(--orbit-pos, translate(0, 0)) scale(0.85);
+      pointer-events: none;
+      transition:
+        opacity var(--fade-duration) ease-out,
+        transform var(--fade-duration) ease-out;
+    }
+
+    /* NEW orbiters materializing — staggered fan-out (delays set in JS) */
+    .orbiter.entering {
+      opacity: 0;
+      transform: translate(0, 0) scale(0.3);
+    }
+    .orbiter.entering-active {
+      opacity: 1;
+      transform: var(--orbit-pos);
+      transition:
+        opacity var(--enter-duration) ease-out,
+        transform 460ms cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    /* ============ Side panel ============ */
+    .side-panel {
+      position: relative;
+      background: var(--bg-soft);
+      border-left: 1px solid var(--line);
+      display: flex; flex-direction: column;
+      overflow: hidden;
+      transform: translateX(100%);
+      opacity: 0;
+      transition: transform var(--zoom-duration) var(--zoom-curve), opacity var(--zoom-duration) var(--zoom-curve);
+    }
+    .layout.panel-open .side-panel {
+      transform: translateX(0);
+      opacity: 1;
+    }
+    .panel-head {
+      padding: 18px 24px;
+      border-bottom: 1px solid var(--line);
+      display: flex; align-items: center; gap: 12px;
+      flex-shrink: 0;
+    }
+    .panel-head-dot { width: 12px; height: 12px; border-radius: 50%; }
+    .panel-title { font-size: 17px; font-weight: 600; letter-spacing: -0.018em; color: var(--ink); }
+    .panel-meta { font-size: 11px; color: var(--ink-3); margin-left: 4px; }
+    .panel-close {
+      margin-left: auto;
+      width: 28px; height: 28px; border-radius: 8px;
+      display: grid; place-items: center;
+      color: var(--ink-3);
+      cursor: pointer;
+      transition: all var(--transition-fast);
+      font-size: 13px;
+    }
+    .panel-close:hover { background: var(--line); color: var(--ink); }
+
+    .panel-tabs {
+      display: flex; gap: 2px;
+      padding: 10px 20px;
+      border-bottom: 1px solid var(--line);
+      flex-shrink: 0;
+    }
+    .panel-tab {
+      padding: 7px 14px;
+      border-radius: 7px;
+      font-size: 13px;
+      color: var(--ink-3);
+      cursor: pointer;
+      transition: all var(--transition-fast);
+      font-weight: 500;
+    }
+    .panel-tab:hover { color: var(--ink); }
+    .panel-tab.on { background: var(--bg-card); color: var(--ink); }
+
+    .panel-body { flex: 1; overflow-y: auto; padding: 8px 0; }
+
+    .panel-composer {
+      padding: 14px 24px;
+      border-bottom: 1px solid var(--line-2);
+      display: flex; gap: 10px; align-items: center;
+    }
+    .panel-composer input {
+      flex: 1; background: transparent; border: 0;
+      font-family: inherit; font-size: 14px;
+      color: var(--ink); outline: none;
+      padding: 6px 0;
+    }
+    .panel-composer input::placeholder { color: var(--ink-3); }
+
+    .entry-card {
+      padding: 16px 24px;
+      border-bottom: 1px solid var(--line-2);
+      cursor: pointer;
+      transition: background var(--transition-fast);
+    }
+    .entry-card:hover { background: var(--bg); }
+    .entry-head { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; font-size: 12px; }
+    .entry-av {
+      width: 24px; height: 24px; border-radius: 50%;
+      display: grid; place-items: center;
+      font-size: 10px; font-weight: 600; color: white;
+      flex-shrink: 0;
+    }
+    .entry-av.u1 { background: linear-gradient(135deg, #ffa57f, var(--accent)); }
+    .entry-av.u2 { background: linear-gradient(135deg, #d0bbed, var(--ai)); }
+    .entry-av.u3 { background: linear-gradient(135deg, #a8e2bf, #65d895); }
+    .entry-author { font-weight: 500; color: var(--ink); }
+    .entry-meta { color: var(--ink-3); }
+    .entry-meta::before { content: '·'; margin: 0 5px; }
+    .entry-ttype {
+      padding: 2px 7px; border-radius: 4px;
+      background: var(--line); font-size: 10px;
+      color: var(--ink-2); font-weight: 500;
+    }
+    .entry-title { font-size: 15px; font-weight: 600; letter-spacing: -0.012em; margin: 0 0 6px 0; line-height: 1.3; }
+    .entry-body { font-size: 13px; color: var(--ink-2); line-height: 1.55; margin: 0 0 10px 0; }
+    .entry-tags { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 6px; }
+    .entry-tag {
+      padding: 1px 7px; border-radius: 100px;
+      background: rgba(138, 168, 200, 0.10);
+      color: #8aa8c8;
+      font-size: 10px; font-weight: 500;
+    }
+    .entry-actions { display: flex; gap: 14px; align-items: center; margin-top: 6px; font-size: 11px; color: var(--ink-3); }
+    .entry-fields {
+      display: grid; grid-template-columns: 1fr 1fr;
+      gap: 8px 18px;
+      margin: 6px 0 8px 0;
+      padding: 10px 0;
+      border-top: 1px solid var(--line-2);
+      border-bottom: 1px solid var(--line-2);
+    }
+    .ef-row { display: flex; flex-direction: column; gap: 1px; }
+    .ef-l { font-size: 9px; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.08em; font-weight: 500; }
+    .ef-v { font-size: 13px; color: var(--ink); font-weight: 500; }
+    .ef-pill {
+      display: inline-flex; padding: 1px 7px; border-radius: 100px;
+      font-size: 11px; font-weight: 500; width: fit-content;
+      background: rgba(138, 168, 200, 0.15); color: #8aa8c8;
+    }
+
+    .panel-kanban { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; padding: 16px; }
+    .kc { background: var(--bg); border: 1px solid var(--line); border-radius: 10px; padding: 12px; }
+    .kc-head { font-size: 10px; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.08em; font-weight: 500; display: flex; justify-content: space-between; margin-bottom: 8px; }
+    .kk { background: var(--bg-card); border: 1px solid var(--line); border-radius: 7px; padding: 8px 10px; margin-bottom: 6px; font-size: 12px; }
+    .kk-t { color: var(--ink); font-weight: 500; }
+    .kk-m { color: var(--ink-3); font-size: 10px; margin-top: 2px; }
+
+    /* ============ Mobile ============ */
+    @media (max-width: 720px) {
+      .chrome { padding: 12px 14px; flex-wrap: wrap; }
+      .search { display: none; }
+      .scope-line { font-size: 11px; }
+
+      .parent-corner {
+        width: 160px; height: 160px;
+        top: -90px; left: -75px;
+        padding: 0 18px 18px 0;
+      }
+      .parent-corner-title { font-size: 11px; }
+      .parent-corner-text { max-width: 70px; }
+
+      .universe { width: 92vw; height: 92vw; max-width: 480px; max-height: 480px; }
+      .ring { width: 70%; height: 70%; }
+      .center { width: 150px; height: 150px; }
+      .center-title { font-size: 17px; }
+      .orbiter { width: 88px; height: 88px; margin-left: -44px; margin-top: -44px; }
+      .orbiter-title { font-size: 11px; }
+
+      .layout.panel-open { grid-template-columns: 0 100%; }
+      .layout.panel-open .universe { transform: none; }
+      .side-panel {
+        position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+        z-index: 40; border-left: 0;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="chrome">
+    <div class="brand" id="brand">
+      <div class="brand-mark"></div>
+      <span>Integral</span>
+    </div>
+    <div class="scope-line">You're at <strong id="current-name">…</strong></div>
+    <div class="search">⌕ Search the universe</div>
+    <div class="av-me">EM</div>
+  </div>
+
+  <div class="parent-corner hidden" id="parent-corner">
+    <div class="parent-corner-back">↖</div>
+    <div class="parent-corner-text">
+      <span class="parent-corner-type" id="parent-type">…</span>
+      <span class="parent-corner-title" id="parent-title">…</span>
+    </div>
+  </div>
+
+  <svg class="cosmic-lines" id="cosmic-lines">
+    <line class="parent-line" id="parent-line" />
+  </svg>
+
+  <main class="layout" id="layout">
+    <section class="stage">
+      <div class="universe" id="universe">
+        <div class="ring" id="ring"></div>
+        <div class="center" id="center"></div>
+      </div>
+    </section>
+
+    <aside class="side-panel" id="side-panel">
+      <header class="panel-head">
+        <div class="panel-head-dot" id="panel-dot"></div>
+        <span class="panel-title" id="panel-title">…</span>
+        <span class="panel-meta" id="panel-meta">…</span>
+        <div class="panel-close" onclick="closePanel()">✕</div>
+      </header>
+      <nav class="panel-tabs">
+        <span class="panel-tab on" data-view="feed">≡ Feed</span>
+        <span class="panel-tab" data-view="kanban">▦ Kanban</span>
+        <span class="panel-tab" data-view="table">⊞ Table</span>
+      </nav>
+      <div class="panel-body" id="panel-body"></div>
+    </aside>
+  </main>
+
+  <script>
+    // ============ Graph data ============
+    const graph = {
+      'root': { type: 'Workspace', title: 'Acme Inc.', meta: '3 spaces · 12 collaborators', kind: 'workspace', dot: '#a3a3a3', children: ['demo-crm', 'personal'] },
+      'demo-crm': { type: 'Space', title: 'CRM', meta: '7 tracks · 8 members', kind: 'space', parent: 'root', dot: '#a3a3a3', children: ['roadmap','opportunities','contacts','projects','support','marketing','partners'] },
+      'personal': { type: 'Space', title: 'Personal', meta: '2 tracks', kind: 'space', parent: 'root', dot: '#a3a3a3', children: ['notes','goals'] },
+      'roadmap': {
+        type: 'Track', title: 'Roadmap', meta: '42 entries · 7 collaborators',
+        kind: 'track', parent: 'demo-crm', dot: '#ff8552',
+        children: ['eldon','jordan','pat','opportunities','projects'],
+        entries: [
+          {av:'u1',author:'Eldon',type:'Decision',t:'9:42 AM',title:'Onboarding redesign — week 2 review',body:'Activation up 14% in the new flow. Open: keep the second screen, or fold into welcome modal?',tags:['v1 launch','redesign'],messages:3,likes:4},
+          {av:'u2',author:'Jordan',type:'Research',t:'8:15 AM',title:'How Notion handles graph relationships',body:'Property-of-property pattern keeps the user mental model flat.',tags:['research'],messages:1,likes:2},
+          {av:'u3',author:'Pat',type:'Spec',t:'Yesterday',title:'Provenance badge — first pass',body:'Tiny circle that opens to a card with source / confidence / synced_at.',tags:['v1 launch'],messages:5,likes:8},
+          {av:'u1',author:'Eldon',type:'Plan',t:'Yesterday',title:'Library packages — final six',body:'Personal Goals, Event Planning, Bug Tracking, Content Calendar, Recruitment Pipeline, Personal KB.',tags:['v1 launch'],messages:2,likes:3}
+        ]
+      },
+      'opportunities': {
+        type: 'Track', title: 'Opportunities', meta: '143 entries · 5 stages',
+        kind: 'track', parent: 'demo-crm', dot: '#8aa8c8',
+        children: ['eldon','jordan','roadmap','projects'],
+        entries: [
+          {av:'u2',author:'Jordan',type:'Opportunity',t:'8:15 AM',title:'Fabrikam pilot SOW',body:'RevOps snapshot at $12k ACV, 15% weighted.',tags:['Lead'],messages:1,likes:0,fields:[{l:'Value',v:'$12,000'},{l:'Close',v:'Sep 5, 2026'},{l:'Stage',v:'Lead',pill:true},{l:'Probability',v:'15%'}]},
+          {av:'u3',author:'Pat',type:'Opportunity',t:'Yesterday',title:'Contoso POS expansion',body:'RevOps snapshot at $64k ACV, 35% weighted.',tags:['Prospect'],messages:3,likes:2,fields:[{l:'Value',v:'$64,000'},{l:'Close',v:'Jun 15, 2026'},{l:'Stage',v:'Prospect',pill:true},{l:'Probability',v:'35%'}]},
+          {av:'u1',author:'Eldon',type:'Opportunity',t:'2 days ago',title:'Northwind renewal',body:'High-confidence renewal, multi-year discussion.',tags:['Negotiation'],messages:7,likes:5,fields:[{l:'Value',v:'$188,000'},{l:'Close',v:'Jun 9, 2026'},{l:'Stage',v:'Negotiation',pill:true},{l:'Probability',v:'72%'}]}
+        ]
+      },
+      'contacts': { type:'Track', title:'Contacts', meta:'218 entries', kind:'track', parent:'demo-crm', dot:'#65d895', children:['eldon','jordan','pat'], entries:[] },
+      'projects': { type:'Track', title:'Projects', meta:'34 entries', kind:'track', parent:'demo-crm', dot:'#b59cd6', children:['eldon','pat','roadmap'], entries:[] },
+      'support': { type:'Track', title:'Support Queue', meta:'12 open', kind:'track', parent:'demo-crm', dot:'#ffd166', children:['jordan'], entries:[] },
+      'marketing': { type:'Track', title:'Field Marketing', meta:'18 entries', kind:'track', parent:'demo-crm', dot:'#ef6f6f', children:['eldon'], entries:[] },
+      'partners': { type:'Track', title:'Partner Onboarding', meta:'6 entries', kind:'track', parent:'demo-crm', dot:'#7eb4f0', children:['pat'], entries:[] },
+      'notes': { type:'Track', title:'Notes', meta:'24 entries', kind:'track', parent:'personal', dot:'#a3a3a3', children:[], entries:[] },
+      'goals': { type:'Track', title:'Goals', meta:'8 entries', kind:'track', parent:'personal', dot:'#65d895', children:[], entries:[] },
+      'eldon': { type:'Person', title:'Eldon Marks', meta:'Owner', kind:'person', parent:'roadmap', dot:'#ff8552', children:['roadmap','opportunities'] },
+      'jordan': { type:'Person', title:'Jordan R.', meta:'Editor · Online', kind:'person', parent:'roadmap', dot:'#ff8552', children:['roadmap','support','opportunities'] },
+      'pat': { type:'Person', title:'Pat T.', meta:'Editor · Online', kind:'person', parent:'roadmap', dot:'#ff8552', children:['roadmap','partners','projects'] }
+    };
+
+    // ============ State / refs ============
+    let currentId = 'root';
+    let panelOpen = false;
+    let panelView = 'feed';
+    let isAnimating = false;
+
+    const universe = document.getElementById('universe');
+    const center = document.getElementById('center');
+    const ring = document.getElementById('ring');
+    const layout = document.getElementById('layout');
+    const sidePanel = document.getElementById('side-panel');
+    const panelTitle = document.getElementById('panel-title');
+    const panelMeta = document.getElementById('panel-meta');
+    const panelDot = document.getElementById('panel-dot');
+    const panelBody = document.getElementById('panel-body');
+    const parentCorner = document.getElementById('parent-corner');
+    const parentTitleEl = document.getElementById('parent-title');
+    const parentTypeEl = document.getElementById('parent-type');
+    const brand = document.getElementById('brand');
+    const parentLine = document.getElementById('parent-line');
+    const currentName = document.getElementById('current-name');
+
+    // ============ Helpers ============
+    function calcPositions(count, radius) {
+      const positions = [];
+      const startAngle = -Math.PI / 2;
+      for (let i = 0; i < count; i++) {
+        const angle = startAngle + (i * 2 * Math.PI) / count;
+        positions.push({ x: Math.cos(angle) * radius, y: Math.sin(angle) * radius });
+      }
+      return positions;
+    }
+    function radiusForViewport() {
+      const w = Math.min(window.innerWidth, window.innerHeight);
+      if (w < 720) return Math.min(w * 0.34, 165);
+      return 270;
+    }
+    function maxOrbitersForViewport() { return window.innerWidth < 720 ? 6 : 8; }
+    function hexToRgba(hex, a) {
+      const h = hex.replace('#', '');
+      const r = parseInt(h.substring(0, 2), 16);
+      const g = parseInt(h.substring(2, 4), 16);
+      const b = parseInt(h.substring(4, 6), 16);
+      return `rgba(${r}, ${g}, ${b}, ${a})`;
+    }
+    function parentCornerTarget() {
+      return window.innerWidth < 720 ? { x: 50, y: 60 } : { x: 70, y: 85 };
+    }
+    function truncate(s, n) { if (!s) return ''; return s.length > n ? s.slice(0, n - 1) + '…' : s; }
+
+    // ============ Parent corner ============
+    function renderParent(opts = {}) {
+      const node = graph[currentId];
+      const parentId = node?.parent;
+      if (!parentId || !graph[parentId]) {
+        parentCorner.classList.add('hidden');
+        parentLine.style.display = 'none';
+        return;
+      }
+      const p = graph[parentId];
+      parentTitleEl.textContent = p.title;
+      parentTypeEl.textContent = p.type;
+      parentCorner.style.background =
+        `radial-gradient(circle at 75% 75%, ${hexToRgba(p.dot, 0.95)} 0%, ${hexToRgba(p.dot, 0.65)} 60%, ${hexToRgba(p.dot, 0.4)} 100%)`;
+      parentCorner.onclick = () => navigate(parentId);
+      parentLine.style.display = '';
+      updateParentLine();
+
+      if (opts.materialize) {
+        // Animate the parent corner appearing (it just became visible)
+        parentCorner.classList.remove('hidden');
+        parentCorner.classList.add('materializing');
+        requestAnimationFrame(() => {
+          parentCorner.classList.add('materializing-active');
+          setTimeout(() => {
+            parentCorner.classList.remove('materializing', 'materializing-active');
+          }, 400);
+        });
+      } else {
+        parentCorner.classList.remove('hidden');
+      }
+    }
+    function updateParentLine() {
+      if (!graph[currentId]?.parent) return;
+      const universeRect = universe.getBoundingClientRect();
+      const cx = universeRect.left + universeRect.width / 2;
+      const cy = universeRect.top + universeRect.height / 2;
+      const target = parentCornerTarget();
+      parentLine.setAttribute('x1', target.x);
+      parentLine.setAttribute('y1', target.y);
+      parentLine.setAttribute('x2', cx);
+      parentLine.setAttribute('y2', cy);
+    }
+
+    // ============ Center ============
+    function renderCenter() {
+      const node = graph[currentId];
+      if (!node) return;
+      const isLeaf = node.kind === 'track';
+      currentName.textContent = node.title;
+      center.classList.toggle('expandable', isLeaf);
+      center.innerHTML = `
+        <span class="center-type">${node.type}</span>
+        <span class="center-title">${node.title}</span>
+        <span class="center-meta">${node.meta || ''}</span>
+        ${isLeaf && node.entries?.length ? `<span class="center-presence"><span class="live-dot"></span>${node.entries.length} entries · live</span>` : ''}
+      `;
+      center.style.borderColor = node.dot;
+      center.style.boxShadow = `0 0 80px ${hexToRgba(node.dot, 0.10)}, inset 0 0 40px ${hexToRgba(node.dot, 0.04)}`;
+    }
+
+    // ============ Orbiters ============
+    function renderOrbiters(opts = {}) {
+      universe.querySelectorAll('.orbiter, .add-slot').forEach(el => el.remove());
+      const node = graph[currentId];
+      if (!node) return;
+      const ids = (node.children || []).slice(0, maxOrbitersForViewport());
+      const radius = radiusForViewport();
+      const positions = ids.length === 1 ? [{ x: 0, y: -radius }] : calcPositions(ids.length, radius);
+
+      ids.forEach((id, i) => {
+        const child = graph[id];
+        if (!child) return;
+        const pos = positions[i];
+
+        const el = document.createElement('div');
+        el.className = opts.animateEntry ? 'orbiter entering' : 'orbiter';
+        el.style.setProperty('--orbit-pos', `translate(${pos.x}px, ${pos.y}px)`);
+        if (!opts.animateEntry) {
+          el.style.transform = `translate(${pos.x}px, ${pos.y}px)`;
+        }
+        el.dataset.id = id;
+        const grandchildrenHtml = (child.children && child.children.length)
+          ? `<div class="grandchildren">${'<span class="gc-dot"></span>'.repeat(Math.min(child.children.length, 3))}</div>`
+          : '';
+        el.innerHTML = `
+          <span class="orbiter-dot" style="background:${child.dot}"></span>
+          <span class="orbiter-label">${child.type}</span>
+          <span class="orbiter-title">${truncate(child.title, 22)}</span>
+          <span class="orbiter-meta">${truncate(child.meta || '', 22)}</span>
+          ${grandchildrenHtml}
+        `;
+        el.addEventListener('click', (e) => {
+          e.stopPropagation();
+          navigate(id, el);
+        });
+        universe.appendChild(el);
+      });
+
+      if (ids.length < 8) {
+        const r = radiusForViewport();
+        const slots = [
+          { x: Math.cos(-Math.PI/4)*r, y: Math.sin(-Math.PI/4)*r },
+          { x: Math.cos( Math.PI/4)*r, y: Math.sin( Math.PI/4)*r },
+          { x: Math.cos(3*Math.PI/4)*r, y: Math.sin(3*Math.PI/4)*r },
+          { x: Math.cos(5*Math.PI/4)*r, y: Math.sin(5*Math.PI/4)*r },
+        ];
+        slots.forEach(pos => {
+          const tooClose = positions.some(p => {
+            const dx=p.x-pos.x, dy=p.y-pos.y;
+            return Math.sqrt(dx*dx+dy*dy) < 100;
+          });
+          if (tooClose) return;
+          const slot = document.createElement('div');
+          slot.className = opts.animateEntry ? 'add-slot fading-out' : 'add-slot';
+          slot.style.transform = `translate(${pos.x}px, ${pos.y}px)`;
+          slot.textContent = '+';
+          slot.title = 'Add';
+          universe.appendChild(slot);
+        });
+      }
+
+      if (opts.animateEntry) {
+        // Staggered entry — orbiters fan out in sequence
+        const enteringOrbiters = universe.querySelectorAll('.orbiter.entering');
+        enteringOrbiters.forEach((el, i) => {
+          el.style.transitionDelay = `${i * 35}ms`;
+          requestAnimationFrame(() => {
+            el.classList.add('entering-active');
+            el.classList.remove('entering');
+            setTimeout(() => {
+              el.style.transitionDelay = '';
+              el.classList.remove('entering-active');
+            }, 460 + i * 35 + 60);
+          });
+        });
+        // Add slots fade in too
+        universe.querySelectorAll('.add-slot.fading-out').forEach((el, i) => {
+          el.style.transitionDelay = `${(enteringOrbiters.length * 35) + 60}ms`;
+          requestAnimationFrame(() => {
+            el.classList.remove('fading-out');
+            setTimeout(() => { el.style.transitionDelay = ''; }, 400);
+          });
+        });
+      }
+    }
+
+    // ============ The drill animations ============
+    function navigate(id, sourceEl) {
+      if (!graph[id]) return;
+      if (isAnimating) return;
+      if (panelOpen) closePanel();
+      const isChild = graph[id]?.parent === currentId;
+      isAnimating = true;
+
+      if (isChild && sourceEl) {
+        drillIn(id, sourceEl);
+      } else {
+        drillOut(id);
+      }
+    }
+
+    function drillIn(id, sourceEl) {
+      // Compute parent corner target (where old center will fly to)
+      const universeRect = universe.getBoundingClientRect();
+      const ucx = universeRect.left + universeRect.width / 2;
+      const ucy = universeRect.top + universeRect.height / 2;
+      const target = parentCornerTarget();
+      const dx = target.x - ucx;
+      const dy = target.y - ucy;
+
+      // Was there a parent corner already? (we may need to fade it out)
+      const hadParent = !parentCorner.classList.contains('hidden');
+      if (hadParent) {
+        // The current parent corner fades out subtly so it doesn't compete with the OLD center's flight
+        parentCorner.style.transition = 'opacity 280ms ease-out';
+        parentCorner.style.opacity = '0';
+      }
+
+      // === SIMULTANEOUS TRIO ===
+
+      // 1. CLICKED ORBITER zooms toward center (scale up + translate to center)
+      sourceEl.classList.add('zooming-in');
+
+      // 2. OLD CENTER flies to parent corner position (scale down + translate)
+      center.classList.add('flying-to-parent');
+      center.style.transform = `translate(-50%, -50%) translate(${dx}px, ${dy}px) scale(0.18)`;
+      center.style.opacity = '0';
+
+      // 3. OTHER SIBLINGS fade out
+      universe.querySelectorAll('.orbiter').forEach(el => {
+        if (el !== sourceEl) el.classList.add('fading-out');
+      });
+      universe.querySelectorAll('.add-slot').forEach(el => el.classList.add('fading-out'));
+      // Ring fades subtly too — it'll redraw at the new state
+      ring.classList.add('fading-out');
+
+      // === AFTER ZOOM COMPLETES ===
+      const ZOOM_MS = 540;
+      setTimeout(() => {
+        // Reset center + ring transforms/transitions
+        center.classList.remove('flying-to-parent');
+        center.style.transform = '';
+        center.style.opacity = '';
+        ring.classList.remove('fading-out');
+        if (hadParent) {
+          parentCorner.style.transition = '';
+          parentCorner.style.opacity = '';
+        }
+
+        // Update state and render
+        currentId = id;
+        renderCenter();
+        renderParent({ materialize: true });
+
+        // New center materializes (quick fade in to mask the orbiter→center swap)
+        center.classList.add('entering');
+        requestAnimationFrame(() => {
+          center.classList.add('entering-active');
+          requestAnimationFrame(() => {
+            center.classList.remove('entering');
+            setTimeout(() => {
+              center.classList.remove('entering-active');
+            }, 320);
+          });
+        });
+
+        // Render orbiters with staggered entry animation
+        renderOrbiters({ animateEntry: true });
+
+        // Auto-open panel at Track level
+        if (graph[currentId].kind === 'track') {
+          setTimeout(openPanel, 120);
+        }
+
+        // Done
+        const totalEnterMs = 460 + (graph[id].children?.length || 0) * 35;
+        setTimeout(() => { isAnimating = false; }, totalEnterMs);
+      }, ZOOM_MS);
+    }
+
+    function drillOut(id) {
+      // Drilling out: we're going to a parent (or jumping). Animate parent corner expanding to center.
+      const universeRect = universe.getBoundingClientRect();
+      const ucx = universeRect.left + universeRect.width / 2;
+      const ucy = universeRect.top + universeRect.height / 2;
+      const target = parentCornerTarget();
+      const pdx = ucx - target.x;
+      const pdy = ucy - target.y;
+
+      const isImmediateParent = graph[currentId]?.parent === id;
+
+      if (isImmediateParent) {
+        // Parent corner expands and moves to center
+        parentCorner.style.transition = 'transform 540ms cubic-bezier(0.22, 1, 0.36, 1), opacity 540ms ease-out';
+        parentCorner.style.transform = `translate(${pdx}px, ${pdy}px) scale(1.6)`;
+        parentCorner.style.opacity = '0';
+      }
+
+      // Old center fades and shrinks
+      center.style.transition = 'opacity 320ms ease-out, transform 320ms ease-out';
+      center.style.opacity = '0';
+      center.style.transform = 'translate(-50%, -50%) scale(0.6)';
+
+      // Orbiters fade
+      universe.querySelectorAll('.orbiter').forEach(el => el.classList.add('fading-out'));
+      universe.querySelectorAll('.add-slot').forEach(el => el.classList.add('fading-out'));
+      ring.classList.add('fading-out');
+
+      const ZOOM_MS = 540;
+      setTimeout(() => {
+        // Reset
+        center.style.transition = '';
+        center.style.opacity = '';
+        center.style.transform = '';
+        parentCorner.style.transition = '';
+        parentCorner.style.transform = '';
+        parentCorner.style.opacity = '';
+        ring.classList.remove('fading-out');
+
+        currentId = id;
+        renderCenter();
+        renderParent({ materialize: true });
+
+        center.classList.add('entering');
+        requestAnimationFrame(() => {
+          center.classList.add('entering-active');
+          requestAnimationFrame(() => {
+            center.classList.remove('entering');
+            setTimeout(() => center.classList.remove('entering-active'), 320);
+          });
+        });
+
+        renderOrbiters({ animateEntry: true });
+
+        if (graph[currentId].kind === 'track') {
+          setTimeout(openPanel, 120);
+        }
+        const totalEnterMs = 460 + (graph[id].children?.length || 0) * 35;
+        setTimeout(() => { isAnimating = false; }, totalEnterMs);
+      }, ZOOM_MS);
+    }
+
+    // ============ Side panel ============
+    function openPanel() {
+      const node = graph[currentId];
+      if (!node || node.kind !== 'track') return;
+      panelOpen = true;
+      layout.classList.add('panel-open');
+      panelTitle.textContent = node.title;
+      panelMeta.textContent = '· ' + (node.meta || '');
+      panelDot.style.background = node.dot;
+      renderPanelBody();
+      setTimeout(updateParentLine, 540);
+    }
+    function closePanel() {
+      panelOpen = false;
+      layout.classList.remove('panel-open');
+      setTimeout(updateParentLine, 540);
+    }
+    window.closePanel = closePanel;
+    window.openPanel = openPanel;
+
+    function renderPanelBody() {
+      const node = graph[currentId];
+      if (!node) return;
+      if (panelView === 'feed') {
+        panelBody.innerHTML = `
+          <div class="panel-composer">
+            <div class="entry-av u1">EM</div>
+            <input placeholder="New entry in ${node.title}…" />
+          </div>
+          ${(node.entries || []).map(renderEntryCard).join('') || '<div style="padding:40px;text-align:center;color:var(--ink-3);font-size:13px;">No entries yet</div>'}
+        `;
+      } else if (panelView === 'kanban') {
+        panelBody.innerHTML = renderKanban(node);
+      } else if (panelView === 'table') {
+        panelBody.innerHTML = renderTable(node);
+      }
+    }
+    function renderEntryCard(e) {
+      const fieldsHtml = e.fields ? `
+        <div class="entry-fields">
+          ${e.fields.map(f => `
+            <div class="ef-row">
+              <span class="ef-l">${f.l}</span>
+              ${f.pill ? `<span class="ef-pill">${f.v}</span>` : `<span class="ef-v">${f.v}</span>`}
+            </div>
+          `).join('')}
+        </div>
+      ` : '';
+      return `
+        <article class="entry-card">
+          <div class="entry-head">
+            <div class="entry-av ${e.av}">${e.author[0]}</div>
+            <span class="entry-author">${e.author}</span>
+            <span class="entry-ttype">${e.type}</span>
+            <span class="entry-meta">${e.t}</span>
+          </div>
+          <h4 class="entry-title">${e.title}</h4>
+          <p class="entry-body">${e.body}</p>
+          ${fieldsHtml}
+          ${e.tags ? `<div class="entry-tags">${e.tags.map(t => `<span class="entry-tag">${t}</span>`).join('')}</div>` : ''}
+          <div class="entry-actions">
+            <span>⌃ ${e.likes ?? 0}</span>
+            <span>⌑ ${e.messages ?? 0}</span>
+            <span>↗</span>
+          </div>
+        </article>
+      `;
+    }
+    function renderKanban(node) {
+      const cols = {};
+      (node.entries || []).forEach(e => {
+        const stage = (e.fields?.find(f => f.l === 'Stage')?.v) || (e.tags?.[0]) || 'Other';
+        cols[stage] = cols[stage] || [];
+        cols[stage].push(e);
+      });
+      const colNames = Object.keys(cols);
+      if (!colNames.length) return `<div style="padding:40px;text-align:center;color:var(--ink-3);font-size:13px;">No entries to board</div>`;
+      return `
+        <div class="panel-kanban">
+          ${colNames.map(name => `
+            <div class="kc">
+              <div class="kc-head"><span>${name}</span><span>${cols[name].length}</span></div>
+              ${cols[name].map(e => `
+                <div class="kk">
+                  <div class="kk-t">${e.title}</div>
+                  <div class="kk-m">${(e.fields?.find(f=>f.l==='Value')?.v) || e.t}</div>
+                </div>
+              `).join('')}
+            </div>
+          `).join('')}
+        </div>
+      `;
+    }
+    function renderTable(node) {
+      const entries = node.entries || [];
+      if (!entries.length) return `<div style="padding:40px;text-align:center;color:var(--ink-3);font-size:13px;">No entries</div>`;
+      return `
+        <table style="width:100%;border-collapse:collapse;font-size:12px;">
+          <thead>
+            <tr style="border-bottom:1px solid var(--line);color:var(--ink-3);">
+              <th style="text-align:left;padding:12px 24px;font-weight:500;font-size:10px;text-transform:uppercase;letter-spacing:0.06em;">Title</th>
+              <th style="text-align:left;padding:12px 14px;font-weight:500;font-size:10px;text-transform:uppercase;letter-spacing:0.06em;">Type</th>
+              <th style="text-align:left;padding:12px 14px;font-weight:500;font-size:10px;text-transform:uppercase;letter-spacing:0.06em;">Author</th>
+              <th style="text-align:left;padding:12px 24px;font-weight:500;font-size:10px;text-transform:uppercase;letter-spacing:0.06em;">When</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${entries.map(e => `
+              <tr style="border-bottom:1px solid var(--line-2);">
+                <td style="padding:12px 24px;color:var(--ink);font-weight:500;">${e.title}</td>
+                <td style="padding:12px 14px;"><span class="entry-ttype">${e.type}</span></td>
+                <td style="padding:12px 14px;color:var(--ink-2);">${e.author}</td>
+                <td style="padding:12px 24px;color:var(--ink-3);">${e.t}</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      `;
+    }
+
+    document.querySelectorAll('.panel-tab').forEach(t => {
+      t.addEventListener('click', () => {
+        document.querySelectorAll('.panel-tab').forEach(x => x.classList.remove('on'));
+        t.classList.add('on');
+        panelView = t.dataset.view;
+        renderPanelBody();
+      });
+    });
+
+    center.addEventListener('click', () => {
+      if (isAnimating) return;
+      const node = graph[currentId];
+      if (node?.kind === 'track') {
+        if (panelOpen) closePanel(); else openPanel();
+      }
+    });
+
+    brand.addEventListener('click', () => {
+      if (isAnimating) return;
+      if (currentId !== 'root') navigate('root');
+    });
+
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && panelOpen) closePanel();
+    });
+
+    let resizeTimer;
+    window.addEventListener('resize', () => {
+      clearTimeout(resizeTimer);
+      resizeTimer = setTimeout(() => {
+        renderOrbiters();
+        updateParentLine();
+      }, 120);
+    });
+
+    // ============ Initial render ============
+    currentId = 'root';
+    renderCenter();
+    renderParent();
+    renderOrbiters();
+  </script>
+</body>
+</html>
