@@ -1,0 +1,1564 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/*
+ * Off-screen render skipping for long entry lists (feed / table / board). The
+ * browser skips layout + paint for items outside the viewport, capping the
+ * render cost as the list grows on infinite scroll (without changing the DOM or
+ * the scroll container). `contain-intrinsic-size` reserves an estimated height
+ * so the scrollbar stays stable; the browser uses the real height once an item
+ * is rendered. Graceful no-op on engines without content-visibility support.
+ */
+.cv-auto {
+  content-visibility: auto;
+  contain-intrinsic-size: 0 180px;
+}
+.cv-auto-row {
+  content-visibility: auto;
+  contain-intrinsic-size: 0 48px;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .connector-advanced-open {
+    transition-duration: 600ms;
+    transition-timing-function: linear(
+      0,
+      0.049 4.2%,
+      0.171 8.3%,
+      0.334 12.5%,
+      0.511 16.7%,
+      0.683 20.8%,
+      0.836 25%,
+      0.961 29.2%,
+      1.055 33.3%,
+      1.117 37.5%,
+      1.152 41.7%,
+      1.163 45.8%,
+      1.156 50%,
+      1.137 54.2%,
+      1.111 58.3%,
+      1.082 62.5%,
+      1.054 66.7%,
+      1.029 70.8%,
+      1.008 75%,
+      0.992 79.2%,
+      0.982 83.3%,
+      0.976 87.5%,
+      0.973 91.7%,
+      0.974 95.8%,
+      1
+    );
+  }
+}
+
+/*
+ * Quiet Premium token system. Two themes (light + dark) plus a small set of
+ * semantic, motion, and shadow tokens consumed throughout the app.
+ *
+ * Light  = paper white canvas, near-black ink, warm orange accent
+ * Dark   = true neutral charcoal canvas, warm white ink, same orange accent
+ *          (slightly warmer for legibility against the cooler ground).
+ *
+ * Any hardcoded color anywhere in the codebase outside of inline data
+ * (avatar gradients keyed on user id, per-track identity colors) is a bug.
+ * Find/replace via the design system spec migration table.
+ */
+
+:root {
+  /* ── Surface ─────────────────────────────────────────────── */
+  --bg: #fafafa;
+  --panel: #ffffff;
+  --panel-2: #f4f4f6;
+  /* Structural sections: navigation and both assistant layouts share a
+     soft gray canvas; cards and input surfaces stay on --panel. */
+  --section-bg: var(--panel-2);
+  --panel-border: #ececef;
+  --border-subtle: #f4f4f6;
+
+  --surface: var(--panel);
+  --surface-raised: var(--panel-2);
+
+  /* System notices use dark chrome with theme-specific contrast. */
+  --system-bar-bg: #2f2f2f;
+  --system-bar-fg: #f7f7f7;
+  --system-bar-muted: #c4c4c7;
+  --system-bar-border: #303033;
+  --system-bar-action-border: #64646b;
+  --system-bar-hover: #29292c;
+  --system-bar-focus: #f7f7f7;
+  --system-bar-info-fg: #add7ff;
+  --system-bar-warn-fg: #ffd58a;
+  --system-bar-error-fg: #ffb5ad;
+  --system-bar-success-fg: #a9e8bd;
+
+  /* Entry tables need clearer edges than the surrounding quiet cards. */
+  --entry-table-border: #dcdde2;
+  --entry-table-divider: #e6e7eb;
+  --entry-table-toolbar: #f5f5f7;
+  --entry-table-header: #eeeff2;
+  --entry-table-row-alt: #f8f8fa;
+  --entry-table-row-hover: #eef0f4;
+  --collection-border: #e0e1e5;
+  --collection-divider: #e8e9ec;
+
+  /* ── Ink (3-tier) ────────────────────────────────────────── */
+  --text:        #0b0b0c;
+  --text-muted:  #4a4a52;
+  --text-subtle: #6e6e78;   /* metadata, eyebrows, byline timestamps — clears 4.5:1 on --bg #fafafa */
+
+  /* ── Navigation / interactive surfaces ───────────────────── */
+  --nav-active-bg: #f1f1f3;
+  --nav-active-fg: #0b0b0c;
+
+  --cta-bg:    #0b0b0c;
+  --cta-fg:    #fafafa;
+  --cta-hover: #1d1d20;
+
+  --link:       #4a4a52;
+  --link-hover: #0b0b0c;
+
+  --focus-ring-color: rgba(255, 90, 31, 0.30);
+
+  --badge-muted-bg: #f1f1f3;
+  --badge-muted-fg: #4a4a52;
+
+  /* Chat keeps user turns distinct with a quiet slate surface. */
+  --chat-user-bg: #e7ecf2;
+  --chat-user-border: #d5dce5;
+  --chat-user-fg: #27313e;
+
+  /* ── Brand ───────────────────────────────────────────────── */
+  --brand-accent:           #ff5a1f;
+  --brand-accent-contrast:  #1a1a1a;
+  --brand-accent-default:          #ff5a1f;
+  --brand-accent-default-contrast: #1a1a1a;
+  --brand-accent-soft:      rgba(255, 90, 31, 0.10);
+  --brand-accent-line:      rgba(255, 90, 31, 0.28);
+  /* Cool slate keeps the auth watermark distinct without a faded orange cast. */
+  --auth-mark: #738196;
+  --chat-edit-bg:           var(--chat-user-bg);
+  --chat-edit-border:       var(--chat-user-border);
+  --track-accent-bg: var(--brand-accent);
+  --track-accent-fg: var(--brand-accent-contrast);
+  --track-accent-fg-muted: rgba(255, 255, 255, 0.65);
+
+  /* ── Semantic (status pills, alerts, AI, presence) ───────── */
+  --info-fg:    #4a8aa8;   --info-bg:    rgba(74, 138, 168, 0.10);
+  --success-fg: #2f9856;   --success-bg: rgba(47, 152, 86, 0.10);
+  --warn-fg:    #c98715;   --warn-bg:    rgba(201, 135, 21, 0.10);
+  --danger-fg:  #c14848;   --danger-bg:  rgba(193, 72, 72, 0.10);
+  --danger-text: #b4232d;  --danger-border: #c14848;
+  --ai-fg:      #8e7afc;   --ai-bg:      rgba(142, 122, 252, 0.10);
+  --presence:   #34c46d;
+
+  /* Conversation surfaces: warm paper for the user's turn, cool neutral for AI. */
+  --chat-user-accent: var(--brand-accent);
+  --chat-assistant-bg: #e9ecef;
+  --chat-assistant-border: #d4d9df;
+  --chat-error-bg: transparent;
+  --chat-error-fg: #b93636;
+  --chat-error-border: #d35b5b;
+
+  /* ── Radii ──────────────────────────────────────────────── */
+  --radius-card:  0.875rem;    /* 14px — cards, panels, composer */
+  --radius-input: 0.5rem;      /* 8px  — inputs, buttons */
+  --radius-pill:  9999px;      /* pills, segmented controls, search */
+
+  /* ── Shadows (very restrained — hairlines do most of the work) */
+  --shadow-sm:   0 1px 2px rgba(11, 11, 12, 0.04);
+  --shadow-card: 0 4px 16px rgba(11, 11, 12, 0.06);
+  --shadow-pop:  0 12px 40px rgba(11, 11, 12, 0.10);
+
+  /* ── Motion ─────────────────────────────────────────────── */
+  --ease:           cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-fast:      cubic-bezier(0.4, 0, 0.2, 1);
+  --dur-fast:       180ms;
+  --dur-base:       280ms;
+  --dur-deliberate: 480ms;
+  --dur-zoom:       540ms;
+
+  /* Approved monochrome mark; inset cutouts remain transparent. */
+  --logo-mark: #000;
+
+  /* ── Scrollbar ──────────────────────────────────────────── */
+  --scrollbar-thumb:       #d6d6da;
+  --scrollbar-thumb-hover: #b0b0b6;
+
+  /* ── App chrome ─────────────────────────────────────────── */
+  /* Floating top bar height — pages lay out under it and add
+     top padding to clear interactive controls. Fullbleed surfaces
+     (e.g. AI chat) consume the full viewport and let content scroll
+     beneath the transparent bar. */
+  --app-topbar-height: 64px;
+
+  /* ── Stacking order (template-layer source of truth) ──────
+     Every VIEWPORT-LEVEL layer picks from this ladder. Use the
+     Tailwind aliases (`z-overlay`, `z-dock`, …) declared against
+     these vars in tailwind.config.js — arbitrary `z-[1000]`-style
+     values on fixed/portaled surfaces are what this scale replaces.
+
+     Component-LOCAL stacking is out of scope: a dropdown inside a
+     card, a sticky header inside a modal, a gradient over a list all
+     stack against their own parent and keep plain `z-10`/`z-20`.
+     The test is whether the element is positioned against the
+     viewport (fixed, or portaled to body). If it is, it belongs
+     here; if it isn't, leave it alone.
+
+     Ordering notes worth keeping straight:
+     - `--z-dock` sits BELOW `--z-overlay` on purpose. The assistant
+       dock is a companion surface, not an overlay: a dialog opened
+       from inside it (a confirm prompt on a staged change) has to
+       render above it.
+     - `--z-drawer` sits above `--z-scrim` because a slide-over and
+       its own backdrop are one unit.
+     - `--z-popover` sits above the dialog tiers because menus and
+       pickers portal to body and are routinely opened from inside a
+       modal. */
+  --z-topbar:         30;   /* floating page top bar */
+  --z-rail:           40;   /* desktop sidebar rail */
+  --z-scrim:          45;   /* backdrop behind a drawer */
+  --z-drawer:         50;   /* slide-over sitting on its own scrim */
+  --z-dock:           55;   /* assistant dock + its toggle */
+  --z-overlay:        60;   /* modals and dialogs */
+  --z-overlay-nested: 65;   /* dialog opened from within a dialog */
+  --z-popover:        70;   /* portaled menus, pickers, colour popovers */
+  --z-system-bar:     80;   /* app-wide critical message bar */
+  --z-palette:        85;   /* command palette */
+  --z-toast:          90;   /* transient toasts */
+  --z-max:           100;   /* skip link and nothing else */
+
+  /* ── Dialog dimensions (template-layer source of truth) ───
+     Four semantic widths govern every modal in the app. See
+     .planning/ui-templating/TOKENS.md and the FE layering ADR for
+     when each applies. New modals MUST pick from this set, not
+     invent new arbitrary widths. */
+  --dialog-w-confirm: 480px;   /* short prompts: ConfirmDialog */
+  --dialog-w-form:    720px;   /* control modals: forms, multi-step flows, pickers (standard) */
+  --dialog-w-wide:    1024px;  /* media viewers, pixel-perfect canvases */
+  /* Multi-pane builders (View Designer): nearly full editorial width. */
+  --dialog-w-workspace: min(96vw, 1480px);
+  /* Expanded builder — almost edge-to-edge for wide tables / previews. */
+  --dialog-w-workspace-max: min(98vw, 1920px);
+  /* Companion column inside a dialog (Modal `sidePanel`): comments,
+     attachments, activity. `dialog-w-form` + this ≈ `dialog-w-wide`, which is
+     the width a dialog widens to when the column opens. 380px so three
+     labelled+counted tabs fit without the last scrolling out of sight. Read via
+     `var(--dialog-side-panel-w, 360px)` in Modal.tsx and SharedTrackPage.tsx —
+     those fallbacks were carrying the value because the token was never
+     declared. */
+  --dialog-side-panel-w: 380px;
+
+  /* ── Spacing tokens (template-layer source of truth) ──────
+     Standard gutter + row rhythms for primitives/patterns.
+     Mobile values; primitives may layer `sm:` overrides. */
+  --gutter-x: 1rem;            /* horizontal page/panel gutter (mobile) */
+  --gutter-x-sm: 1.5rem;       /* sm+ */
+  --gutter-y: 0.875rem;        /* vertical panel rhythm (mobile) */
+  --gutter-y-sm: 1.25rem;      /* sm+ */
+  --row-y: 0.625rem;           /* between rows in a list/form */
+}
+
+.theme-dark {
+  /* ── Surface ─────────────────────────────────────────────── */
+  --bg: #1a1a1a;
+  --panel: #212121;
+  --panel-2: #272727;
+  --section-bg: var(--bg);
+  --panel-border: #2d2d2d;
+  /* Matches the reference's `--line-2`. Used for entry-row hairlines
+     where the divider should sit so close to the surface it nearly
+     dissolves. */
+  --border-subtle: #212121;
+
+  /* surface aliases inherit from above */
+  --surface: var(--panel);
+  --surface-raised: var(--panel-2);
+
+  /* Shared graphite background in both themes. */
+  --system-bar-bg: #2f2f2f;
+  --system-bar-muted: #cac7c2;
+  --system-bar-border: #403c38;
+  --system-bar-hover: #36322e;
+  --system-bar-info-fg: #add7ff;
+
+  --entry-table-border: #484848;
+  --entry-table-divider: #3d3d3d;
+  --entry-table-toolbar: #292929;
+  --entry-table-header: #323232;
+  --entry-table-row-alt: #272727;
+  --entry-table-row-hover: #363636;
+  --collection-border: #424242;
+  --collection-divider: #393939;
+
+  /* ── Ink ─────────────────────────────────────────────────── */
+  --text:        #ededed;
+  --text-muted:  #b3b3b3;
+  --text-subtle: #9c9c9c;   /* at least 4.5:1 on the dark table header */
+
+  /* ── Navigation / interactive ────────────────────────────── */
+  --nav-active-bg: #2d2d2d;
+  --nav-active-fg: #ededed;
+
+  --cta-bg:    #ededed;
+  --cta-fg:    #1a1a1a;
+  --cta-hover: #ffffff;
+
+  --link:       #a3a3a3;
+  --link-hover: #ededed;
+
+  --focus-ring-color: rgba(255, 133, 82, 0.40);
+
+  --badge-muted-bg: #666666;  /* lifted from #2d2d2d — was 1.26:1 vs --bg, now 3.03:1 (WCAG AA non-text) */
+  --badge-muted-fg: #ededed;  /* --text; 4.90:1 on the new bg (WCAG AA normal text) */
+
+  /* Slate stays distinct from the charcoal canvas without brand-orange fill. */
+  --chat-user-bg: #303844;
+  --chat-user-border: #414c5b;
+  --chat-user-fg: #e7ecf2;
+
+  /* ── Brand (slightly warmer for legibility on dark ground) */
+  --brand-accent:           #ff8552;
+  --brand-accent-contrast:  #1a1a1a;
+  --brand-accent-default:          #ff8552;
+  --brand-accent-default-contrast: #1a1a1a;
+  --brand-accent-soft:      rgba(255, 133, 82, 0.10);
+  --brand-accent-line:      rgba(255, 133, 82, 0.28);
+  --auth-mark: #8794a6;
+  --chat-edit-bg:           var(--chat-user-bg);
+  --chat-edit-border:       var(--chat-user-border);
+  --track-accent-bg: var(--brand-accent);
+  --track-accent-fg: var(--brand-accent-contrast);
+  --track-accent-fg-muted: rgba(255, 255, 255, 0.65);
+
+  /* ── Semantic (lifted for dark) ──────────────────────────── */
+  --info-fg:    #8aa8c8;   --info-bg:    rgba(138, 168, 200, 0.12);
+  --success-fg: #65d895;   --success-bg: rgba(101, 216, 149, 0.10);
+  --warn-fg:    #ffd166;   --warn-bg:    rgba(255, 209, 102, 0.10);
+  --danger-fg:  #ef6f6f;   --danger-bg:  rgba(239, 111, 111, 0.10);
+  --danger-text: #ff8585;  --danger-border: #ef6f6f;
+  --ai-fg:      #b59cd6;   --ai-bg:      rgba(181, 156, 214, 0.12);
+  --presence:   #65d895;
+
+  /* Warm charcoal keeps the user's turn distinct while AI text stays quiet. */
+  --chat-user-accent: var(--brand-accent);
+  --chat-assistant-bg: #222427;
+  --chat-assistant-border: #363a40;
+  --chat-error-bg: rgba(239, 111, 111, 0.06);
+  --chat-error-fg: #ff8580;
+  --chat-error-border: #c95c5c;
+
+  /* ── Shadows (deeper, more atmospheric on dark) ──────────── */
+  --shadow-sm:   0 2px 4px rgba(0, 0, 0, 0.20);
+  --shadow-card: 0 6px 24px rgba(0, 0, 0, 0.32);
+  --shadow-pop:  0 20px 60px rgba(0, 0, 0, 0.45);
+
+  /* radii / motion inherit from :root */
+
+  /* Approved reverse mark on dark surfaces. */
+  --logo-mark: #fff;
+
+  /* ── Scrollbar ──────────────────────────────────────────── */
+  --scrollbar-thumb:       #3a3a3a;
+  --scrollbar-thumb-hover: #4d4d4d;
+}
+
+/* Honor the user's reduced-motion preference. Required by the spec; the
+   token-level override is a single source of truth for every transition
+   and animation duration in the app. */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --dur-fast: 0ms;
+    --dur-base: 0ms;
+    --dur-deliberate: 0ms;
+    --dur-zoom: 0ms;
+  }
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+@layer base {
+  * { box-sizing: border-box; }
+  html {
+    /* Inter throughout. cv11 = single-storey 'a', ss01 = open digits,
+       ss03 = friendly l/i. Letter-spacing -0.011em matches Inter's
+       optical default for UI body sizes (Quiet Premium spec). */
+    font-family:
+      'Inter var', 'Inter', system-ui, -apple-system, 'SF Pro Display',
+      sans-serif;
+    font-feature-settings: 'cv11', 'ss01', 'ss03';
+    letter-spacing: -0.011em;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+  body {
+    font-family: inherit;
+    background: var(--bg);
+    color: var(--text);
+    @apply antialiased transition-colors duration-300;
+  }
+  /* Headings inherit Inter. Reset the browser default weight so
+     utilities (font-medium, font-semibold) drive the visual weight —
+     Quiet Premium calls for calmer hierarchy: display titles at 600,
+     body at 400, emphasis at 500. The previous 800 default fought with
+     that. Tracking lands at -0.02em for display sizes. */
+  h1, h2, h3, h4, h5, h6 {
+    font-family: inherit;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+  }
+  button,
+  input,
+  select,
+  textarea {
+    font-family: inherit;
+  }
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: var(--panel-2); }
+  ::-webkit-scrollbar-thumb { background: var(--scrollbar-thumb); border-radius: 4px; }
+  ::-webkit-scrollbar-thumb:hover { background: var(--scrollbar-thumb-hover); }
+
+  /* Sidebar uses a managed scroll region with hidden native bar — see
+     components/layout/SidebarScroller.tsx. The class below is the
+     non-Tailwind escape hatch in case the arbitrary-variant utilities
+     get purged in production. */
+  .no-native-scrollbar {
+    scrollbar-width: none;
+  }
+  .no-native-scrollbar::-webkit-scrollbar {
+    display: none;
+    width: 0;
+    height: 0;
+  }
+}
+
+/* Input baseline belongs below utility classes so icon padding and size
+   variants can override it consistently across every search field. */
+@layer components {
+  .app-input {
+    width: 100%;
+    border-radius: var(--radius-input);
+    @apply border px-3 py-2 text-sm outline-none transition;
+    background: var(--panel-2);
+    border-color: var(--panel-border);
+    color: var(--text);
+  }
+  /* Single-choice selects share an inset caret and reserve space for it.
+     Listboxes keep their native appearance; forced colors restores the OS caret. */
+  select.app-input:not([multiple]):is(:not([size]), [size="1"]) {
+    appearance: none;
+    padding-inline-end: 2.5rem;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23898989' stroke-width='1.75' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 0.75rem center;
+    background-size: 1rem;
+  }
+  select.app-input:dir(rtl) {
+    background-position: left 0.75rem center;
+  }
+  @media (forced-colors: active) {
+    select.app-input:not([multiple]):is(:not([size]), [size="1"]) {
+      appearance: auto;
+      background-image: none;
+      padding-inline-end: 0.75rem;
+    }
+  }
+  .app-input::placeholder {
+    color: var(--text-muted);
+  }
+  .app-input:focus {
+    box-shadow: 0 0 0 2px var(--focus-ring-color);
+    border-color: var(--panel-border);
+  }
+}
+
+@layer utilities {
+  .app-card {
+    border-radius: var(--radius-card);
+    @apply border;
+    background: var(--panel);
+    border-color: var(--panel-border);
+  }
+  .auth-field-input {
+    width: 100%;
+    border-radius: var(--radius-input);
+    @apply border px-3.5 py-2.5 text-sm transition-colors;
+    background: var(--panel);
+    border-color: var(--panel-border);
+    color: var(--text);
+  }
+  .auth-field-input::placeholder {
+    color: var(--text-subtle);
+  }
+  .auth-field-input:hover {
+    border-color: var(--text-subtle);
+  }
+  .auth-field-input:focus {
+    outline: none;
+    border-color: var(--text-muted);
+    background: var(--panel-2);
+  }
+  .auth-field-label {
+    display: block;
+    margin-bottom: 0.5rem;
+    font-size: 0.875rem;
+    font-weight: 500;
+    color: var(--text-muted);
+  }
+  /* Comment composer — the bordered row that wraps a bare field and a send
+     control. Lives here, beside `.app-input`, because the chrome is one
+     shared widget (`components/entries/comments/CommentComposer`) used by
+     the entry dialog, the wiki inline view and the public share link; the
+     token colours belong in the stylesheet layer rather than as raw
+     literals in a component outside `src/ui/`. */
+  .comment-composer {
+    border-radius: var(--radius-input);
+    @apply flex items-center gap-2 border pl-3 pr-1.5 py-1 transition;
+    background: var(--panel);
+    border-color: var(--panel-border);
+  }
+  .comment-composer:hover {
+    border-color: var(--text-subtle);
+  }
+  .comment-composer:focus-within {
+    border-color: var(--text-muted);
+  }
+  .comment-composer-field {
+    @apply w-full min-w-0 py-1.5 text-sm bg-transparent resize-none outline-none;
+    color: var(--text);
+  }
+  .comment-composer-field::placeholder {
+    color: var(--text-subtle);
+  }
+  .line-clamp-2 {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+  .line-clamp-3 {
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+
+  /* ── Chat Shell ───────────────────────────────────────────── */
+
+  .chat-shell {
+    position: fixed;
+    right: 0;
+    top: 0;
+    bottom: 0;
+    width: 420px;
+    max-width: 100vw;
+    background: var(--panel);
+    border-left: 1px solid var(--border-subtle);
+    display: flex;
+    flex-direction: column;
+    z-index: 1000;
+    box-shadow: -4px 0 24px rgba(0, 0, 0, 0.08);
+  }
+
+  .chat-shell-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 18px;
+    border-bottom: 1px solid var(--border-subtle);
+    flex-shrink: 0;
+  }
+
+  .chat-shell-title {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--text);
+    margin: 0;
+  }
+
+  .chat-shell-close {
+    background: none;
+    border: none;
+    font-size: 22px;
+    color: var(--text-muted);
+    cursor: pointer;
+    padding: 0 4px;
+    line-height: 1;
+  }
+
+  /* ── Chat Context Bar ─────────────────────────────────────── */
+
+  .chat-context-bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 18px;
+    background: var(--panel-2);
+    border-bottom: 1px solid var(--border-subtle);
+    font-size: 12px;
+    color: var(--text-muted);
+    flex-shrink: 0;
+  }
+
+  .chat-context-bar-label {
+    font-weight: 500;
+  }
+
+  .chat-context-bar-entity {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    background: var(--badge-muted-bg);
+    border-radius: 4px;
+    padding: 2px 8px;
+    font-size: 12px;
+    color: var(--text);
+  }
+
+  .chat-context-bar-icon {
+    width: 16px;
+    height: 16px;
+    border-radius: 3px;
+    background: var(--cta-bg);
+    color: var(--cta-fg);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 10px;
+    font-weight: 700;
+  }
+
+  .chat-context-bar-clear {
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    font-size: 16px;
+    margin-left: auto;
+    padding: 0 4px;
+  }
+
+  /* ── Chat Thread ──────────────────────────────────────────── */
+
+  .chat-thread {
+    flex: 1;
+    overflow-y: auto;
+    padding: 16px 18px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .chat-thread-empty {
+    text-align: center;
+    color: var(--text-muted);
+    padding: 48px 24px;
+  }
+
+  .chat-thread-empty p {
+    margin: 0 0 8px;
+  }
+
+  .chat-thread-empty-hint {
+    font-size: 13px;
+    opacity: 0.7;
+  }
+
+  /* ── Chat Message ─────────────────────────────────────────── */
+
+  .chat-message {
+    display: flex;
+    gap: 10px;
+    max-width: 90%;
+  }
+
+  .chat-message--user {
+    margin-left: auto;
+    flex-direction: row-reverse;
+  }
+
+  .chat-message--assistant {
+    margin-right: auto;
+  }
+
+  .chat-message-avatar {
+    flex-shrink: 0;
+  }
+
+  .chat-message-avatar-icon {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    background: var(--cta-bg);
+    color: var(--cta-fg);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 13px;
+    font-weight: 700;
+  }
+
+  .chat-message-content {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .chat-message-bubble {
+    padding: 10px 14px;
+    border-radius: 12px;
+    font-size: 14px;
+    line-height: 1.5;
+  }
+
+  .chat-message--user .chat-message-bubble {
+    background: var(--chat-user-bg);
+    border: 1px solid var(--chat-user-border);
+    border-top: 3px solid var(--chat-user-accent);
+    color: var(--text);
+    border-bottom-right-radius: 4px;
+  }
+
+  .chat-message--assistant .chat-message-bubble {
+    background: transparent;
+    border: none;
+    color: var(--text);
+    border-bottom-left-radius: 4px;
+  }
+
+  .chat-message--proactive .chat-message-bubble {
+    border: 1px solid var(--accent, var(--cta-bg));
+  }
+
+  .chat-message-proactive-label {
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--accent, var(--cta-bg));
+    margin-bottom: 2px;
+  }
+
+  .tagged-message-content {
+    display: inline;
+  }
+
+  .chat-message-bubble .tagged-message-content,
+  .chat-message-text {
+    margin: 0;
+  }
+
+  .chat-message-meta {
+    display: flex;
+    gap: 8px;
+    font-size: 11px;
+    color: var(--text-muted);
+  }
+
+  .chat-message-channel {
+    opacity: 0.7;
+  }
+
+  /* ── Chat Typing Indicator ────────────────────────────────── */
+
+  .chat-typing-indicator {
+    display: flex;
+    gap: 4px;
+    padding: 12px 16px;
+  }
+
+  .chat-typing-indicator span {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--text-muted);
+    animation: chat-typing-bounce 1.2s infinite;
+  }
+
+  .chat-typing-indicator span:nth-child(2) { animation-delay: 0.15s; }
+  .chat-typing-indicator span:nth-child(3) { animation-delay: 0.3s; }
+
+  @keyframes chat-typing-bounce {
+    0%, 60%, 100% { opacity: 0.3; transform: translateY(0); }
+    30% { opacity: 1; transform: translateY(-4px); }
+  }
+
+  /* ── Chat Card ────────────────────────────────────────────── */
+
+  .chat-card {
+    background: var(--panel);
+    border: 1px solid var(--border-subtle);
+    border-radius: 8px;
+    padding: 12px;
+  }
+
+  .chat-card-title {
+    font-weight: 600;
+    font-size: 14px;
+    margin-bottom: 4px;
+  }
+
+  .chat-card-subtitle {
+    font-size: 12px;
+    color: var(--text-muted);
+    margin-bottom: 8px;
+  }
+
+  .chat-card-body {
+    font-size: 13px;
+    color: var(--text);
+  }
+
+  .chat-card-actions {
+    display: flex;
+    gap: 8px;
+    margin-top: 10px;
+  }
+
+  .chat-card-action-btn {
+    background: var(--panel-2);
+    border: 1px solid var(--border-subtle);
+    border-radius: 6px;
+    padding: 4px 12px;
+    font-size: 12px;
+    color: var(--text);
+    cursor: pointer;
+  }
+
+  .chat-card-action-btn:hover {
+    background: var(--cta-bg);
+    color: var(--cta-fg);
+  }
+
+  /* ── Chat Suggestions ──────────────────────────────────────── */
+
+  .chat-suggestions {
+    display: flex;
+    gap: 8px;
+    padding: 0 18px 12px;
+    flex-shrink: 0;
+    overflow-x: auto;
+  }
+
+  .chat-suggestion-chip {
+    background: var(--panel-2);
+    border: 1px solid var(--border-subtle);
+    border-radius: 16px;
+    padding: 6px 14px;
+    font-size: 12px;
+    color: var(--text);
+    cursor: pointer;
+    white-space: nowrap;
+  }
+
+  .chat-suggestion-chip:hover {
+    background: var(--cta-bg);
+    color: var(--cta-fg);
+  }
+
+  /* ── Chat Input ───────────────────────────────────────────── */
+
+  .chat-input-container {
+    border-top: 1px solid var(--border-subtle);
+    padding: 12px 18px;
+    flex-shrink: 0;
+  }
+
+  .chat-input-wrapper {
+    display: flex;
+    align-items: flex-end;
+    gap: 8px;
+    background: var(--panel-2);
+    border: 1px solid var(--border-subtle);
+    border-radius: 12px;
+    padding: 8px 12px;
+  }
+
+  .chat-input-textarea {
+    flex: 1;
+    border: none;
+    background: none;
+    font-size: 14px;
+    line-height: 1.5;
+    color: var(--text);
+    resize: none;
+    outline: none;
+    max-height: 160px;
+    font-family: inherit;
+    width: 100%;
+  }
+
+
+  /* Taggable composer — highlight mirror under transparent text */
+  .taggable-composer-host {
+    /* The host sizes to the textarea (which grows via inline style.height).
+       Never add overflow or max-height here — the textarea is the scroll
+       container; the mirror syncs via programmatic scrollTop. */
+    position: relative;
+    min-height: 1.5rem;
+  }
+
+  .taggable-composer-mirror,
+  .taggable-composer-input {
+    box-sizing: border-box;
+    font-size: inherit;
+    line-height: inherit;
+    font-family: inherit;
+    letter-spacing: inherit;
+    word-wrap: break-word;
+    white-space: pre-wrap;
+    overflow-wrap: break-word;
+  }
+
+  .taggable-composer-mirror {
+    position: absolute;
+    inset: 0;
+    /* overflow: hidden hides the scrollbar and user-scroll events while
+       still allowing JS `scrollTop` assignment — which is how syncMirrorScroll
+       keeps the mirror aligned with the textarea's internal scroll position. */
+    overflow: hidden;
+    pointer-events: none;
+    color: var(--text);
+  }
+
+  .taggable-composer-input {
+    position: relative;
+    z-index: 1;
+    background: transparent;
+    color: transparent;
+    caret-color: var(--text);
+    -webkit-text-fill-color: transparent;
+    /* Allow internal scrolling when content exceeds the JS-capped max height.
+       The scroll is synced to the mirror via the onScroll → syncMirrorScroll
+       callback so both layers stay pixel-aligned at all times. */
+    overflow-y: auto;
+  }
+
+  /* Fix text selection appearance. The textarea text is transparent
+     (-webkit-text-fill-color), so we give the selection a visible tinted
+     background that matches the brand accent. The color stays transparent
+     so the underlying mirror highlight remains readable through it. */
+  .taggable-composer-input::selection {
+    background-color: var(--brand-accent-soft, rgba(99, 102, 241, 0.25));
+    color: transparent;
+    -webkit-text-fill-color: transparent;
+  }
+
+  .taggable-composer-input::placeholder {
+    color: var(--text-muted);
+    -webkit-text-fill-color: var(--text-muted);
+  }
+
+  /* Color-only highlights — same font-weight as the textarea so the
+     mirror layer stays character-aligned with the caret. */
+  .chat-entity-token {
+    font-weight: inherit;
+  }
+
+  .chat-entity-token--user,
+  .chat-entity-token--user-pending {
+    color: var(--brand-accent);
+  }
+
+  .chat-entity-token--app,
+  .chat-entity-token--resource-pending {
+    color: #0d9488;
+  }
+
+  .chat-entity-token--track {
+    color: #7c3aed;
+  }
+
+  a.chat-entity-token--link {
+    text-decoration: none;
+    cursor: pointer;
+  }
+
+  a.chat-entity-token--link:hover {
+    text-decoration: underline;
+  }
+
+  .chat-message--user a.chat-entity-token--link {
+    color: inherit;
+    pointer-events: auto;
+    position: relative;
+    z-index: 1;
+    text-decoration: underline;
+    text-underline-offset: 2px;
+  }
+
+  .chat-message--user a.chat-entity-token--link:hover {
+    opacity: 0.9;
+  }
+
+  .chat-input-textarea::placeholder {
+    color: var(--text-muted);
+  }
+
+  .chat-input-send {
+    background: var(--cta-bg);
+    border: none;
+    color: var(--cta-fg);
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    flex-shrink: 0;
+  }
+
+  .chat-input-send:disabled {
+    opacity: 0.4;
+    cursor: default;
+  }
+
+  /* ── Chat FAB (when panel is closed) ──────────────────────── */
+
+  .chat-fab {
+    position: fixed;
+    bottom: 24px;
+    right: 24px;
+    width: 48px;
+    height: 48px;
+    border-radius: 50%;
+    background: var(--cta-bg);
+    color: var(--cta-fg);
+    border: none;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    z-index: 999;
+  }
+
+  .chat-fab:hover {
+    background: var(--cta-hover);
+  }
+
+  /* ── Mobile responsive ─────────────────────────────────────── */
+
+  @media (max-width: 640px) {
+    .chat-shell {
+      width: 100vw;
+    }
+  }
+
+  /* ── Auth page patterned background ──────────────────────────
+     AuthPageLayout uses a stationary square motif, with no color wash
+     behind the copy. Decorative layers are aria-hidden and pointer-free. */
+
+  .auth-page {
+    --auth-accent: var(--brand-accent);
+  }
+  .auth-page--compact {
+    min-height: 100dvh; display: grid; place-items: center;
+    padding: 48px 24px; background: var(--section-bg);
+  }
+  .auth-compact-content { width: 100%; max-width: 384px; }
+  .auth-compact-brand { display: flex; justify-content: center; margin-bottom: 36px; }
+  .auth-compact-heading { text-align: center; margin-bottom: 28px; }
+  .auth-compact-heading > * + * { margin-top: 8px; }
+  .auth-compact-actions { display: flex; flex-direction: column; gap: 12px; }
+  .auth-compact-actions > button { min-height: 44px; }
+  .auth-compact-privacy { text-align: center; margin-top: 28px; }
+  .auth-compact-help { margin-top: 24px; padding-top: 8px; border-top: 1px solid var(--panel-border); }
+  .auth-compact-help summary { cursor: pointer; padding: 12px 0; }
+  .auth-compact-help summary:focus-visible { outline: 2px solid var(--focus-ring-color); outline-offset: 4px; }
+  .auth-compact-help p { margin-top: 4px; }
+  .auth-panel-heading {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+  }
+  .auth-panel-heading__marker {
+    display: block;
+    flex: 0 0 4px;
+    height: 24px;
+    border-radius: 2px;
+    background: var(--brand-accent);
+  }
+  .auth-pattern {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    overflow: hidden;
+  }
+  /* Ripple ring motif — three thin concentric arcs, staggered animation,
+     anchored to the center of the section. Used inside .auth-pattern as
+     a quietly conceptual ornament: changes radiate outward from one source. */
+  .auth-ripple {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 90%;
+    aspect-ratio: 1 / 1;
+    pointer-events: none;
+    opacity: 0.55;
+  }
+  .auth-ripple-circle {
+    fill: none;
+    stroke: var(--auth-accent, var(--brand-accent));
+    stroke-width: 0.4;
+    transform-origin: center;
+    transform-box: fill-box;
+    animation: auth-ripple-pulse 7s ease-out infinite;
+  }
+  .auth-ripple-circle:nth-child(2) { animation-delay: 2.3s; }
+  .auth-ripple-circle:nth-child(3) { animation-delay: 4.6s; }
+
+  /* Stable viewport-sized artwork across login, signup and reset forms. */
+  .auth-hero {
+    min-height: 220px;
+  }
+  @media (min-width: 768px) {
+    .auth-hero {
+      height: clamp(420px, 72svh, 680px);
+    }
+  }
+  .auth-ripple--auth {
+    width: 100%;
+    height: 100%;
+    opacity: 0.2;
+  }
+  .auth-ripple-mark {
+    fill: none;
+    stroke: var(--auth-mark);
+    stroke-width: 6;
+  }
+  .auth-ripple-mark path { vector-effect: non-scaling-stroke; }
+  .auth-hero-copy {
+    position: relative;
+    z-index: 1;
+  }
+
+  @keyframes auth-ripple-pulse {
+    0%   { transform: scale(0.55); opacity: 0; }
+    25%  { opacity: 0.55; }
+    100% { transform: scale(1.0);  opacity: 0; }
+  }
+
+
+  /* System notification bar — slide-down entrance.
+     Uses CSS classes (not inline style) so React renders don't reset the
+     transition mid-flight. Open/closed state controlled via [data-open]. */
+  .system-bar-animated {
+    transform: translateY(-100%);
+    opacity: 0;
+    will-change: transform, opacity;
+    transition:
+      transform 380ms cubic-bezier(0.16, 1, 0.3, 1),
+      opacity 220ms ease-out;
+  }
+  .system-bar-animated[data-open='true'] {
+    transform: translateY(0);
+    opacity: 1;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .system-bar-animated { transition: none; }
+  }
+
+  /* Layout root padding transition — drives content push-down. */
+  .system-bar-layout {
+    transition: padding-top 380ms cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .system-bar-layout { transition: none; }
+  }
+
+  /* Viewport-height utilities inside the pushed-down layout.
+     The wrapper pads its top by --system-bar-h, so a child asking for a
+     full 100vh makes the document 100vh + bar tall: the page scrolls and a
+     strip of bare --bg shows below the fold. Reported as "unwanted
+     horizontal blank space at the bottom of the page", and it survives a
+     reload because it is layout, not state.
+     The authenticated shell (Layout.tsx) and the chat surfaces already do
+     this subtraction inline; every public page (login, signup, reset,
+     verify-email, invitation accept, shared track, OAuth consent) used a
+     bare `min-h-screen`. Overriding the utility here fixes all of them at
+     once and keeps future pages correct — the alternative was 19 call
+     sites that each had to remember. Descendant selector (0,2,0) outbids
+     Tailwind's own (0,1,0) in the same layer, and with no bar the var is
+     0px, so this is a no-op whenever nothing is showing. */
+  .system-bar-layout .min-h-screen {
+    min-height: calc(100vh - var(--system-bar-h, 0px));
+  }
+  .system-bar-layout .h-screen {
+    height: calc(100vh - var(--system-bar-h, 0px));
+  }
+
+  /* Sidebar squeeze — matches layout easing/duration so the fixed
+     left rail tracks the main content's downward shift. Layered on
+     the sidebar's own width/transform/padding transition (Tailwind's
+     `transition-[…]` utility omits top/height by default). */
+  .sidebar-shell {
+    padding-block: clamp(12px, 3dvh, 28px);
+  }
+  .sidebar-brand {
+    margin-bottom: clamp(16px, 8dvh, 72px);
+  }
+  .sidebar-rail-scroll { overflow-y: auto; overflow-x: hidden; }
+  .system-bar-sidebar {
+    transition:
+      width 200ms ease-out,
+      transform 200ms ease-out,
+      padding 200ms ease-out,
+      top 380ms cubic-bezier(0.16, 1, 0.3, 1),
+      height 380ms cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .system-bar-sidebar { transition: none; }
+  }
+
+  /* Assistant dock squeeze — `<main>` yields room to the right-anchored
+     dock via `--assistant-dock-w` (published by AssistantDockContext),
+     the same way it yields to the sidebar on the left. The width var is
+     0 whenever the dock is closed, on mobile, or on /agent.
+
+     While the resize handle is being dragged the transition is dropped:
+     easing the margin would make the page visibly lag the pointer. */
+  .assistant-dock-squeeze {
+    transition: margin-right 200ms ease-out;
+  }
+  :root[data-dock-resizing='1'] .assistant-dock-squeeze {
+    transition: none;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .assistant-dock-squeeze { transition: none; }
+  }
+
+  /* Shimmer — a highlight sweep over text glyphs, used to animate the
+     reasoning / tool-call disclosure labels while a turn is running (the
+     agent-thinking affordance ported from jvchat). A duplicate copy of the
+     label is stacked over the base title (absolute inset-0) wearing
+     `.shimmer`: it paints a moving transparent → --text → transparent
+     gradient and clips it to the glyphs, so a bright band travels across
+     the letters. */
+  .shimmer {
+    color: transparent;
+    background-image: linear-gradient(
+      100deg,
+      transparent 20%,
+      var(--text) 40%,
+      var(--text) 60%,
+      transparent 80%
+    );
+    background-size: 200% 100%;
+    background-clip: text;
+    -webkit-background-clip: text;
+    animation: shimmer-text 1.4s ease-in-out infinite;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .shimmer { animation: none; }
+  }
+  @keyframes shimmer-text {
+    0%   { background-position: 200% 0; }
+    100% { background-position: -200% 0; }
+  }
+
+  /* Radix Collapsible height transition for the jvchat-faithful reasoning /
+     tool-group / tool-fallback sections (Reasoning.tsx / ToolGroup.tsx /
+     ToolFallback.tsx). Mirrors shadcn's collapsible keyframes; driven by
+     Radix's --radix-collapsible-content-height var. The ported components set
+     --animation-duration inline (200ms). */
+  @keyframes collapsible-down {
+    from {
+      height: 0;
+    }
+    to {
+      height: var(--radix-collapsible-content-height);
+    }
+  }
+  @keyframes collapsible-up {
+    from {
+      height: var(--radix-collapsible-content-height);
+    }
+    to {
+      height: 0;
+    }
+  }
+  .animate-collapsible-down {
+    animation: collapsible-down var(--animation-duration, 0.2s) ease-out;
+  }
+  .animate-collapsible-up {
+    animation: collapsible-up var(--animation-duration, 0.2s) ease-out;
+  }
+
+  /* Reasoning body renders through MarkdownText (shared with the answer, whose
+     elements hardcode `text-sm`), so the disclosure's container `text-xs`
+     can't win — force the markdown elements one step down, scoped to the
+     reasoning disclosure only so the main answer stays full size. Tool
+     args/result <pre> already inherit the content's `text-xs`. */
+  .aui-reasoning-content .aui-md,
+  .aui-reasoning-content
+    .aui-md
+    :where(p, li, h1, h2, h3, h4, h5, h6, blockquote, td, th, code),
+  .aui-tool-group-trigger,
+  .aui-tool-fallback-trigger,
+  .aui-tool-fallback-content,
+  .aui-tool-fallback-content :where(p, pre, code) {
+    font-size: 0.75rem;
+    line-height: 1.05rem;
+  }
+}
+
+@layer components {
+  /* Lists of workspaces, apps, and tracks should read as one contained
+     collection instead of loose text floating on the page canvas. */
+  .collection-list {
+    overflow: hidden;
+    border: 1px solid var(--collection-border);
+    border-radius: var(--radius-card);
+    background: var(--panel);
+  }
+  .collection-list > li {
+    border-bottom: 1px solid var(--collection-divider);
+  }
+  .collection-list > li:last-child {
+    border-bottom: 0;
+  }
+  .collection-list > li:hover {
+    background: var(--panel-2);
+  }
+
+  /* Settings shares its content pane with a collapsible assistant. Keep a
+     labelled menu on narrow panes and a grouped sidebar on wider panes. */
+  .settings-nav-item:hover {
+    background: var(--panel-2);
+  }
+  .settings-layout-container {
+    container-type: inline-size;
+    min-width: 0;
+    width: 100%;
+  }
+  .settings-layout {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    row-gap: 1.25rem;
+    column-gap: 0.75rem;
+    align-items: start;
+  }
+  .settings-sidebar {
+    display: none;
+  }
+  .settings-compact-menu {
+    position: relative;
+    z-index: 20;
+    min-width: 0;
+  }
+  .settings-compact-menu > button {
+    width: 100%;
+  }
+  .settings-compact-nav {
+    position: absolute;
+    top: calc(100% + 0.5rem);
+    left: 0;
+    display: flex;
+    width: min(20rem, 100cqw);
+    max-height: min(70dvh, 34rem, var(--settings-menu-space, 70dvh));
+    flex-direction: column;
+    gap: 0.125rem;
+    overflow-y: auto;
+    border: 1px solid var(--panel-border);
+    border-radius: var(--radius-card);
+    background: var(--panel);
+    padding: 0.5rem;
+    box-shadow: var(--shadow-pop);
+  }
+  @container (min-width: 64rem) {
+    .settings-layout {
+      grid-template-columns: 14rem minmax(0, 1fr);
+      column-gap: 2rem;
+    }
+    .settings-sidebar {
+      display: block;
+    }
+    .settings-compact-menu {
+      display: none;
+    }
+  }
+
+  /* Mission Control's metrics sit beside a collapsible assistant pane, so
+     viewport breakpoints don't describe the space they actually have. Keep
+     the first three readouts together and center the final pair as one unit. */
+  .mc-metrics-container {
+    container-type: inline-size;
+  }
+  .mc-metrics-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+  }
+  .mc-metrics-primary,
+  .mc-metrics-secondary {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    column-gap: 1.5rem;
+    row-gap: 1.5rem;
+  }
+  @container (min-width: 27rem) {
+    .mc-metrics-primary {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+    .mc-metrics-secondary {
+      width: min(100%, 32rem);
+      align-self: center;
+    }
+  }
+  @container (min-width: 56rem) {
+    .mc-metrics-grid {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      column-gap: 2rem;
+      row-gap: 0;
+    }
+    .mc-metrics-primary,
+    .mc-metrics-secondary {
+      display: contents;
+    }
+    .mc-metrics-primary,
+    .mc-metrics-secondary {
+      column-gap: 0;
+      row-gap: 0;
+    }
+  }
+
+  /* Public shared-track view: let the view fill the page.
+
+     The page root is `min-h-screen flex flex-col` and `<main>` is `flex-1`,
+     so on a short track `<main>` stretched to the viewport while the view's
+     own card kept its natural height — measured at 380px of empty stretched
+     `<main>` below a 379px card. Reported as "the blank section at the
+     bottom" of the public view: the card floats and the rest of the page is
+     dead ground.
+
+     Stretching the card and letting its scroll region absorb the slack turns
+     that into an ordinary full-height table. Applied to the public page's
+     own `<main>` rather than fixed inside TableWidget, because that widget is
+     shared with the authenticated app where the surrounding layout already
+     sizes it — this is a property of the public page's shell, not the widget.
+
+     `:first-child` (the widget's toolbar) is pinned so only the scroll
+     region grows; without that the toolbar absorbs the height and the
+     column controls float in the middle of a tall grey box. */
+  .public-view-fill,
+  .public-view-fill > * {
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 auto;
+    min-height: 0;
+  }
+  .public-view-fill > * > :first-child {
+    flex: 0 0 auto;
+  }
+  .public-view-fill > * > .overflow-x-auto {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+  }
+}
+
+/* Entry reading width changes when utility and assistant panels open. */
+.entry-page-container {
+  container-type: inline-size;
+  container-name: entry-page;
+}
+@container entry-page (max-width: 640px) {
+  .entry-page-container .entry-page-header-title {
+    flex: 0 0 100%;
+    width: 100%;
+  }
+  .entry-meta-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .entry-meta-grid > * {
+    grid-column: 1 / -1;
+  }
+}
+
+@layer components {
+  .auth-password-toggle { width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; }
+  .app-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    overflow: hidden;
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-input);
+    background: var(--panel-2);
+    font-weight: 600;
+    letter-spacing: -0.025em;
+  }
+  .app-icon--sm { width: 32px; height: 32px; font-size: 12px; }
+  .app-icon--md { width: 56px; height: 56px; font-size: 18px; }
+  .app-icon--lg { width: 64px; height: 64px; font-size: 22px; }
+  .app-icon-choice { padding: 3px; border-radius: var(--radius-input); border: 2px solid transparent; }
+  .app-icon-choice[aria-pressed="true"] { border-color: var(--brand-accent); }
+  .app-icon-choice:hover { background: var(--panel-2); }
+  .app-icon-choice:focus-visible,
+  .app-collection-link:focus-visible,
+  .app-reorder-handle:focus-visible { outline: 2px solid var(--focus-ring-color); outline-offset: 2px; }
+  .app-logo-upload { cursor: pointer; padding: 8px 12px; border: 1px solid var(--border-subtle); border-radius: var(--radius-input); }
+  .app-logo-upload:has(+ input:focus-visible) { outline: 2px solid var(--focus-ring-color); outline-offset: 2px; }
+  .app-collection { display: flex; flex-direction: column; gap: 12px; }
+  .app-collection-row {
+    display: flex; align-items: center; gap: 8px; padding: 8px 12px;
+    border: 1px solid var(--collection-border); border-radius: var(--radius-card); background: var(--panel);
+    transition: border-color var(--dur-fast), box-shadow var(--dur-fast);
+  }
+  .app-collection-row:hover, .app-collection-row:focus-within { border-color: var(--border-strong, var(--brand-accent)); }
+  .app-collection-link { display: flex; align-items: center; gap: 16px; flex: 1; min-width: 0; padding: 12px 4px; border-radius: var(--radius-input); }
+  .app-reorder-handle { display: flex; align-items: center; justify-content: center; flex-shrink: 0; width: 28px; min-height: 44px; color: var(--text-muted); cursor: grab; touch-action: none; border-radius: var(--radius-input); }
+  .app-reorder-handle:active { cursor: grabbing; }
+  @media (max-width: 480px) {
+    .app-collection-row { padding-inline: 8px; gap: 4px; }
+    .app-collection-link { gap: 12px; }
+  }
+}
+@layer components {
+  .app-icon--xs { width: 28px; height: 28px; font-size: 11px; border-radius: 6px; }
+  .app-icon--xs img { padding: 2px; }
+  .collection-list a:focus-visible { outline: 2px solid var(--focus-ring-color); outline-offset: -3px; }
+  @media (max-width: 767px) {
+    .auth-hero-copy h1 { font-size: 28px; line-height: 1.15; }
+    .auth-hero-copy p { font-size: 15px; line-height: 1.5; }
+  }
+}
+
+/* Home needs visible section/control boundaries on the light canvas.
+   Scope these semantic overrides so other pages and dark-mode ink stay intact. */
+:root:not(.theme-dark) .home-overview {
+  --panel-2: #ededf0;
+  --border-subtle: #e3e3e8;
+  --text-muted: #42424a;
+  --text-subtle: #55555e;
+}
+:root:not(.theme-dark) .home-overview .app-input:focus,
+:root:not(.theme-dark) .home-overview .app-input:focus-within {
+  border-color: #85858f;
+}
+:root:not(.theme-dark) .home-overview section {
+  --panel-border: #d7d7dc;
+  box-shadow: var(--shadow-sm);
+}
+.theme-dark .home-overview section {
+  border-color: transparent;
+}
+
+/* Home's shared chat composer retains the familiar filled input surface. */
+.home-overview .home-chat-composer {
+  background: var(--panel-2);
+  border-color: var(--panel-border);
+}
+
+/* Home widgets inherit the active workspace accent; titles, logos and surfaces retain
+   their neutral theme colors in both modes. */
+.home-overview section.home-widget {
+  border-top: 3px solid var(--brand-accent);
+}

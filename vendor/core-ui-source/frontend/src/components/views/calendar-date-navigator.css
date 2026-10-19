@@ -1,0 +1,45 @@
+/* Calendar month/year picker popover.
+   These rules live in CSS rather than as <Surface>/<Text> because the
+   popover is portalled and positioned via ref + inline style (which
+   Surface does not forward), and because the grid cells and the year
+   button carry hover states that <Text> cannot express — it styles a
+   text node, while the hover belongs to the interactive element. */
+
+.calendar-navigator-popover {
+  background: var(--panel);
+}
+
+/* Selectable month / year cell. `aria-pressed` is the selected state, so
+   the styling keys off it rather than a parallel class — the DOM already
+   carries the truth. */
+.calendar-navigator-cell {
+  color: var(--text);
+}
+
+.calendar-navigator-cell:hover {
+  background: var(--panel-2);
+}
+
+.calendar-navigator-cell[aria-pressed='true'] {
+  background: var(--link);
+  color: #fff;
+}
+
+/* "This month" / "this year" emphasis, only while unselected. */
+.calendar-navigator-cell[data-current='true']:not([aria-pressed='true']) {
+  color: var(--link);
+  font-weight: 600;
+}
+
+/* The year label doubles as the button that drills into the year grid. */
+.calendar-navigator-year-button {
+  color: var(--text);
+}
+
+.calendar-navigator-year-button:hover {
+  background: var(--panel-2);
+}
+
+.calendar-navigator-range-label {
+  color: var(--text);
+}

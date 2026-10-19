@@ -1,0 +1,940 @@
+{
+  "name": "a09_page_and_date_boundary",
+  "page_size": 100,
+  "eligible_count": 101,
+  "date_range": {
+    "from": "2026-09-30",
+    "to": "2026-10-01"
+  },
+  "entries": [
+    {
+      "fixture_key": "a09-001",
+      "title": "A09 Asset 001",
+      "custom_fields": {
+        "fixture_key": "a09-001",
+        "lifecycle": "available",
+        "service_due": "2026-09-30"
+      }
+    },
+    {
+      "fixture_key": "a09-002",
+      "title": "A09 Asset 002",
+      "custom_fields": {
+        "fixture_key": "a09-002",
+        "lifecycle": "available",
+        "service_due": "2026-09-30"
+      }
+    },
+    {
+      "fixture_key": "a09-003",
+      "title": "A09 Asset 003",
+      "custom_fields": {
+        "fixture_key": "a09-003",
+        "lifecycle": "available",
+        "service_due": "2026-09-30"
+      }
+    },
+    {
+      "fixture_key": "a09-004",
+      "title": "A09 Asset 004",
+      "custom_fields": {
+        "fixture_key": "a09-004",
+        "lifecycle": "available",
+        "service_due": "2026-09-30"
+      }
+    },
+    {
+      "fixture_key": "a09-005",
+      "title": "A09 Asset 005",
+      "custom_fields": {
+        "fixture_key": "a09-005",
+        "lifecycle": "available",
+        "service_due": "2026-09-30"
+      }
+    },
+    {
+      "fixture_key": "a09-006",
+      "title": "A09 Asset 006",
+      "custom_fields": {
+        "fixture_key": "a09-006",
+        "lifecycle": "available",
+        "service_due": "2026-09-30"
+      }
+    },
+    {
+      "fixture_key": "a09-007",
+      "title": "A09 Asset 007",
+      "custom_fields": {
+        "fixture_key": "a09-007",
+        "lifecycle": "available",
+        "service_due": "2026-09-30"
+      }
+    },
+    {
+      "fixture_key": "a09-008",
+      "title": "A09 Asset 008",
+      "custom_fields": {
+        "fixture_key": "a09-008",
+        "lifecycle": "available",
+        "service_due": "2026-09-30"
+      }
+    },
+    {
+      "fixture_key": "a09-009",
+      "title": "A09 Asset 009",
+      "custom_fields": {
+        "fixture_key": "a09-009",
+        "lifecycle": "available",
+        "service_due": "2026-09-30"
+      }
+    },
+    {
+      "fixture_key": "a09-010",
+      "title": "A09 Asset 010",
+      "custom_fields": {
+        "fixture_key": "a09-010",
+        "lifecycle": "available",
+        "service_due": "2026-09-30"
+      }
+    },
+    {
+      "fixture_key": "a09-011",
+      "title": "A09 Asset 011",
+      "custom_fields": {
+        "fixture_key": "a09-011",
+        "lifecycle": "available",
+        "service_due": "2026-09-30"
+      }
+    },
+    {
+      "fixture_key": "a09-012",
+      "title": "A09 Asset 012",
+      "custom_fields": {
+        "fixture_key": "a09-012",
+        "lifecycle": "available",
+        "service_due": "2026-09-30"
+      }
+    },
+    {
+      "fixture_key": "a09-013",
+      "title": "A09 Asset 013",
+      "custom_fields": {
+        "fixture_key": "a09-013",
+        "lifecycle": "available",
+        "service_due": "2026-09-30"
+      }
+    },
+    {
+      "fixture_key": "a09-014",
+      "title": "A09 Asset 014",
+      "custom_fields": {
+        "fixture_key": "a09-014",
+        "lifecycle": "available",
+        "service_due": "2026-09-30"
+      }
+    },
+    {
+      "fixture_key": "a09-015",
+      "title": "A09 Asset 015",
+      "custom_fields": {
+        "fixture_key": "a09-015",
+        "lifecycle": "available",
+        "service_due": "2026-09-30"
+      }
+    },
+    {
+      "fixture_key": "a09-016",
+      "title": "A09 Asset 016",
+      "custom_fields": {
+        "fixture_key": "a09-016",
+        "lifecycle": "available",
+        "service_due": "2026-09-30"
+      }
+    },
+    {
+      "fixture_key": "a09-017",
+      "title": "A09 Asset 017",
+      "custom_fields": {
+        "fixture_key": "a09-017",
+        "lifecycle": "available",
+        "service_due": "2026-09-30"
+      }
+    },
+    {
+      "fixture_key": "a09-018",
+      "title": "A09 Asset 018",
+      "custom_fields": {
+        "fixture_key": "a09-018",
+        "lifecycle": "available",
+        "service_due": "2026-09-30"
+      }
+    },
+    {
+      "fixture_key": "a09-019",
+      "title": "A09 Asset 019",
+      "custom_fields": {
+        "fixture_key": "a09-019",
+        "lifecycle": "available",
+        "service_due": "2026-09-30"
+      }
+    },
+    {
+      "fixture_key": "a09-020",
+      "title": "A09 Asset 020",
+      "custom_fields": {
+        "fixture_key": "a09-020",
+        "lifecycle": "available",
+        "service_due": "2026-09-30"
+      }
+    },
+    {
+      "fixture_key": "a09-021",
+      "title": "A09 Asset 021",
+      "custom_fields": {
+        "fixture_key": "a09-021",
+        "lifecycle": "available",
+        "service_due": "2026-09-30"
+      }
+    },
+    {
+      "fixture_key": "a09-022",
+      "title": "A09 Asset 022",
+      "custom_fields": {
+        "fixture_key": "a09-022",
+        "lifecycle": "available",
+        "service_due": "2026-09-30"
+      }
+    },
+    {
+      "fixture_key": "a09-023",
+      "title": "A09 Asset 023",
+      "custom_fields": {
+        "fixture_key": "a09-023",
+        "lifecycle": "available",
+        "service_due": "2026-09-30"
+      }
+    },
+    {
+      "fixture_key": "a09-024",
+      "title": "A09 Asset 024",
+      "custom_fields": {
+        "fixture_key": "a09-024",
+        "lifecycle": "available",
+        "service_due": "2026-09-30"
+      }
+    },
+    {
+      "fixture_key": "a09-025",
+      "title": "A09 Asset 025",
+      "custom_fields": {
+        "fixture_key": "a09-025",
+        "lifecycle": "available",
+        "service_due": "2026-09-30"
+      }
+    },
+    {
+      "fixture_key": "a09-026",
+      "title": "A09 Asset 026",
+      "custom_fields": {
+        "fixture_key": "a09-026",
+        "lifecycle": "available",
+        "service_due": "2026-09-30"
+      }
+    },
+    {
+      "fixture_key": "a09-027",
+      "title": "A09 Asset 027",
+      "custom_fields": {
+        "fixture_key": "a09-027",
+        "lifecycle": "available",
+        "service_due": "2026-09-30"
+      }
+    },
+    {
+      "fixture_key": "a09-028",
+      "title": "A09 Asset 028",
+      "custom_fields": {
+        "fixture_key": "a09-028",
+        "lifecycle": "available",
+        "service_due": "2026-09-30"
+      }
+    },
+    {
+      "fixture_key": "a09-029",
+      "title": "A09 Asset 029",
+      "custom_fields": {
+        "fixture_key": "a09-029",
+        "lifecycle": "available",
+        "service_due": "2026-09-30"
+      }
+    },
+    {
+      "fixture_key": "a09-030",
+      "title": "A09 Asset 030",
+      "custom_fields": {
+        "fixture_key": "a09-030",
+        "lifecycle": "available",
+        "service_due": "2026-09-30"
+      }
+    },
+    {
+      "fixture_key": "a09-031",
+      "title": "A09 Asset 031",
+      "custom_fields": {
+        "fixture_key": "a09-031",
+        "lifecycle": "available",
+        "service_due": "2026-09-30"
+      }
+    },
+    {
+      "fixture_key": "a09-032",
+      "title": "A09 Asset 032",
+      "custom_fields": {
+        "fixture_key": "a09-032",
+        "lifecycle": "available",
+        "service_due": "2026-09-30"
+      }
+    },
+    {
+      "fixture_key": "a09-033",
+      "title": "A09 Asset 033",
+      "custom_fields": {
+        "fixture_key": "a09-033",
+        "lifecycle": "available",
+        "service_due": "2026-09-30"
+      }
+    },
+    {
+      "fixture_key": "a09-034",
+      "title": "A09 Asset 034",
+      "custom_fields": {
+        "fixture_key": "a09-034",
+        "lifecycle": "available",
+        "service_due": "2026-09-30"
+      }
+    },
+    {
+      "fixture_key": "a09-035",
+      "title": "A09 Asset 035",
+      "custom_fields": {
+        "fixture_key": "a09-035",
+        "lifecycle": "available",
+        "service_due": "2026-09-30"
+      }
+    },
+    {
+      "fixture_key": "a09-036",
+      "title": "A09 Asset 036",
+      "custom_fields": {
+        "fixture_key": "a09-036",
+        "lifecycle": "available",
+        "service_due": "2026-09-30"
+      }
+    },
+    {
+      "fixture_key": "a09-037",
+      "title": "A09 Asset 037",
+      "custom_fields": {
+        "fixture_key": "a09-037",
+        "lifecycle": "available",
+        "service_due": "2026-09-30"
+      }
+    },
+    {
+      "fixture_key": "a09-038",
+      "title": "A09 Asset 038",
+      "custom_fields": {
+        "fixture_key": "a09-038",
+        "lifecycle": "available",
+        "service_due": "2026-09-30"
+      }
+    },
+    {
+      "fixture_key": "a09-039",
+      "title": "A09 Asset 039",
+      "custom_fields": {
+        "fixture_key": "a09-039",
+        "lifecycle": "available",
+        "service_due": "2026-09-30"
+      }
+    },
+    {
+      "fixture_key": "a09-040",
+      "title": "A09 Asset 040",
+      "custom_fields": {
+        "fixture_key": "a09-040",
+        "lifecycle": "available",
+        "service_due": "2026-09-30"
+      }
+    },
+    {
+      "fixture_key": "a09-041",
+      "title": "A09 Asset 041",
+      "custom_fields": {
+        "fixture_key": "a09-041",
+        "lifecycle": "available",
+        "service_due": "2026-09-30"
+      }
+    },
+    {
+      "fixture_key": "a09-042",
+      "title": "A09 Asset 042",
+      "custom_fields": {
+        "fixture_key": "a09-042",
+        "lifecycle": "available",
+        "service_due": "2026-09-30"
+      }
+    },
+    {
+      "fixture_key": "a09-043",
+      "title": "A09 Asset 043",
+      "custom_fields": {
+        "fixture_key": "a09-043",
+        "lifecycle": "available",
+        "service_due": "2026-09-30"
+      }
+    },
+    {
+      "fixture_key": "a09-044",
+      "title": "A09 Asset 044",
+      "custom_fields": {
+        "fixture_key": "a09-044",
+        "lifecycle": "available",
+        "service_due": "2026-09-30"
+      }
+    },
+    {
+      "fixture_key": "a09-045",
+      "title": "A09 Asset 045",
+      "custom_fields": {
+        "fixture_key": "a09-045",
+        "lifecycle": "available",
+        "service_due": "2026-09-30"
+      }
+    },
+    {
+      "fixture_key": "a09-046",
+      "title": "A09 Asset 046",
+      "custom_fields": {
+        "fixture_key": "a09-046",
+        "lifecycle": "available",
+        "service_due": "2026-09-30"
+      }
+    },
+    {
+      "fixture_key": "a09-047",
+      "title": "A09 Asset 047",
+      "custom_fields": {
+        "fixture_key": "a09-047",
+        "lifecycle": "available",
+        "service_due": "2026-09-30"
+      }
+    },
+    {
+      "fixture_key": "a09-048",
+      "title": "A09 Asset 048",
+      "custom_fields": {
+        "fixture_key": "a09-048",
+        "lifecycle": "available",
+        "service_due": "2026-09-30"
+      }
+    },
+    {
+      "fixture_key": "a09-049",
+      "title": "A09 Asset 049",
+      "custom_fields": {
+        "fixture_key": "a09-049",
+        "lifecycle": "available",
+        "service_due": "2026-09-30"
+      }
+    },
+    {
+      "fixture_key": "a09-050",
+      "title": "A09 Asset 050",
+      "custom_fields": {
+        "fixture_key": "a09-050",
+        "lifecycle": "available",
+        "service_due": "2026-09-30"
+      }
+    },
+    {
+      "fixture_key": "a09-051",
+      "title": "A09 Asset 051",
+      "custom_fields": {
+        "fixture_key": "a09-051",
+        "lifecycle": "available",
+        "service_due": "2026-09-30"
+      }
+    },
+    {
+      "fixture_key": "a09-052",
+      "title": "A09 Asset 052",
+      "custom_fields": {
+        "fixture_key": "a09-052",
+        "lifecycle": "available",
+        "service_due": "2026-10-01"
+      }
+    },
+    {
+      "fixture_key": "a09-053",
+      "title": "A09 Asset 053",
+      "custom_fields": {
+        "fixture_key": "a09-053",
+        "lifecycle": "available",
+        "service_due": "2026-10-01"
+      }
+    },
+    {
+      "fixture_key": "a09-054",
+      "title": "A09 Asset 054",
+      "custom_fields": {
+        "fixture_key": "a09-054",
+        "lifecycle": "available",
+        "service_due": "2026-10-01"
+      }
+    },
+    {
+      "fixture_key": "a09-055",
+      "title": "A09 Asset 055",
+      "custom_fields": {
+        "fixture_key": "a09-055",
+        "lifecycle": "available",
+        "service_due": "2026-10-01"
+      }
+    },
+    {
+      "fixture_key": "a09-056",
+      "title": "A09 Asset 056",
+      "custom_fields": {
+        "fixture_key": "a09-056",
+        "lifecycle": "available",
+        "service_due": "2026-10-01"
+      }
+    },
+    {
+      "fixture_key": "a09-057",
+      "title": "A09 Asset 057",
+      "custom_fields": {
+        "fixture_key": "a09-057",
+        "lifecycle": "available",
+        "service_due": "2026-10-01"
+      }
+    },
+    {
+      "fixture_key": "a09-058",
+      "title": "A09 Asset 058",
+      "custom_fields": {
+        "fixture_key": "a09-058",
+        "lifecycle": "available",
+        "service_due": "2026-10-01"
+      }
+    },
+    {
+      "fixture_key": "a09-059",
+      "title": "A09 Asset 059",
+      "custom_fields": {
+        "fixture_key": "a09-059",
+        "lifecycle": "available",
+        "service_due": "2026-10-01"
+      }
+    },
+    {
+      "fixture_key": "a09-060",
+      "title": "A09 Asset 060",
+      "custom_fields": {
+        "fixture_key": "a09-060",
+        "lifecycle": "available",
+        "service_due": "2026-10-01"
+      }
+    },
+    {
+      "fixture_key": "a09-061",
+      "title": "A09 Asset 061",
+      "custom_fields": {
+        "fixture_key": "a09-061",
+        "lifecycle": "available",
+        "service_due": "2026-10-01"
+      }
+    },
+    {
+      "fixture_key": "a09-062",
+      "title": "A09 Asset 062",
+      "custom_fields": {
+        "fixture_key": "a09-062",
+        "lifecycle": "available",
+        "service_due": "2026-10-01"
+      }
+    },
+    {
+      "fixture_key": "a09-063",
+      "title": "A09 Asset 063",
+      "custom_fields": {
+        "fixture_key": "a09-063",
+        "lifecycle": "available",
+        "service_due": "2026-10-01"
+      }
+    },
+    {
+      "fixture_key": "a09-064",
+      "title": "A09 Asset 064",
+      "custom_fields": {
+        "fixture_key": "a09-064",
+        "lifecycle": "available",
+        "service_due": "2026-10-01"
+      }
+    },
+    {
+      "fixture_key": "a09-065",
+      "title": "A09 Asset 065",
+      "custom_fields": {
+        "fixture_key": "a09-065",
+        "lifecycle": "available",
+        "service_due": "2026-10-01"
+      }
+    },
+    {
+      "fixture_key": "a09-066",
+      "title": "A09 Asset 066",
+      "custom_fields": {
+        "fixture_key": "a09-066",
+        "lifecycle": "available",
+        "service_due": "2026-10-01"
+      }
+    },
+    {
+      "fixture_key": "a09-067",
+      "title": "A09 Asset 067",
+      "custom_fields": {
+        "fixture_key": "a09-067",
+        "lifecycle": "available",
+        "service_due": "2026-10-01"
+      }
+    },
+    {
+      "fixture_key": "a09-068",
+      "title": "A09 Asset 068",
+      "custom_fields": {
+        "fixture_key": "a09-068",
+        "lifecycle": "available",
+        "service_due": "2026-10-01"
+      }
+    },
+    {
+      "fixture_key": "a09-069",
+      "title": "A09 Asset 069",
+      "custom_fields": {
+        "fixture_key": "a09-069",
+        "lifecycle": "available",
+        "service_due": "2026-10-01"
+      }
+    },
+    {
+      "fixture_key": "a09-070",
+      "title": "A09 Asset 070",
+      "custom_fields": {
+        "fixture_key": "a09-070",
+        "lifecycle": "available",
+        "service_due": "2026-10-01"
+      }
+    },
+    {
+      "fixture_key": "a09-071",
+      "title": "A09 Asset 071",
+      "custom_fields": {
+        "fixture_key": "a09-071",
+        "lifecycle": "available",
+        "service_due": "2026-10-01"
+      }
+    },
+    {
+      "fixture_key": "a09-072",
+      "title": "A09 Asset 072",
+      "custom_fields": {
+        "fixture_key": "a09-072",
+        "lifecycle": "available",
+        "service_due": "2026-10-01"
+      }
+    },
+    {
+      "fixture_key": "a09-073",
+      "title": "A09 Asset 073",
+      "custom_fields": {
+        "fixture_key": "a09-073",
+        "lifecycle": "available",
+        "service_due": "2026-10-01"
+      }
+    },
+    {
+      "fixture_key": "a09-074",
+      "title": "A09 Asset 074",
+      "custom_fields": {
+        "fixture_key": "a09-074",
+        "lifecycle": "available",
+        "service_due": "2026-10-01"
+      }
+    },
+    {
+      "fixture_key": "a09-075",
+      "title": "A09 Asset 075",
+      "custom_fields": {
+        "fixture_key": "a09-075",
+        "lifecycle": "available",
+        "service_due": "2026-10-01"
+      }
+    },
+    {
+      "fixture_key": "a09-076",
+      "title": "A09 Asset 076",
+      "custom_fields": {
+        "fixture_key": "a09-076",
+        "lifecycle": "available",
+        "service_due": "2026-10-01"
+      }
+    },
+    {
+      "fixture_key": "a09-077",
+      "title": "A09 Asset 077",
+      "custom_fields": {
+        "fixture_key": "a09-077",
+        "lifecycle": "available",
+        "service_due": "2026-10-01"
+      }
+    },
+    {
+      "fixture_key": "a09-078",
+      "title": "A09 Asset 078",
+      "custom_fields": {
+        "fixture_key": "a09-078",
+        "lifecycle": "available",
+        "service_due": "2026-10-01"
+      }
+    },
+    {
+      "fixture_key": "a09-079",
+      "title": "A09 Asset 079",
+      "custom_fields": {
+        "fixture_key": "a09-079",
+        "lifecycle": "available",
+        "service_due": "2026-10-01"
+      }
+    },
+    {
+      "fixture_key": "a09-080",
+      "title": "A09 Asset 080",
+      "custom_fields": {
+        "fixture_key": "a09-080",
+        "lifecycle": "available",
+        "service_due": "2026-10-01"
+      }
+    },
+    {
+      "fixture_key": "a09-081",
+      "title": "A09 Asset 081",
+      "custom_fields": {
+        "fixture_key": "a09-081",
+        "lifecycle": "available",
+        "service_due": "2026-10-01"
+      }
+    },
+    {
+      "fixture_key": "a09-082",
+      "title": "A09 Asset 082",
+      "custom_fields": {
+        "fixture_key": "a09-082",
+        "lifecycle": "available",
+        "service_due": "2026-10-01"
+      }
+    },
+    {
+      "fixture_key": "a09-083",
+      "title": "A09 Asset 083",
+      "custom_fields": {
+        "fixture_key": "a09-083",
+        "lifecycle": "available",
+        "service_due": "2026-10-01"
+      }
+    },
+    {
+      "fixture_key": "a09-084",
+      "title": "A09 Asset 084",
+      "custom_fields": {
+        "fixture_key": "a09-084",
+        "lifecycle": "available",
+        "service_due": "2026-10-01"
+      }
+    },
+    {
+      "fixture_key": "a09-085",
+      "title": "A09 Asset 085",
+      "custom_fields": {
+        "fixture_key": "a09-085",
+        "lifecycle": "available",
+        "service_due": "2026-10-01"
+      }
+    },
+    {
+      "fixture_key": "a09-086",
+      "title": "A09 Asset 086",
+      "custom_fields": {
+        "fixture_key": "a09-086",
+        "lifecycle": "available",
+        "service_due": "2026-10-01"
+      }
+    },
+    {
+      "fixture_key": "a09-087",
+      "title": "A09 Asset 087",
+      "custom_fields": {
+        "fixture_key": "a09-087",
+        "lifecycle": "available",
+        "service_due": "2026-10-01"
+      }
+    },
+    {
+      "fixture_key": "a09-088",
+      "title": "A09 Asset 088",
+      "custom_fields": {
+        "fixture_key": "a09-088",
+        "lifecycle": "available",
+        "service_due": "2026-10-01"
+      }
+    },
+    {
+      "fixture_key": "a09-089",
+      "title": "A09 Asset 089",
+      "custom_fields": {
+        "fixture_key": "a09-089",
+        "lifecycle": "available",
+        "service_due": "2026-10-01"
+      }
+    },
+    {
+      "fixture_key": "a09-090",
+      "title": "A09 Asset 090",
+      "custom_fields": {
+        "fixture_key": "a09-090",
+        "lifecycle": "available",
+        "service_due": "2026-10-01"
+      }
+    },
+    {
+      "fixture_key": "a09-091",
+      "title": "A09 Asset 091",
+      "custom_fields": {
+        "fixture_key": "a09-091",
+        "lifecycle": "available",
+        "service_due": "2026-10-01"
+      }
+    },
+    {
+      "fixture_key": "a09-092",
+      "title": "A09 Asset 092",
+      "custom_fields": {
+        "fixture_key": "a09-092",
+        "lifecycle": "available",
+        "service_due": "2026-10-01"
+      }
+    },
+    {
+      "fixture_key": "a09-093",
+      "title": "A09 Asset 093",
+      "custom_fields": {
+        "fixture_key": "a09-093",
+        "lifecycle": "available",
+        "service_due": "2026-10-01"
+      }
+    },
+    {
+      "fixture_key": "a09-094",
+      "title": "A09 Asset 094",
+      "custom_fields": {
+        "fixture_key": "a09-094",
+        "lifecycle": "available",
+        "service_due": "2026-10-01"
+      }
+    },
+    {
+      "fixture_key": "a09-095",
+      "title": "A09 Asset 095",
+      "custom_fields": {
+        "fixture_key": "a09-095",
+        "lifecycle": "available",
+        "service_due": "2026-10-01"
+      }
+    },
+    {
+      "fixture_key": "a09-096",
+      "title": "A09 Asset 096",
+      "custom_fields": {
+        "fixture_key": "a09-096",
+        "lifecycle": "available",
+        "service_due": "2026-10-01"
+      }
+    },
+    {
+      "fixture_key": "a09-097",
+      "title": "A09 Asset 097",
+      "custom_fields": {
+        "fixture_key": "a09-097",
+        "lifecycle": "available",
+        "service_due": "2026-10-01"
+      }
+    },
+    {
+      "fixture_key": "a09-098",
+      "title": "A09 Asset 098",
+      "custom_fields": {
+        "fixture_key": "a09-098",
+        "lifecycle": "available",
+        "service_due": "2026-10-01"
+      }
+    },
+    {
+      "fixture_key": "a09-099",
+      "title": "A09 Asset 099",
+      "custom_fields": {
+        "fixture_key": "a09-099",
+        "lifecycle": "available",
+        "service_due": "2026-10-01"
+      }
+    },
+    {
+      "fixture_key": "a09-100",
+      "title": "A09 Asset 100",
+      "custom_fields": {
+        "fixture_key": "a09-100",
+        "lifecycle": "available",
+        "service_due": "2026-10-01"
+      }
+    },
+    {
+      "fixture_key": "a09-101",
+      "title": "A09 Asset 101",
+      "custom_fields": {
+        "fixture_key": "a09-101",
+        "lifecycle": "available",
+        "service_due": "2026-10-01"
+      }
+    }
+  ],
+  "excluded_entries": [
+    {
+      "fixture_key": "a09-outside-before",
+      "title": "A09 Outside Before",
+      "custom_fields": {
+        "fixture_key": "a09-outside-before",
+        "lifecycle": "available",
+        "service_due": "2026-09-29"
+      }
+    },
+    {
+      "fixture_key": "a09-outside-after",
+      "title": "A09 Outside After",
+      "custom_fields": {
+        "fixture_key": "a09-outside-after",
+        "lifecycle": "available",
+        "service_due": "2026-10-02"
+      }
+    }
+  ]
+}

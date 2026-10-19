@@ -1,0 +1,9 @@
+Integral Desktop
+Copyright 2026 V75 Inc. / Integral contributors
+
+The active Electron shell, permissions, theme icons and launcher integration
+were adapted from Integral Business desktop at commit
+513a090edf4d6777289525db1cc79c8b7326f5cb under Apache-2.0.
+That implementation originated in Integral Core gd/desktop commit
+f2d52283cf3e3ad2b4a354c55fc4ee402d5adbc8.
+This Core distribution includes no commercial App packages or native automation.

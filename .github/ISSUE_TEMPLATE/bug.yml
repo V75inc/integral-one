@@ -1,0 +1,17 @@
+name: Desktop bug
+description: Report a reproducible Integral One problem
+title: '[Bug] '
+labels: []
+body:
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps, expected result and actual result
+      description: Include product/Core version and OS. Use synthetic data; remove secrets and private records.
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Evidence and recovery impact
+      description: Does restart, offline access or export still work? Do not upload your database or keys.

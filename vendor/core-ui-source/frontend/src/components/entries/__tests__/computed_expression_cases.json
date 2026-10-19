@@ -1,0 +1,170 @@
+{
+  "cases": [
+    {
+      "name": "markup amount",
+      "source": "cost_price * markup_percentage / 100",
+      "ast": {
+        "op": "div",
+        "left": {
+          "op": "mul",
+          "left": {"op": "field", "key": "cost_price"},
+          "right": {"op": "field", "key": "markup_percentage"}
+        },
+        "right": {"op": "num", "value": "100"}
+      },
+      "inputs": {"cost_price": 80, "markup_percentage": 25},
+      "result": 20
+    },
+    {
+      "name": "fractional markup",
+      "source": "cost_price * markup_percentage / 100",
+      "ast": {
+        "op": "div",
+        "left": {
+          "op": "mul",
+          "left": {"op": "field", "key": "cost_price"},
+          "right": {"op": "field", "key": "markup_percentage"}
+        },
+        "right": {"op": "num", "value": "100"}
+      },
+      "inputs": {"cost_price": 10, "markup_percentage": 25},
+      "result": 2.5
+    },
+    {
+      "name": "concat label",
+      "source": "concat(label, \" price\")",
+      "ast": {
+        "op": "concat",
+        "args": [
+          {"op": "field", "key": "label"},
+          {"op": "str", "value": " price"}
+        ]
+      },
+      "inputs": {"label": "Final"},
+      "result": "Final price"
+    },
+    {
+      "name": "missing input",
+      "source": "cost_price * markup_percentage / 100",
+      "ast": {
+        "op": "div",
+        "left": {
+          "op": "mul",
+          "left": {"op": "field", "key": "cost_price"},
+          "right": {"op": "field", "key": "markup_percentage"}
+        },
+        "right": {"op": "num", "value": "100"}
+      },
+      "inputs": {"markup_percentage": 25},
+      "result": null
+    },
+    {
+      "name": "division by zero",
+      "source": "cost_price / discount_percentage",
+      "ast": {
+        "op": "div",
+        "left": {"op": "field", "key": "cost_price"},
+        "right": {"op": "field", "key": "discount_percentage"}
+      },
+      "inputs": {"cost_price": 10, "discount_percentage": 0},
+      "result": null
+    }
+  ],
+  "calculator": {
+    "inputs": {
+      "cost_price": 100,
+      "markup_percentage": 50,
+      "discount_percentage": 10
+    },
+    "results": {
+      "markup_amount": 50,
+      "selling_price": 150,
+      "discount_amount": 15,
+      "final_selling_price": 135,
+      "profit_amount": 35
+    },
+    "fields": [
+      {"key": "cost_price", "name": "Cost price", "type": "number"},
+      {"key": "markup_percentage", "name": "Markup percentage", "type": "number"},
+      {"key": "discount_percentage", "name": "Discount percentage", "type": "number"},
+      {
+        "key": "markup_amount",
+        "name": "Markup amount",
+        "type": "computed",
+        "expression": {
+          "source": "cost_price * markup_percentage / 100",
+          "result_type": "number",
+          "ast": {
+            "op": "div",
+            "left": {
+              "op": "mul",
+              "left": {"op": "field", "key": "cost_price"},
+              "right": {"op": "field", "key": "markup_percentage"}
+            },
+            "right": {"op": "num", "value": "100"}
+          }
+        }
+      },
+      {
+        "key": "selling_price",
+        "name": "Selling price",
+        "type": "computed",
+        "expression": {
+          "source": "cost_price + markup_amount",
+          "result_type": "number",
+          "ast": {
+            "op": "add",
+            "left": {"op": "field", "key": "cost_price"},
+            "right": {"op": "field", "key": "markup_amount"}
+          }
+        }
+      },
+      {
+        "key": "discount_amount",
+        "name": "Discount amount",
+        "type": "computed",
+        "expression": {
+          "source": "selling_price * discount_percentage / 100",
+          "result_type": "number",
+          "ast": {
+            "op": "div",
+            "left": {
+              "op": "mul",
+              "left": {"op": "field", "key": "selling_price"},
+              "right": {"op": "field", "key": "discount_percentage"}
+            },
+            "right": {"op": "num", "value": "100"}
+          }
+        }
+      },
+      {
+        "key": "final_selling_price",
+        "name": "Final selling price",
+        "type": "computed",
+        "expression": {
+          "source": "selling_price - discount_amount",
+          "result_type": "number",
+          "ast": {
+            "op": "sub",
+            "left": {"op": "field", "key": "selling_price"},
+            "right": {"op": "field", "key": "discount_amount"}
+          }
+        }
+      },
+      {
+        "key": "profit_amount",
+        "name": "Profit amount",
+        "type": "computed",
+        "expression": {
+          "source": "final_selling_price - cost_price",
+          "result_type": "number",
+          "ast": {
+            "op": "sub",
+            "left": {"op": "field", "key": "final_selling_price"},
+            "right": {"op": "field", "key": "cost_price"}
+          }
+        }
+      }
+    ]
+  }
+}

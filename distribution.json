@@ -1,0 +1,52 @@
+{
+  "contract_version": 1,
+  "product": "integral-one",
+  "product_version": "0.1.0-dev.0",
+  "mode": "local",
+  "desktop_host": {
+    "version": "0.1.7-dev.3",
+    "artifact": "vendor/integral-desktop-host-0.1.7-dev.3.tgz",
+    "sha256": "bfb245a84f0e015c70afb26399220dd82e627d9ce58295ec7b0105f3083c120c"
+  },
+  "core": {
+    "version": "0.1.1rc23",
+    "source_commit": "42c9d84f0ce74bd9ae4383114d6dc3d92c0c0c54",
+    "source_state": "Published TestPyPI release v0.1.1rc23; exact-main CI and artifact gates passed",
+    "desktop_contract_version": 1,
+    "wheel_sha256": "0434e2cf0f93e1a0e65142b990a62781ff916be64877936f75de4269c7a94930",
+    "wheel_filename": "integral_core-0.1.1rc23-py3-none-any.whl",
+    "ui_manifest_sha256": "9d47b4fc6e6cf2c299d73e78bc5c54d7bb8b6eecd86664e0af1c3eaa2b8fccb2",
+    "base_wheel": "vendor/core-runtime/integral_core-0.1.1rc23-py3-none-any.whl",
+    "runtime_contract_version": 1,
+    "runtime_preset": "local"
+  },
+  "data_compatibility": {
+    "app_id": "ai.integral.desktop",
+    "user_data_name": "Integral",
+    "legacy_local_user_data_name": "Integral",
+    "no_database_engine_change": true
+  },
+  "legal_state": "Adopted Apache-2.0 Core/Integral One; inherited notices and dependency exceptions retained. SUL proposal superseded; Business remains private.",
+  "release_gates": [
+    "Brand/trademark/domain availability unverified",
+    "Rights, contribution and per-component license review",
+    "Signed installer and supported-platform clean-machine qualification",
+    "Official registration and offline activation must be implemented and qualified before public product release"
+  ],
+  "repository": "https://github.com/V75inc/integral-one",
+  "branding": {
+    "wordmark": "Integral",
+    "edition": "one",
+    "window_title": "Integral | one",
+    "accessible_name": "Integral One"
+  },
+  "registration": {
+    "status": "implemented_unqualified",
+    "required_for_official_first_activation": true,
+    "local_access_after_activation": "independent_of_account_service",
+    "public_release_blocked_until_qualified": true,
+    "provider": "clerk",
+    "user_flow": "signup_or_signin_then_automatic_setup_no_activation_action",
+    "metrics": "distinct registered Integral accounts and One registrations; no usage telemetry"
+  }
+}

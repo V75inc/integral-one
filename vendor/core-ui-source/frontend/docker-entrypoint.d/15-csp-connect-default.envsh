@@ -1,0 +1,64 @@
+# shellcheck shell=sh
+# Default the CSP's connect-src to the API origin this image was built against.
+#
+# Sourced by nginx's docker-entrypoint before 20-envsubst-on-templates.sh, so
+# whatever it exports is what envsubst interpolates into
+# default.conf.template. It must be `.envsh`: the entrypoint SOURCES .envsh and
+# EXECUTES .sh, and an executed script could not export anything into the
+# envsubst step.
+#
+# Why derive rather than configure: the SPA can only call the origin baked into
+# its bundle at build time, so that origin — and nothing else — is what
+# connect-src has to allow. Both come from the same VITE_API_URL build arg
+# (resolved by deploy/ci-resolve-vite-api-url.sh), so the policy cannot drift
+# from the app it protects. The alternative was carrying the same hostname in
+# each environment's env-file secret, where a mismatch surfaces ONLY as a
+# browser console error while every server-side healthcheck stays green.
+#
+# Correct in both topologies with no special case:
+#   split-host   VITE_API_URL=https://api.example.com
+#                -> "https://api.example.com wss://api.example.com"
+#   same-origin  VITE_API_URL empty
+#                -> stays empty; `connect-src 'self'` in the template covers it
+#
+# An explicit CSP_EXTRA_CONNECT from the environment always wins, including a
+# deliberately empty one — this only fills an UNSET variable.
+
+if [ -z "${CSP_EXTRA_CONNECT+set}" ]; then
+    if [ -n "${VITE_API_URL:-}" ]; then
+        # Strip any trailing slash so the origin matches what the browser sends;
+        # CSP source expressions match by origin and a trailing slash makes it a
+        # path prefix instead.
+        _csp_origin="${VITE_API_URL%/}"
+
+        # The WebSocket origin for /api/events is the same host under ws/wss.
+        # Only the scheme changes, so swap the prefix rather than reparsing.
+        case "$_csp_origin" in
+            https://*) _csp_ws="wss://${_csp_origin#https://}" ;;
+            http://*) _csp_ws="ws://${_csp_origin#http://}" ;;
+            # No scheme (a bare hostname) — assume TLS, matching
+            # ci-resolve-vite-api-url.sh, which normalizes bare DOMAIN_API the
+            # same way.
+            *)
+                _csp_ws="wss://${_csp_origin}"
+                _csp_origin="https://${_csp_origin}"
+                ;;
+        esac
+
+        CSP_EXTRA_CONNECT="${_csp_origin} ${_csp_ws}"
+        unset _csp_origin _csp_ws
+    else
+        CSP_EXTRA_CONNECT=""
+    fi
+    export CSP_EXTRA_CONNECT
+fi
+
+# envsubst substitutes only variables that are SET. An unset CSP_EXTRA_IMG
+# would leave the literal "${CSP_EXTRA_IMG}" in the rendered policy, which the
+# browser reads as a bogus source expression, so give it a defined empty value.
+if [ -z "${CSP_EXTRA_IMG+set}" ]; then
+    CSP_EXTRA_IMG=""
+    export CSP_EXTRA_IMG
+fi
+
+echo "csp: connect-src extra = '${CSP_EXTRA_CONNECT}'"

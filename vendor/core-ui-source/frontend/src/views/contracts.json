@@ -1,0 +1,330 @@
+[
+  {
+    "type": "action_bar",
+    "label": "Action Bar",
+    "default_always_on": false,
+    "platforms": [
+      "web"
+    ],
+    "palette_group": "core",
+    "configurable": true,
+    "hot_loadable": false
+  },
+  {
+    "type": "calendar",
+    "label": "Calendar",
+    "default_always_on": false,
+    "platforms": [
+      "web",
+      "mobile"
+    ],
+    "palette_group": "core",
+    "configurable": true,
+    "hot_loadable": false
+  },
+  {
+    "type": "chart_region",
+    "label": "Chart",
+    "default_always_on": false,
+    "platforms": [
+      "web"
+    ],
+    "palette_group": "core",
+    "configurable": true,
+    "hot_loadable": false
+  },
+  {
+    "type": "composable_board",
+    "label": "Composable board",
+    "default_always_on": false,
+    "platforms": [
+      "web",
+      "mobile"
+    ],
+    "palette_group": "composable",
+    "configurable": true,
+    "hot_loadable": false
+  },
+  {
+    "type": "composable_grid",
+    "label": "Composable grid",
+    "default_always_on": false,
+    "platforms": [
+      "web",
+      "mobile"
+    ],
+    "palette_group": "composable",
+    "configurable": true,
+    "hot_loadable": false
+  },
+  {
+    "type": "composable_list",
+    "label": "Composable list",
+    "default_always_on": false,
+    "platforms": [
+      "web",
+      "mobile"
+    ],
+    "palette_group": "composable",
+    "configurable": true,
+    "hot_loadable": false
+  },
+  {
+    "type": "composable_timeline",
+    "label": "Composable timeline",
+    "default_always_on": false,
+    "platforms": [
+      "web",
+      "mobile"
+    ],
+    "palette_group": "composable",
+    "configurable": true,
+    "hot_loadable": false
+  },
+  {
+    "type": "activity_digest",
+    "label": "Activity digest",
+    "default_always_on": false,
+    "platforms": [
+      "web"
+    ],
+    "palette_group": "summaries",
+    "configurable": true,
+    "hot_loadable": false
+  },
+  {
+    "type": "chart_bar",
+    "label": "Bar chart",
+    "default_always_on": false,
+    "platforms": [
+      "web"
+    ],
+    "palette_group": "charts",
+    "configurable": true,
+    "hot_loadable": false
+  },
+  {
+    "type": "chart_line",
+    "label": "Line chart",
+    "default_always_on": false,
+    "platforms": [
+      "web"
+    ],
+    "palette_group": "charts",
+    "configurable": true,
+    "hot_loadable": false
+  },
+  {
+    "type": "chart_pie",
+    "label": "Pie chart",
+    "default_always_on": false,
+    "platforms": [
+      "web"
+    ],
+    "palette_group": "charts",
+    "configurable": true,
+    "hot_loadable": false
+  },
+  {
+    "type": "metric_card",
+    "label": "Metric",
+    "default_always_on": false,
+    "platforms": [
+      "web"
+    ],
+    "palette_group": "metrics",
+    "configurable": true,
+    "hot_loadable": false
+  },
+  {
+    "type": "metric_row",
+    "label": "Metric row",
+    "default_always_on": false,
+    "platforms": [
+      "web"
+    ],
+    "palette_group": "metrics",
+    "configurable": true,
+    "hot_loadable": false
+  },
+  {
+    "type": "progress",
+    "label": "Progress",
+    "default_always_on": false,
+    "platforms": [
+      "web"
+    ],
+    "palette_group": "metrics",
+    "configurable": true,
+    "hot_loadable": false
+  },
+  {
+    "type": "recent_entries",
+    "label": "Recent entries",
+    "default_always_on": false,
+    "platforms": [
+      "web"
+    ],
+    "palette_group": "summaries",
+    "configurable": true,
+    "hot_loadable": false
+  },
+  {
+    "type": "record_summary",
+    "label": "Record summary",
+    "default_always_on": false,
+    "platforms": [
+      "web"
+    ],
+    "palette_group": "summaries",
+    "configurable": true,
+    "hot_loadable": false
+  },
+  {
+    "type": "table_widget",
+    "label": "Top records",
+    "default_always_on": false,
+    "platforms": [
+      "web"
+    ],
+    "palette_group": "summaries",
+    "configurable": true,
+    "hot_loadable": false
+  },
+  {
+    "type": "track_breakdown",
+    "label": "Track breakdown",
+    "default_always_on": false,
+    "platforms": [
+      "web"
+    ],
+    "palette_group": "summaries",
+    "configurable": true,
+    "hot_loadable": false
+  },
+  {
+    "type": "editable_table",
+    "label": "Editable Table",
+    "default_always_on": false,
+    "platforms": [
+      "web"
+    ],
+    "palette_group": "core",
+    "configurable": true,
+    "hot_loadable": false
+  },
+  {
+    "type": "feed",
+    "label": "Feed",
+    "default_always_on": true,
+    "platforms": [
+      "web",
+      "mobile"
+    ],
+    "palette_group": "core",
+    "configurable": true,
+    "hot_loadable": false
+  },
+  {
+    "type": "form_region",
+    "label": "Form",
+    "default_always_on": false,
+    "platforms": [
+      "web"
+    ],
+    "palette_group": "core",
+    "configurable": true,
+    "hot_loadable": false
+  },
+  {
+    "type": "gallery",
+    "label": "Gallery",
+    "default_always_on": false,
+    "platforms": [
+      "web",
+      "mobile"
+    ],
+    "palette_group": "core",
+    "configurable": true,
+    "hot_loadable": false
+  },
+  {
+    "type": "kanban",
+    "label": "Kanban",
+    "default_always_on": false,
+    "platforms": [
+      "web",
+      "mobile"
+    ],
+    "palette_group": "core",
+    "configurable": true,
+    "hot_loadable": false
+  },
+  {
+    "type": "layout_container",
+    "label": "Layout Container",
+    "default_always_on": false,
+    "platforms": [
+      "web"
+    ],
+    "palette_group": "core",
+    "configurable": true,
+    "hot_loadable": false
+  },
+  {
+    "type": "static_content",
+    "label": "Static Content",
+    "default_always_on": false,
+    "platforms": [
+      "web"
+    ],
+    "palette_group": "core",
+    "configurable": true,
+    "hot_loadable": false
+  },
+  {
+    "type": "summary_tiles",
+    "label": "Summary Tiles",
+    "default_always_on": false,
+    "platforms": [
+      "web"
+    ],
+    "palette_group": "core",
+    "configurable": true,
+    "hot_loadable": false
+  },
+  {
+    "type": "table",
+    "label": "Table",
+    "default_always_on": false,
+    "platforms": [
+      "web",
+      "mobile"
+    ],
+    "palette_group": "core",
+    "configurable": true,
+    "hot_loadable": false
+  },
+  {
+    "type": "tree_region",
+    "label": "Tree",
+    "default_always_on": false,
+    "platforms": [
+      "web"
+    ],
+    "palette_group": "core",
+    "configurable": true,
+    "hot_loadable": false
+  },
+  {
+    "type": "wiki",
+    "label": "Wiki",
+    "default_always_on": false,
+    "platforms": [
+      "web"
+    ],
+    "palette_group": "core",
+    "configurable": true,
+    "hot_loadable": false
+  }
+]

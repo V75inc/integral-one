@@ -1,0 +1,140 @@
+{
+  "name": "integral-one",
+  "version": "0.1.0-dev.0",
+  "private": true,
+  "license": "Apache-2.0",
+  "description": "Integral One \u2014 local, single-owner desktop built on Apache-licensed Integral Core",
+  "main": "desktop/main.js",
+  "scripts": {
+    "setup": "node scripts/setup.js",
+    "start": "npm run build:accounts && electron desktop/main.js",
+    "verify:distribution": "node scripts/verify-distribution.js",
+    "pack": "npm run build:accounts && npm run build:runtime && npm run verify && electron-builder --dir",
+    "build:ui": "node scripts/build-ui.js",
+    "build:runtime": "node scripts/bundle-runtime.js",
+    "test": "node --test tests/*.test.js && python3 tests/test_compose_runtime.py",
+    "verify": "npm run verify:distribution && npm test",
+    "qualify:ui": "npm run build:ui && npm ci --prefix .build/frontend && npm run build --prefix .build/frontend",
+    "test:ui": "npm run test:run --prefix .build/frontend -- --maxWorkers=2",
+    "build:accounts": "node scripts/build-accounts.js",
+    "build:installers": "node scripts/build-installers.js",
+    "release:manifest": "node scripts/installer-manifest.js",
+    "test:host": "npm test --prefix packages/desktop-host",
+    "qualify:runtime": "node scripts/qualify-runtime.js"
+  },
+  "dependencies": {
+    "@clerk/electron": "0.1.1",
+    "@integral/desktop-host": "file:vendor/integral-desktop-host-0.1.7-dev.3.tgz",
+    "react": "18.3.1",
+    "react-dom": "18.3.1"
+  },
+  "devDependencies": {
+    "@electron/asar": "3.4.1",
+    "electron": "44.9.0",
+    "electron-builder": "26.15.3",
+    "esbuild": "0.25.12"
+  },
+  "build": {
+    "appId": "ai.integral.desktop",
+    "productName": "Integral One",
+    "asar": true,
+    "directories": {
+      "output": "release",
+      "buildResources": "desktop/build"
+    },
+    "files": [
+      "desktop/**/*",
+      "package.json",
+      "distribution.json",
+      "LICENSE",
+      "NOTICE",
+      "PRIVACY.md",
+      "CODE_SIGNING.md",
+      "!desktop/accounts/preload-entry.js"
+    ],
+    "extraResources": [
+      {
+        "from": "LICENSE",
+        "to": "LICENSE"
+      },
+      {
+        "from": "NOTICE",
+        "to": "NOTICE"
+      },
+      {
+        "from": "resources/core",
+        "to": "core"
+      },
+      {
+        "from": "LICENSING.md",
+        "to": "LICENSING.md"
+      },
+      {
+        "from": "PRIVACY.md",
+        "to": "PRIVACY.md"
+      },
+      {
+        "from": "CODE_SIGNING.md",
+        "to": "CODE_SIGNING.md"
+      },
+      {
+        "from": "resources/notices",
+        "to": "notices"
+      }
+    ],
+    "mac": {
+      "hardenedRuntime": true,
+      "entitlements": "desktop/build/entitlements.mac.plist",
+      "entitlementsInherit": "desktop/build/entitlements.mac.plist",
+      "extendInfo": {
+        "NSMicrophoneUsageDescription": "Integral One uses your microphone for voice dictation when you start voice input."
+      },
+      "icon": "desktop/icons/mac/integral-dark.png",
+      "target": [
+        "zip"
+      ],
+      "artifactName": "integral-one-${version}-mac-${arch}.${ext}"
+    },
+    "win": {
+      "target": [
+        "nsis"
+      ],
+      "artifactName": "integral-one-${version}-win-${arch}.${ext}",
+      "executableName": "Integral One"
+    },
+    "linux": {
+      "target": [
+        "AppImage"
+      ],
+      "mimeTypes": [
+        "x-scheme-handler/integral-one"
+      ]
+    },
+    "protocols": [
+      {
+        "name": "Integral Account",
+        "schemes": [
+          "integral-one"
+        ]
+      }
+    ],
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false,
+      "allowElevation": false,
+      "runAfterFinish": false,
+      "deleteAppDataOnUninstall": false,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true
+    }
+  },
+  "author": "V75 Inc.",
+  "homepage": "https://github.com/V75inc/integral-one",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/V75inc/integral-one.git"
+  },
+  "engines": {
+    "node": ">=22.13 <23 || >=24"
+  }
+}

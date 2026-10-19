@@ -1,0 +1,3 @@
+# This file lives at frontend/public/_redirects so Vite copies it into the
+# Cloudflare Pages build output (dist/_redirects). Edit that one, not this.
+# This stub stays put because the sandbox can't delete files.

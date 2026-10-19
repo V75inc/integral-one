@@ -1,0 +1,17 @@
+/* Clarifying-question option buttons.
+   Hover/selected live in CSS because they belong to the interactive element,
+   not to a text node — <Text>/<Surface> style the latter. */
+
+.user-question-option:hover:not(:disabled) {
+  background: var(--panel-2);
+}
+
+.user-question-option[aria-pressed='true'] {
+  border-color: var(--brand-accent-fg);
+  background: var(--panel-2);
+}
+
+.user-question-option:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--focus-ring-color);
+}

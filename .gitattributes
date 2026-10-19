@@ -1,0 +1,8 @@
+* text=auto eol=lf
+
+# Integrity-pinned upstream bytes must survive checkout unchanged on Windows.
+vendor/core-ui-source/** -text
+vendor/core-runtime/*.whl binary
+vendor/*.tgz binary
+desktop/**/*.png binary
+desktop/**/*.ico binary

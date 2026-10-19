@@ -1,0 +1,20 @@
+node_modules/
+.build/
+resources/
+release/
+.env*
+*.log
+*.dump
+
+# Internal qualification artifacts are retained locally, never part of the public import.
+.local/
+docs/github-*.jpg
+docs/GITHUB-SETUP.json
+docs/packaged-local-proof.json
+__pycache__/
+*.pyc
+
+# Account UI and bundled sandbox preload are generated from reviewed source.
+desktop/accounts/ui/
+desktop/accounts/preload.js
+desktop/accounts/config.runtime.json

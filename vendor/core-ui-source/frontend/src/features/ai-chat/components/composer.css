@@ -1,0 +1,13 @@
+.chat-composer {
+  container: integral-composer / inline-size;
+}
+
+.chat-composer-mention-hint {
+  display: none;
+}
+
+@container integral-composer (min-width: 22rem) {
+  .chat-composer-mention-hint {
+    display: inline;
+  }
+}

@@ -1,0 +1,271 @@
+:root {
+  color-scheme: dark;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  background: #171717;
+  color: #f2f1ee;
+  font-synthesis: none;
+  -webkit-font-smoothing: antialiased;
+}
+* {
+  box-sizing: border-box;
+}
+body {
+  margin: 0;
+}
+button,
+input,
+textarea {
+  font: inherit;
+}
+button {
+  cursor: pointer;
+}
+button:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+textarea:focus-visible,
+summary:focus-visible {
+  outline: 2px solid #efa477;
+  outline-offset: 4px;
+}
+.account-page {
+  width: min(100% - 48px, 384px);
+  margin: 0 auto;
+  padding: 44px 0 24px;
+}
+.account-header {
+  text-align: center;
+  margin-bottom: 28px;
+}
+.wordmark {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  font-size: 22px;
+  font-weight: 600;
+  letter-spacing: -0.6px;
+  margin-bottom: 30px;
+}
+.wordmark img {
+  width: 30px;
+  height: 30px;
+  flex: none;
+}
+.edition {
+  font-weight: 400;
+  color: #aaa9a5;
+}
+.account-header h1 {
+  font-size: 24px;
+  line-height: 1.25;
+  letter-spacing: -0.5px;
+  font-weight: 600;
+  margin: 0 0 8px;
+}
+.subtitle {
+  font-size: 14px;
+  line-height: 1.5;
+  color: #aaa9a5;
+  margin: 0;
+}
+.account-body {
+  min-height: 180px;
+}
+.account-switch {
+  text-align: center;
+  font-size: 13px;
+  line-height: 1.6;
+  color: #aaa9a5;
+  margin: 18px 0 0;
+}
+.text-action {
+  padding: 4px 2px;
+  border: 0;
+  background: none;
+  color: #efa477;
+  font-size: 13px;
+  min-height: 32px;
+}
+.text-action:hover {
+  text-decoration: underline;
+}
+.action {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: 44px;
+  border-radius: 8px;
+  padding: 10px 16px;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.4;
+  transition: background-color 0.15s;
+  border: 1px solid transparent;
+}
+.primary {
+  background: #ededed;
+  color: #1a1a1a;
+}
+.primary:hover {
+  background: #ffffff;
+}
+.secondary {
+  background: transparent;
+  color: #deddd8;
+  border-color: #41413e;
+}
+.secondary:hover {
+  background: #252523;
+}
+.offline-action {
+  margin-top: 18px;
+}
+.privacy {
+  text-align: center;
+  font-size: 12px;
+  line-height: 1.7;
+  color: #aaa9a5;
+  margin: 26px 0 0;
+}
+.privacy-details {
+  margin-top: 8px;
+}
+.privacy-details summary {
+  text-align: center;
+}
+.account-help {
+  margin-top: 22px;
+  border-top: 1px solid #30302e;
+  padding-top: 8px;
+}
+details {
+  font-size: 12px;
+  color: #aaa9a5;
+}
+summary {
+  padding: 12px 0;
+  cursor: pointer;
+  min-height: 40px;
+}
+summary:hover {
+  color: #deddd8;
+}
+.help-content {
+  padding: 0 0 16px;
+  line-height: 1.6;
+}
+.help-content p {
+  margin: 0 0 14px;
+}
+.help-content label {
+  display: block;
+  font-size: 12px;
+  color: #d5d4cf;
+  margin: 16px 0 6px;
+}
+.help-content input,
+.help-content textarea {
+  width: 100%;
+  padding: 11px 12px;
+  background: #222;
+  border: 1px solid #454543;
+  border-radius: 8px;
+  color: #f2f1ee;
+  font:
+    12px ui-monospace,
+    monospace;
+  min-height: 44px;
+}
+.help-content textarea {
+  height: 90px;
+  resize: vertical;
+}
+.help-content .action {
+  margin-top: 10px;
+}
+.portal-address {
+  overflow-wrap: anywhere;
+}
+.environment {
+  text-align: center;
+  color: #8f8e89;
+  font-size: 11px;
+  line-height: 1.5;
+  margin: 18px 0 0;
+}
+.error {
+  font-size: 13px;
+  color: #ffc4ad;
+  background: #30221d;
+  border: 1px solid #664233;
+  border-radius: 8px;
+  padding: 12px;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+.status-area {
+  text-align: center;
+  padding: 24px 0;
+  font-size: 14px;
+  color: #d5d4cf;
+}
+.status-area .action {
+  margin-top: 16px;
+}
+a {
+  color: #efa477;
+}
+.cl-rootBox {
+  width: 100%;
+}
+.cl-cardBox {
+  max-width: 100%;
+}
+@media (max-width: 400px) {
+  .account-page {
+    width: calc(100% - 40px);
+    padding-top: 28px;
+  }
+  .wordmark {
+    margin-bottom: 24px;
+  }
+  .account-header {
+    margin-bottom: 24px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  * {
+    scroll-behavior: auto;
+    transition: none !important;
+  }
+}
+
+.browser-handoff {
+  margin: 0 0 20px;
+  padding: 14px 16px;
+  border: 1px solid #45413b;
+  border-radius: 8px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: #deddd8;
+}
+.browser-handoff p {
+  margin: 0;
+}
+.browser-handoff .handoff-hint {
+  font-size: 12px;
+  color: #aaa9a5;
+  margin-top: 8px;
+}
+.browser-handoff .text-action {
+  padding: 6px 0;
+  min-height: 36px;
+}
+
+.account-header--form .wordmark{margin-bottom:0}
