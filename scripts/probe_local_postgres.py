@@ -5,6 +5,8 @@ published process API. The server retains its database when the helper exits.
 """
 
 import json
+import logging
+logging.basicConfig(level=logging.DEBUG)
 import os
 import re
 import shlex
