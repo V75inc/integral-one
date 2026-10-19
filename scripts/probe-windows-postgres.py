@@ -52,6 +52,11 @@ try:
                 if proc.poll() is None:
                     proc.terminate()
                     proc.wait(timeout=30)
-    print('Native Windows first-start password guard, authenticated access, restart, key and record retention: passed (credentials omitted)')
+    dump = root / 'backup.dump'
+    (root / 'database.stop.request').unlink(missing_ok=True)
+    with (root / 'helper.log').open('w') as log:
+        subprocess.run([sys.executable, str(Path(__file__).with_name('probe_local_postgres.py')), str(root), str(dump)], stdout=log, stderr=log, timeout=60, check=True)
+    assert dump.read_bytes().startswith(b'PGDMP'), 'Expected a custom-format database backup'
+    print('Native Windows first-start password guard, authenticated access, restart, key/record retention and custom-format backup: passed (credentials omitted)')
 finally:
     shutil.rmtree(root)

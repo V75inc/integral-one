@@ -62,6 +62,24 @@ def prepare_windows_database(
     (data / "pg_hba.conf").write_text(HBA)
 
 
+def passwordless_uri(uri: str) -> str:
+    """Let libpq use PGPASSWORD rather than an explicit empty URI password."""
+    parsed = urlsplit(uri)
+    host = parsed.netloc.rsplit("@", 1)[-1]
+    user = quote(parsed.username or "postgres", safe="")
+    return urlunsplit((parsed.scheme, f"{user}@{host}", parsed.path, parsed.query, ""))
+
+
+def psql_command(binaries: Path, uri: str) -> list[str]:
+    """Use explicit options so Windows getopt never treats flags as arguments."""
+    return [
+        str(binaries / "psql"),
+        "--no-password",
+        "--set=ON_ERROR_STOP=1",
+        "--dbname=" + uri,
+    ]
+
+
 def require_password(binaries: Path, uri: str) -> None:
     """Refuse readiness if a Windows loopback connection succeeds without a key."""
     env = {
@@ -71,7 +89,12 @@ def require_password(binaries: Path, uri: str) -> None:
     }
     env.update(PGPASSFILE=os.devnull, PGCONNECT_TIMEOUT="5")
     result = subprocess.run(
-        [str(binaries / "psql"), uri, "--no-password", "-c", "SELECT 1"],
+        [
+            str(binaries / "psql"),
+            "--no-password",
+            "--command=SELECT 1",
+            "--dbname=" + uri,
+        ],
         env=env,
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
@@ -121,15 +144,12 @@ def main() -> None:
     signal.signal(signal.SIGINT, terminate)
     try:
         uri = server.get_uri()
+        if os.name == "nt":
+            uri = passwordless_uri(uri)
         parsed = urlsplit(uri)
         # No shell interpolation: both paths and SQL travel as process data.
         env = {**os.environ, "PGPASSWORD": password}
-        command = [
-            str(binaries / "psql"),
-            uri,
-            "-v",
-            "ON_ERROR_STOP=1",
-        ]
+        command = psql_command(binaries, uri)
         subprocess.run(
             command,
             input=f"ALTER USER postgres PASSWORD '{password}';\nSELECT pg_reload_conf();\n",
@@ -176,10 +196,10 @@ def main() -> None:
             subprocess.run(
                 [
                     str(binaries / "pg_dump"),
-                    uri,
                     "-Fc",
                     "-f",
                     sys.argv[2],
+                    "--dbname=" + uri,
                 ],
                 env=env,
                 check=True,
