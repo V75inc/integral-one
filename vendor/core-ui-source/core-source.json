@@ -1167,6 +1167,6 @@
     "frontend/vitest.config.ts": "dc30f85d8f79fb42754fbac3bcd7a05e6a5b4bcb0f38a04da958a8fd0f056419"
   },
   "license_state": "Apache-2.0 Core and One; inherited component grants retained",
-  "source_commit": "0b45c1b22368706a22facac402eef8395c7e39b5",
+  "source_commit": "eebaa74aeb6e53d009b65dd5ef11c623a678b9bc",
   "source_tree_sha256": "b6047ccd6b8c76729fe25e786f6d55cd3399dd8e7b48199d83b3fe91544e8fcd"
 }

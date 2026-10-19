@@ -10,12 +10,12 @@
   },
   "core": {
     "version": "0.1.1rc22",
-    "source_commit": "0b45c1b22368706a22facac402eef8395c7e39b5",
+    "source_commit": "eebaa74aeb6e53d009b65dd5ef11c623a678b9bc",
     "source_state": "unreleased runtime-composition snapshot on rc22; not the TestPyPI rc22 release",
     "desktop_contract_version": 1,
-    "wheel_sha256": "56a4703d827e6d8d199690f640552549c802325b7a00d521c72461886525ccf9",
+    "wheel_sha256": "a3b375e0752c095ab06401a30793c752ec4f14c833945328fc0a7464e7d95196",
     "wheel_filename": "integral_core-0.1.1rc22-py3-none-any.whl",
-    "ui_manifest_sha256": "ae3d9bbbc9398e6b00c2e2dbd66b81b54e4ef150c3045705f2e4b60c57467ba4",
+    "ui_manifest_sha256": "ed11d5c107b2466e11f183c735fcf24ec4d9e6ef71d30169f57d5b683d62f38f",
     "base_wheel": "vendor/core-runtime/integral_core-0.1.1rc22-py3-none-any.whl",
     "runtime_contract_version": 1,
     "runtime_preset": "local"

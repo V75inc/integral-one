@@ -4,7 +4,7 @@
 
 ## Source and responsibility
 
-Core commit: `0b45c1b22368706a22facac402eef8395c7e39b5` on
+Core commit: `eebaa74aeb6e53d009b65dd5ef11c623a678b9bc` on
 `codex/runtime-composition`, based on public main `40f29395ccd6e77d69a710c8902dbfe4eca89249`.
 One composes this candidate through its recorded wheel/UI hashes and owns the
 Apache desktop host source at `packages/desktop-host` (version `0.1.7-dev.3`).
@@ -36,7 +36,7 @@ and a newly versioned Core release must precede production dependency promotion.
 | Composed One frontend | 1,888 tests across 332 files passed; TypeScript/Vite build passed |
 | Pinned runtime startup | Actual bundled runtime boot, local API contract and native controller session passed |
 | Unsigned macOS arm64 package | Built and inspected for contract, provenance, notices and excluded internal files |
-| Core default backend | 6,837 passed; 100 skipped |
+| Core default backend | 6,843 passed; 100 skipped |
 | Core CI-faithful smoke | 1,955 passed; 26 skipped (initial local candidate; current-head remote results are recorded on Core PR #153) |
 | Real PostgreSQL local/hosted authority contracts | 38 passed |
 | Public extension contracts on PostgreSQL | 57 passed |
@@ -85,7 +85,7 @@ No fresh live social-provider callback or real user installation migration was
 performed. Current-head remote matrix results will be linked from the paired
 PRs; previous-head green checks do not qualify these changes.
 
-Final unsigned macOS arm64 ASAR SHA-256: `82f13685c959c27dfa9dc135c1174d885b276cd4803ec1b943213078f65ec77e`. Signing is not qualified.
+Final unsigned macOS arm64 ASAR SHA-256: `68d47d03462648e11f8c86a1a1dbd56f24c45f8f62cafc8b1bc44dc84517415f`. Signing is not qualified.
 
 ## Windows runtime correction
 
@@ -97,3 +97,30 @@ A native differential probe identified the cause; run `39177802964` then verifie
 the exact managed helper reaches readiness and stops cleanly with the correction.
 The temporary probe workflow and source copies were removed. The final bundled
 One matrix remains required; this probe does not qualify an installer.
+
+### Password authentication from first Windows startup
+
+Core preinitializes new Windows databases with SCRAM host authentication before
+the first listener starts, using the existing installation password through a
+private temporary file. It removes that file and refuses readiness if a
+credential-free connection succeeds. Existing databases and keys are retained.
+Native run `39180755971` qualified cold start, authenticated access, restart with
+the same key/record and a custom-format backup. Explicit psql/pg_dump options
+also avoid Windows positional-argument handling and interactive prompts.
+Current-head full/native results are recorded on the paired PRs; previous-head
+CI alone does not qualify this bootstrap change.
+
+A concurrent local frontend rerun recorded 1,887 passes and one one-second
+`MarkdownText.streaming` animation assertion timeout (received `S`, expected
+`Sy` while still streaming). The unchanged test passed in isolation (428ms).
+The serialized full rerun is recorded below; no frontend source was changed
+to suppress the assertion. Private logs retain the failed and subsequent runs.
+
+The exact committed Core head `eebaa74aeb6e53d009b65dd5ef11c623a678b9bc`
+then passed the full default backend gate: **6,843 passed, 100 skipped** in
+724 seconds. All 99 focused bootstrap/runtime/privacy/audit checks pass.
+
+With backend tests finished, the standard two-worker frontend command passed
+**all 1,888 tests across 332 files** in 122 seconds. The earlier concurrent run
+and isolated rerun remain documented above. The final bundled startup/session
+and unsigned macOS package inspection also pass with the pinned Core head.
