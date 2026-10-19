@@ -1,0 +1,19 @@
+name: Windows PostgreSQL investigation
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/windows-postgres-probe.yml'
+      - 'scripts/probe-windows-postgres.py'
+      - 'scripts/probe_private_permissions.py'
+permissions:
+  contents: read
+jobs:
+  initdb:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install pgserver==0.1.4
+      - run: python scripts/probe-windows-postgres.py
