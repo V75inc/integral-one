@@ -9,14 +9,14 @@
     "sha256": "bfb245a84f0e015c70afb26399220dd82e627d9ce58295ec7b0105f3083c120c"
   },
   "core": {
-    "version": "0.1.1rc22",
-    "source_commit": "eebaa74aeb6e53d009b65dd5ef11c623a678b9bc",
-    "source_state": "unreleased runtime-composition snapshot on rc22; not the TestPyPI rc22 release",
+    "version": "0.1.1rc23",
+    "source_commit": "42c9d84f0ce74bd9ae4383114d6dc3d92c0c0c54",
+    "source_state": "Published TestPyPI release v0.1.1rc23; exact-main CI and artifact gates passed",
     "desktop_contract_version": 1,
-    "wheel_sha256": "a3b375e0752c095ab06401a30793c752ec4f14c833945328fc0a7464e7d95196",
-    "wheel_filename": "integral_core-0.1.1rc22-py3-none-any.whl",
-    "ui_manifest_sha256": "ed11d5c107b2466e11f183c735fcf24ec4d9e6ef71d30169f57d5b683d62f38f",
-    "base_wheel": "vendor/core-runtime/integral_core-0.1.1rc22-py3-none-any.whl",
+    "wheel_sha256": "0434e2cf0f93e1a0e65142b990a62781ff916be64877936f75de4269c7a94930",
+    "wheel_filename": "integral_core-0.1.1rc23-py3-none-any.whl",
+    "ui_manifest_sha256": "9d47b4fc6e6cf2c299d73e78bc5c54d7bb8b6eecd86664e0af1c3eaa2b8fccb2",
+    "base_wheel": "vendor/core-runtime/integral_core-0.1.1rc23-py3-none-any.whl",
     "runtime_contract_version": 1,
     "runtime_preset": "local"
   },
@@ -31,8 +31,7 @@
     "Brand/trademark/domain availability unverified",
     "Rights, contribution and per-component license review",
     "Signed installer and supported-platform clean-machine qualification",
-    "Official registration and offline activation must be implemented and qualified before public product release",
-    "Replace development Core snapshot with an approved upstream release for production"
+    "Official registration and offline activation must be implemented and qualified before public product release"
   ],
   "repository": "https://github.com/V75inc/integral-one",
   "branding": {

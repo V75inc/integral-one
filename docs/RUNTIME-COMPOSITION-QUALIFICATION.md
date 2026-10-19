@@ -1,3 +1,7 @@
+> **Release-pin update:** One now uses published Core rc23. See
+> [rc23 qualification](CORE-RC23-QUALIFICATION.md) for current artifact identities
+> and results. The snapshot history below is retained as historical evidence.
+
 # Runtime composition qualification
 
 **18 October 2026 · Locally qualified candidate; publication and release pending.**

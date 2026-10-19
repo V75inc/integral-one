@@ -7,8 +7,9 @@ and actual dependency exceptions; provenance does not establish IP assignments.
 This source PR prepares a development product and does not qualify a public
 installer release. Before production distribution:
 
-- Land and qualify the companion Core contracts and replace the explicitly pinned
-  uncommitted development wheel/UI snapshot with an approved upstream release.
+- Retain reviewed Core release pins and rerun source/artifact/native checks for every
+  engine update. The initial development snapshot is replaced by released rc23; see
+  [rc23 qualification](CORE-RC23-QUALIFICATION.md).
 - Resolve or explicitly qualify dependency advisory exposure; see
   [dependency review](DEPENDENCY-REVIEW.md). Passing tests do not clear advisories.
 - Review contribution authority, third-party/native runtime, App/model/font
@@ -35,8 +36,9 @@ The end-user bootstrap and manual signed-candidate workflow are prepared; see [i
 
 ## Runtime composition dependency
 
-Before production, replace the development Core snapshot with reviewed/released
-artifacts implementing the accepted neutral local/hosted runtime contract. Require
+Core rc23 supplies reviewed/released artifacts implementing the accepted neutral
+local/hosted runtime contract. The pinned source and wheel identities are in
+`distribution.json`. Continue to require
 local fixed-owner/bootstrap/session and hosted tenant/workspace authorization
 proofs, existing-store/receipt compatibility, and One signup/offline/package
 qualification. Native host source ownership now belongs to One. An engine update

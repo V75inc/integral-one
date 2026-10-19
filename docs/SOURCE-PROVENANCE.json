@@ -53,5 +53,15 @@
     "wheel_sha256": "a3b375e0752c095ab06401a30793c752ec4f14c833945328fc0a7464e7d95196",
     "frontend_boundary": "Core-owned session contract; One-owned session implementation and sign-in/offline return view",
     "source_commit": "eebaa74aeb6e53d009b65dd5ef11c623a678b9bc"
+  },
+  "released_core": {
+    "version": "0.1.1rc23",
+    "source_commit": "42c9d84f0ce74bd9ae4383114d6dc3d92c0c0c54",
+    "wheel_sha256": "0434e2cf0f93e1a0e65142b990a62781ff916be64877936f75de4269c7a94930",
+    "publication_run": "https://github.com/V75inc/integral-core/actions/runs/39188373262",
+    "source_ci": "https://github.com/V75inc/integral-core/actions/runs/39186575232",
+    "packaged_python_files_match_source": 764,
+    "original_license_and_notice_match": true,
+    "data_migration": false
   }
 }
