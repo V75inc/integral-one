@@ -1,7 +1,10 @@
 {
   "name": "integral-one",
-  "version": "0.1.0-dev.0",
+  "version": "0.1.1",
   "private": true,
+  "integralOneUpdates": {
+    "enabled": false
+  },
   "license": "Apache-2.0",
   "description": "Integral One \u2014 local, single-owner desktop built on Apache-licensed Integral Core",
   "main": "desktop/main.js",
@@ -12,7 +15,7 @@
     "pack": "npm run build:accounts && npm run build:runtime && npm run verify && electron-builder --dir",
     "build:ui": "node scripts/build-ui.js",
     "build:runtime": "node scripts/bundle-runtime.js",
-    "test": "node --test tests/*.test.js && python3 tests/test_compose_runtime.py",
+    "test": "node --test tests/*.test.js && python3 -m unittest discover -s tests",
     "verify": "npm run verify:distribution && npm test",
     "qualify:ui": "npm run build:ui && npm ci --prefix .build/frontend && npm run build --prefix .build/frontend",
     "test:ui": "npm run test:run --prefix .build/frontend -- --maxWorkers=2",
@@ -20,13 +23,18 @@
     "build:installers": "node scripts/build-installers.js",
     "release:manifest": "node scripts/installer-manifest.js",
     "test:host": "npm test --prefix packages/desktop-host",
-    "qualify:runtime": "node scripts/qualify-runtime.js"
+    "qualify:runtime": "node scripts/qualify-runtime.js",
+    "core:check": "python3 scripts/core_release.py check",
+    "qualify:ui:dependencies": "node scripts/qualify-ui-dependencies.js"
   },
   "dependencies": {
     "@clerk/electron": "0.1.1",
-    "@integral/desktop-host": "file:vendor/integral-desktop-host-0.1.7-dev.3.tgz",
+    "@integral/desktop-host": "file:vendor/integral-desktop-host-0.1.7-dev.4.tgz",
+    "electron-updater": "6.8.9",
+    "js-yaml": "4.3.2",
     "react": "18.3.1",
-    "react-dom": "18.3.1"
+    "react-dom": "18.3.1",
+    "semver": "7.7.3"
   },
   "devDependencies": {
     "@electron/asar": "3.4.1",
@@ -35,6 +43,13 @@
     "esbuild": "0.25.12"
   },
   "build": {
+    "publish": {
+      "provider": "github",
+      "owner": "V75inc",
+      "repo": "integral-one",
+      "private": false,
+      "releaseType": "release"
+    },
     "appId": "ai.integral.desktop",
     "productName": "Integral One",
     "asar": true,
@@ -83,6 +98,7 @@
       }
     ],
     "mac": {
+      "sign": "scripts/sign-mac.js",
       "hardenedRuntime": true,
       "entitlements": "desktop/build/entitlements.mac.plist",
       "entitlementsInherit": "desktop/build/entitlements.mac.plist",
@@ -93,7 +109,8 @@
       "target": [
         "zip"
       ],
-      "artifactName": "integral-one-${version}-mac-${arch}.${ext}"
+      "artifactName": "integral-one-${version}-mac-${arch}.${ext}",
+      "minimumSystemVersion": "14.0"
     },
     "win": {
       "target": [
@@ -136,5 +153,8 @@
   },
   "engines": {
     "node": ">=22.13 <23 || >=24"
+  },
+  "overrides": {
+    "global-agent": "4.1.3"
   }
 }

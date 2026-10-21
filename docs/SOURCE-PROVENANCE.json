@@ -26,10 +26,10 @@
     "icons/mac/integral-light.png": "f6f5943535fa392b2d3b040372bcc84ffed26b177236e31329659cdb287ed416"
   },
   "shared_implementation": "Apache @integral/desktop-host source and contract tests maintained in Integral One packages/desktop-host; extracted from the preserved Core development snapshot",
-  "new_product_entrypoint": "Product-owned composition; generic host and runtime remain inventoried Core dependencies.",
+  "new_product_entrypoint": "Product-owned composition; One maintains the neutral desktop host and consumes an inventoried, pinned Core engine release.",
   "composition_helper_refresh": {
     "source": "integral-core scripts/distribution.py",
-    "status": "published in Core draft PR 153; review pending",
+    "status": "Published in Core v0.1.1rc28",
     "change": "Canonical POSIX source inventory paths and protected host session interface; frontend changes recorded separately in runtime_composition_candidate",
     "sha256": "06168149c509950bec0b004b8fc905f558ddfba50c41450329f759f806c9c428"
   },
@@ -37,13 +37,15 @@
     "date": "2026-10-18",
     "from": "integral-core packages/desktop-host",
     "to": "integral-one packages/desktop-host",
-    "version": "0.1.7-dev.3",
-    "behavior": "source ownership transfer plus installed CLI and running API checks for runtime v1; native permission/session boundaries, Apache notices and data identity retained"
+    "version": "0.1.7-dev.4",
+    "behavior": "source ownership transfer plus installed CLI and running API checks for runtime v1; native permission/session boundaries, Apache notices and data identity retained",
+    "previous_version": "0.1.7-dev.3",
+    "changes": "Native Help menu, post-boot hook and verified owned-runtime shutdown for consent-based updates; source maintained in One."
   },
   "runtime_composition_candidate": {
     "date": "2026-10-18",
     "base_commit": "40f29395ccd6e77d69a710c8902dbfe4eca89249",
-    "status": "rebased development candidate; independent runtime-composition draft review required",
+    "status": "Historical development composition; superseded by released_core below",
     "contract_version": 1,
     "presets": [
       "local",
@@ -55,13 +57,33 @@
     "source_commit": "eebaa74aeb6e53d009b65dd5ef11c623a678b9bc"
   },
   "released_core": {
-    "version": "0.1.1rc23",
-    "source_commit": "42c9d84f0ce74bd9ae4383114d6dc3d92c0c0c54",
-    "wheel_sha256": "0434e2cf0f93e1a0e65142b990a62781ff916be64877936f75de4269c7a94930",
-    "publication_run": "https://github.com/V75inc/integral-core/actions/runs/39188373262",
-    "source_ci": "https://github.com/V75inc/integral-core/actions/runs/39186575232",
-    "packaged_python_files_match_source": 764,
+    "version": "0.1.1rc29",
+    "source_commit": "818542ef29390f4350253808668cb4ab13a1334e",
+    "wheel_sha256": "73df3b958043e0146fbdaa3d6622f2a629dac38037c3ea63b082a9545e145c85",
+    "packaged_python_files_match_source": 781,
     "original_license_and_notice_match": true,
-    "data_migration": false
+    "publication_index": "https://test.pypi.org/project/integral-core/0.1.1rc29/",
+    "ui_source_tree_sha256": "0250fd2a58ae34d870e52612028d2d3afa83f3409c820aff9cd8bea40f3ad19c",
+    "qualification": "Local macOS ARM build, exact-source UI tests, packaged startup and rc28-store upgrade/settings/cold-restart checks passed. Native PR CI, Developer ID/notarization, signed GUI update and release approval remain separate.",
+    "consumed_at": "2026-10-21",
+    "source_ci": "https://github.com/V75inc/integral-core/actions/runs/39626017941",
+    "publication_run": "https://github.com/V75inc/integral-core/actions/runs/39633195204",
+    "database_engine_change": false,
+    "existing_installation_upgrade": "rc28 to rc29 synthetic store: backup, record, installation keys, account binding and settings retained through cold restart"
+  },
+  "previous_released_core": {
+    "source_commit": "5d0f60553764c1350362e35be002a922064fc400",
+    "packaged_python_files_match_source": 776,
+    "original_license_and_notice_match": true,
+    "version": "0.1.1rc28",
+    "wheel_sha256": "6c9574d97f4e7957ada68d552f8bcdd557e2b29ebfb4df4408405285ab99c3b2",
+    "publication_index": "https://test.pypi.org/project/integral-core/0.1.1rc28/",
+    "ui_source_tree_sha256": "f006ae1999602064ab05371943a351866ccc288328e391fbf4949ad728fcc517",
+    "qualification": "One consumer tests and latest local-settings upstream correction remain pending",
+    "publication_run": "https://github.com/V75inc/integral-core/actions/runs/39475065964",
+    "source_ci": "https://github.com/V75inc/integral-core/actions/runs/39468988783",
+    "production_pypi_version_available": false,
+    "database_engine_change": false,
+    "existing_installation_upgrade": "qualification pending"
   }
 }

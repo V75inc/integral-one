@@ -156,6 +156,7 @@ export interface App {
 
 /** Attached or library content package (entry types, tags, views). */
 export interface OperationalModelNode {
+  can_delete?: boolean;
   id: string;
   name: string;
   description?: string;

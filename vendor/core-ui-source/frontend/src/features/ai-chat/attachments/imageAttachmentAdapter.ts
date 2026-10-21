@@ -4,9 +4,9 @@
  * Accepts common image types, converts the picked File to a base64 data URL,
  * and emits an assistant-ui image message part. The runtime
  * (``useAIChatRuntime``) extracts these parts and forwards them to the backend
- * as ``images[]`` on the turn, where they become the vision reflex's
- * ``image_urls``. The runtime uses createImageAttachmentAdapter to also
- * upload the original and retain a real attachment identity for filing.
+ * for local preview. Native chat sends the persisted attachment identity;
+ * its harness loads verified pixels from storage rather than accepting a
+ * second inline copy. Legacy providers may still send ``images[]``.
  */
 import type {
   AttachmentAdapter,

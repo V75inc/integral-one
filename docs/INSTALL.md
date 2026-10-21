@@ -4,13 +4,15 @@
 
 The commands below are the prepared public installation path. **They are not live yet:** the first stable signed release, production signup configuration and bootstrap assets still need to be published. Until then, a missing-release message is expected; `npm run setup` is not the end-user installer.
 
-## macOS — Apple Silicon or Intel
+## macOS — Apple Silicon, macOS 14 or newer
 
 Open **Terminal**, paste this line and press Return:
 
 ```sh
 curl -fsSL https://github.com/V75inc/integral-one/releases/latest/download/install.sh | /bin/bash
 ```
+
+Intel Macs are not supported by the current Core runtime. See [platform readiness](PLATFORM-READINESS.md).
 
 The installer detects your Mac, downloads the matching application, checks the release checksum and Apple publisher/notarization acceptance, installs into **Applications in your home folder**, then opens Integral One. It does not use sudo or alter macOS security settings. Quit a running Integral One before updating.
 

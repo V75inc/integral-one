@@ -4,14 +4,18 @@ This is the maintainer counterpart to [Install Integral One](INSTALL.md). Prepar
 
 ## Deliverables
 
-The initial launch targets macOS. A stable GitHub release tagged `vX.Y.Z` must contain:
+The owner-selected initial launch targets Apple Silicon Macs on macOS 14+. Intel is blocked by Core runtime compatibility; see [platform readiness](PLATFORM-READINESS.md). A stable GitHub release tagged `vX.Y.Z` must contain:
 
 - `integral-one-X.Y.Z-mac-arm64.zip`
-- `integral-one-X.Y.Z-mac-x64.zip`
 - `install-manifest.json`, assembled from the verified platform parts
 - `install.sh`, `install.ps1`, LICENSE, NOTICE and LICENSING.md
+- `latest-mac.yml`, assembled from the verified Apple Silicon ZIP for the in-app updater
 
 Windows is optional: add `integral-one-X.Y.Z-win-x64.exe` and its manifest entry only after Windows signing and clean-machine qualification. A missing Windows certificate does not block the macOS release.
+
+After adding the updater requirement, signed Windows build preparation explicitly
+refuses release until its signing and update implementation/qualification are
+completed. The unsigned Windows development workflow remains available.
 
 Use exact filenames; the bootstrap rejects unexpected names/versions. Each manifest entry contains its SHA-256, byte length and verified Apple Team ID or Windows signing-certificate thumbprint. Downloads use the specific version from the manifest, so a later latest-release change cannot silently mix versions. Normal HTTPS, OS signatures and notarization acceptance remain required; no unsigned-install override exists.
 
@@ -22,18 +26,18 @@ The Node/Python/uv source prerequisites are build tools, not end-user requiremen
 1. Complete the [release gates](RELEASE-GATES.md), including production account configuration, dependency/component review and supported-platform qualification.
 2. Set matching **stable** `package.json.version` and `distribution.json.product_version`. Development suffixes cannot generate a public bootstrap manifest.
 3. Keep the app ID, user-data name and existing local identities/keys unchanged.
-4. Configure production accounts using a public configuration file. Resolve the Clerk-only simplification decision before release; the current client still requires the signed-receipt service for fresh signup. Never package service secret keys.
+4. Configure production accounts using a public configuration file. Use the reviewed configuration-v2 Clerk-only flow in [Clerk-only setup](CLERK-ONLY-SETUP.md). Retain legacy receipt verification origins/keys when upgrading existing receipts. Never package service secret keys.
 5. Review bootstrap scripts and release provenance together with the actual source being signed.
 
 ## 2. Prepare signing and the protected CI environment
 
-The local V75 Inc. Developer ID certificate is verified; Apple notarization credential validation is blocked by an agreement-status discrepancy between Apple's dashboards. Follow the [macOS signing walkthrough](MACOS-SIGNING.md). No Windows certificate is currently available; follow the [Windows signing walkthrough](WINDOWS-SIGNING.md) and leave Windows disabled in this signed workflow until the chosen provider adapter is qualified. A separate unsigned Windows development workflow permits native engineering independently of Apple.
+The local V75 Inc. Developer ID certificate is verified; Apple agreement and notarization-credential checks passed on 20 October; no Integral One candidate has yet been accepted by notarization. Follow the [macOS signing walkthrough](MACOS-SIGNING.md). No Windows certificate is currently available; follow the [Windows signing walkthrough](WINDOWS-SIGNING.md) and leave Windows disabled in this signed workflow until the chosen provider adapter is qualified. A separate unsigned Windows development workflow permits native engineering independently of Apple.
 
-Configure the GitHub environment **desktop-release** with required reviewers and appropriate branch restrictions **before** adding signing secrets. The manual workflow builds candidates only; it cannot publish a release.
+Configure the GitHub environment **desktop-release** with required reviewers and appropriate branch restrictions **before** adding signing secrets. The workflow checks this protection before entering signing jobs. It builds candidates automatically after Core pin changes land on main, or by explicit manual dispatch; it cannot publish a release.
 
 | Setting | Purpose |
 | --- | --- |
-| Variable `ONE_PRODUCTION_ACCOUNT_CONFIG` | Public JSON accepted by `desktop/accounts/config.js`; configured production Clerk/account origins and receipt verification keys |
+| Variable `ONE_PRODUCTION_ACCOUNT_CONFIG` | Public JSON accepted by `desktop/accounts/config.js`; configured production Clerk issuer/key, plus any retained legacy receipt verification keys |
 | Secrets `MACOS_CSC_LINK`, `MACOS_CSC_KEY_PASSWORD` | Developer ID Application certificate/P12 and its password |
 | Secrets `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD`, `APPLE_TEAM_ID` | Apple notarization credentials/team |
 | Legacy Windows fields `WINDOWS_CSC_LINK`, `WINDOWS_CSC_KEY_PASSWORD` | Do not populate as a new-cert enrollment recipe; the Windows provider adapter still needs qualification |
@@ -42,7 +46,7 @@ Clerk secret keys and receipt-signing private keys stay on the account service, 
 
 ## 3. Build candidates
 
-Manually dispatch **Signed installer candidate (manual)** with the stable version. Leave **include_windows** off for the initial macOS launch. It uses native macOS arm64 and Intel runners (plus Windows x64 only when explicitly enabled), builds the source, runs qualification, signs/notarizes, inspects packages and generates per-platform installer manifests. It then assembles a downloadable candidate bundle. No `contents: write` permission or GitHub Release publication step is present.
+Core pin changes on main automatically start **Signed installer candidate**, gated by the protected release environment. For a reviewed rerun, manually dispatch it with the exact stable source version. Leave **include_windows** off for the initial macOS launch. It uses a native macOS arm64 runner (plus Windows x64 only when explicitly enabled), builds the source, runs qualification, signs/notarizes, inspects packages and generates per-platform installer manifests. It then assembles a downloadable candidate bundle. No `contents: write` permission or GitHub Release publication step is present.
 
 Equivalent native commands after source setup:
 
@@ -51,15 +55,33 @@ npm run build:installers -- --signed
 npm run release:manifest
 ```
 
-Set the public account config and signing/notarization environment through the approved secret mechanism. `build:installers` without `--signed` is a development build; it cannot pass public manifest/signature checks.
+Set the public account config and signing/notarization environment through the approved secret mechanism. On the qualified local Mac, `APPLE_KEYCHAIN_PROFILE=integral-one-notary` uses the existing Keychain credential without exporting its password. Missing or incomplete notarization configuration now fails before signing. Run `npm run qualify:ui:dependencies` before the final runtime/package build and retain its emitted-file hashes with the unresolved tooling-advisory disposition. `build:installers` without `--signed` is a development build; it cannot pass public manifest/signature checks.
 
-After gathering the two Mac outputs (and the Windows output when enabled) into a directory:
+After gathering the Apple Silicon Mac output into a directory:
 
 ```sh
 node scripts/installer-manifest.js merge release-assets release-assets/install-manifest.json
 ```
 
-The merge requires both Mac architectures and rejects duplicate platforms, mixed versions and altered installer bytes. Windows is optional. Include the reviewed bootstrap scripts and notices with those outputs.
+The merge requires the Apple Silicon Mac artifact and rejects Intel assets, duplicate platforms, mixed versions and altered installer bytes. Include the reviewed bootstrap scripts and notices with those outputs.
+
+The native signing hook refreshes the bundled launcher's hash after its child
+signature and before the outer app resource seal. The immutable Core wheel hash,
+launcher signature, final app seal and packaged runtime are all checked. Ordinary
+macOS CI reproduces this ordering with ad hoc signing; Developer ID notarization
+and clean-machine acceptance remain release checks.
+
+Signed builds also run `node scripts/qualify-upgrade.js resources/core
+--require-settings` before signing, with signing credentials removed from the
+runtime child's environment. The rc28 negative control failed this journey on HTTP 403 settings writes.
+The published rc29 pin includes the correction; the exact composed candidate
+must pass the complete journey before signing. See [Core publication updates](CORE-RELEASE-UPDATES.md).
+
+Then run `node scripts/update-metadata.js release-assets` to generate the
+Mac update feed from those verified artifacts. Include it with the matching ZIPs;
+never overwrite it with a runner-specific YAML. Signed Mac preparation enables the
+updater; development candidates keep it disabled. See [auto-updates](AUTO-UPDATES.md)
+for opt-in checks, download/restart approvals and required two-version native QA.
 
 ## 4. Qualify the real installation path
 

@@ -16,6 +16,7 @@ import {
   trackViewsApi,
   operationalModelsApi
 } from '../../api';
+import { errorMessageFromAxios } from '../../api/helpers';
 import { Button, KebabMenu, LINE_ICON_STROKE } from '../ui';
 import { useConfirm } from '../../context/ConfirmContext';
 import { useToast } from '../../context/ToastContext';
@@ -78,6 +79,7 @@ export function TrackConfigPanel({ trackId, canEdit }: TrackConfigPanelProps) {
 
   // New item form state
   const [newTag, setNewTag] = useState('');
+  const [addingTag, setAddingTag] = useState(false);
   const [newTagColor, setNewTagColor] = useState('#6B7280');
   const [newType, setNewType] = useState('');
   const [createViewOpen, setCreateViewOpen] = useState(false);
@@ -110,11 +112,21 @@ export function TrackConfigPanel({ trackId, canEdit }: TrackConfigPanelProps) {
   };
 
   const addTag = async () => {
-    if (!newTag.trim()) return;
+    const name = newTag.trim();
+    if (!name || addingTag) return;
+    if (Array.from(name).length > 80) {
+      showToast('Tag names must be 80 characters or fewer.', 'error');
+      return;
+    }
+    if (tags.some(tag => tag.name.trim().toLocaleLowerCase() === name.toLocaleLowerCase())) {
+      showToast('A tag with this name already exists in this track.', 'error');
+      return;
+    }
+    setAddingTag(true);
     try {
       await tagsApi.create({
         track_id: trackId,
-        name: newTag.trim(),
+        name,
         color: newTagColor
       });
       setNewTag('');
@@ -123,11 +135,9 @@ export function TrackConfigPanel({ trackId, canEdit }: TrackConfigPanelProps) {
       });
       showToast('Tag created', 'success');
     } catch (e: unknown) {
-      showToast(
-        (e as { response?: { data?: { detail?: string } } })?.response?.data
-          ?.detail || 'Failed',
-        'error'
-      );
+      showToast(errorMessageFromAxios(e, 'Could not create the tag. Please try again.'), 'error');
+    } finally {
+      setAddingTag(false);
     }
   };
 
@@ -317,7 +327,7 @@ export function TrackConfigPanel({ trackId, canEdit }: TrackConfigPanelProps) {
               onChange={e => setNewTagColor(e.target.value)}
               aria-label="Tag color"
             />
-            <Button size="sm" variant="outline" onClick={addTag} className="self-stretch">
+            <Button size="sm" variant="outline" disabled={addingTag || !newTag.trim()} onClick={addTag} className="self-stretch">
               <Plus size={12} /> Add
             </Button>
           </div>

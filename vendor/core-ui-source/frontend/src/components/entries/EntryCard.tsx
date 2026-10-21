@@ -2,7 +2,6 @@ import { useState, useEffect, useMemo, useRef, useCallback, memo } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
-  MoreHorizontal,
   Trash2,
   Edit2,
   ChevronDown,
@@ -18,7 +17,7 @@ import {
   ThumbsUp
 } from 'lucide-react';
 import { EntryMetaFields } from './EntryMetaFields';
-import { tagColorStyle } from '../../utils/tagColor';
+import { TagChip } from '../../ui';
 import { ProvenanceBadge } from './ProvenanceBadge';
 import { isSamePrincipal, formatStackedDateTime, entryTypeColor } from '../../utils';
 import { useCanEditEntry } from '../../utils/entryEditRights';
@@ -43,7 +42,7 @@ import { useScope } from '../../context/ScopeContext';
 import { publicSharingApi } from '../../api/sharing';
 import { useConfirm } from '../../context/ConfirmContext';
 import { useToast } from '../../context/ToastContext';
-import { AuthedImage, Avatar, LINE_ICON_STROKE, MarkdownContent, Pill } from '../ui';
+import { AuthedImage, Avatar, KebabMenu, type KebabMenuItem, LINE_ICON_STROKE, MarkdownContent, Pill } from '../ui';
 
 /** Entry-type → Pill variant mapping. Most types fall through to
  *  neutral (gray); a handful of semantic standouts adopt brand or
@@ -116,7 +115,6 @@ function EntryCardInner({
   // restore the optimistically-removed row without depending on the
   // page wiring an extra `onDeleteFailed` prop down to every card.
   const queryClient = useQueryClient();
-  const [showMenu, setShowMenu] = useState(false);
   const [expanded, setExpanded] = useState(false);
   const [openAttachmentId, setOpenAttachmentId] = useState<string | null>(null);
 
@@ -187,7 +185,6 @@ function EntryCardInner({
     (entry.author_id ? `Member ${entry.author_id.slice(-6)}` : 'Unknown');
 
   const handleDelete = async () => {
-    setShowMenu(false);
     const ok = await confirm({
       title: 'Delete post',
       message: entry.title?.trim()
@@ -250,26 +247,6 @@ function EntryCardInner({
   useEffect(() => {
     setExpanded(false);
   }, [entry.id]);
-
-  // Close owner-action menu on outside click or Escape. Both mobile and
-  // desktop menu instances mark themselves with [data-entry-menu] so a
-  // pointerdown that lands inside *either* wrapper is treated as in-menu.
-  useEffect(() => {
-    if (!showMenu) return;
-    const onPointerDown = (e: PointerEvent) => {
-      const t = e.target as HTMLElement | null;
-      if (!t || !t.closest('[data-entry-menu]')) setShowMenu(false);
-    };
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setShowMenu(false);
-    };
-    document.addEventListener('pointerdown', onPointerDown);
-    document.addEventListener('keydown', onKey);
-    return () => {
-      document.removeEventListener('pointerdown', onPointerDown);
-      document.removeEventListener('keydown', onKey);
-    };
-  }, [showMenu]);
 
   const rawLp = entry.custom_fields?._link_preview;
   const storedLinkPreview: StoredLinkPreview | null =
@@ -401,20 +378,23 @@ function EntryCardInner({
   const trackName = entry.track?.title || '';
   const stamp = formatStackedDateTime(entry.created_at);
 
+  const ownerActions: KebabMenuItem[] = [];
+  if (onEdit) ownerActions.push({
+    key: 'edit', label: 'Edit', icon: <Edit2 size={13} strokeWidth={LINE_ICON_STROKE} />,
+    onClick: () => onEdit(entry),
+  });
+  if (onDelete) ownerActions.push({
+    key: 'delete', label: 'Delete', danger: true,
+    icon: <Trash2 size={13} strokeWidth={LINE_ICON_STROKE} />,
+    onClick: () => { void handleDelete(); },
+  });
+
   return (
     <>
     <article
       tabIndex={0}
       role="button"
       aria-label={entry.title?.trim() || `Entry by ${authorName}`}
-      // `isolate` makes each article its own stacking context, so the
-      // owner-actions menu's `z-30` is local. Without an explicit
-      // z-index on the article itself, the next sibling card paints
-      // on top in document order — which means the menu visually
-      // lives behind the next entry and clicks on Edit/Delete fall
-      // through to that entry's onClick. When the menu is open we
-      // hoist this article above its siblings (z-40 beats the
-      // default 0) so the menu actually receives the click.
       className={
         "relative isolate grid gap-x-[20px] py-[34px] px-3 " +
         "grid-cols-[auto_minmax(0,1fr)] sm:grid-cols-[auto_minmax(0,1fr)_auto] " +
@@ -423,8 +403,7 @@ function EntryCardInner({
         "last:border-b-0 " +
         "cursor-pointer " +
         "group " +
-        "outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus-ring-color)] rounded-[var(--radius-input)] " +
-        (showMenu ? "z-40" : "")
+        "outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus-ring-color)] rounded-[var(--radius-input)] "
       }
       onClick={() => onOpen?.(entry)}
       onKeyDown={e => {
@@ -692,7 +671,7 @@ function EntryCardInner({
                         onTypeClick(slugEntryTypeName(entry.type));
                       }}
                       aria-pressed={isActive}
-                      className="inline-flex shrink-0 outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus-ring-color)] rounded-full"
+                      className="inline-flex shrink-0 outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus-ring-color)] rounded-[var(--radius-input)] transition-opacity hover:opacity-80"
                       title={
                         isActive
                           ? `Clear filter (currently: ${label})`
@@ -830,23 +809,14 @@ function EntryCardInner({
                       onTagClick?.(tag.id);
                     }}
                     aria-pressed={isActiveTag}
-                    className="inline-flex shrink-0 outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus-ring-color)] rounded-full"
+                    className="inline-flex shrink-0 outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus-ring-color)] rounded-[var(--radius-input)] transition-opacity hover:opacity-80"
                     title={
                       isActiveTag
                         ? `Clear tag filter (${label})`
                         : `Filter feed by ${label}`
                     }
                   >
-                    <Pill
-                      tone="descriptive"
-                      variant="neutral"
-                      style={tagColorStyle(tag.color)}
-                      className={
-                        isActiveTag ? 'ring-1 ring-[var(--text)]' : ''
-                      }
-                    >
-                      #{label}
-                    </Pill>
+                    <TagChip label={label} color={tag.color} selected={isActiveTag} />
                   </Link>
                 );
               })}
@@ -860,113 +830,14 @@ function EntryCardInner({
         <span>{stamp.dateLabel}</span>
         <span>{stamp.timeLabel}</span>
         {canEdit && (onEdit || onDelete) ? (
-          <div className="relative mt-1" data-entry-menu>
-            <button
-              type="button"
-              onClick={e => {
-                e.stopPropagation();
-                setShowMenu(s => !s);
-              }}
-              className="p-1.5 rounded-[var(--radius-input)] text-[var(--text-muted)] hover:text-[var(--text)] hover:bg-[var(--panel-2)] transition-colors duration-fast"
-              aria-expanded={showMenu}
-              aria-haspopup="menu"
-              aria-label="Post actions"
-            >
-              <MoreHorizontal size={16} strokeWidth={LINE_ICON_STROKE} />
-            </button>
-            {showMenu ? (
-              <div
-                role="menu"
-                className="absolute right-0 top-full mt-1 bg-[var(--panel)] border border-[var(--panel-border)] rounded-[var(--radius-card)] shadow-[var(--shadow-pop)] z-30 py-1 min-w-[130px] max-w-[calc(100vw-2rem)] animate-fade-in text-left"
-                onClick={e => e.stopPropagation()}
-              >
-                {onEdit ? (
-                  <button
-                    type="button"
-                    role="menuitem"
-                    onClick={e => {
-                      e.stopPropagation();
-                      setShowMenu(false);
-                      onEdit(entry);
-                    }}
-                    className="flex items-center gap-2 w-full px-3 py-2 text-sm hover:bg-[var(--panel-2)] text-[var(--text)]"
-                  >
-                    <Edit2 size={13} strokeWidth={LINE_ICON_STROKE} /> Edit
-                  </button>
-                ) : null}
-                {onDelete ? (
-                  <button
-                    type="button"
-                    role="menuitem"
-                    onClick={e => {
-                      e.stopPropagation();
-                      handleDelete();
-                    }}
-                    className="flex items-center gap-2 w-full px-3 py-2 text-sm text-[var(--danger-fg)] hover:bg-[var(--danger-bg)]"
-                  >
-                    <Trash2 size={13} strokeWidth={LINE_ICON_STROKE} /> Delete
-                  </button>
-                ) : null}
-              </div>
-            ) : null}
+          <div className="mt-1" onClick={e => e.stopPropagation()}>
+            <KebabMenu portal ariaLabel="Post actions" items={ownerActions} />
           </div>
         ) : null}
       </div>
-
-      {/* Mobile-only owner menu — date column is hidden on mobile, so the
-          desktop menu (above) is unreachable. Render an absolute-positioned
-          trigger in the article's top-right corner. Same showMenu state and
-          handlers; data-entry-menu marks both wrappers for click-outside. */}
       {canEdit && (onEdit || onDelete) ? (
-        <div className="absolute top-3 right-3 sm:hidden" data-entry-menu>
-          <button
-            type="button"
-            onClick={e => {
-              e.stopPropagation();
-              setShowMenu(s => !s);
-            }}
-            className="inline-flex items-center justify-center w-9 h-9 rounded-[var(--radius-input)] text-[var(--text-muted)] hover:text-[var(--text)] hover:bg-[var(--panel-2)] transition-colors duration-fast"
-            aria-expanded={showMenu}
-            aria-haspopup="menu"
-            aria-label="Post actions"
-          >
-            <MoreHorizontal size={16} strokeWidth={LINE_ICON_STROKE} />
-          </button>
-          {showMenu ? (
-            <div
-              role="menu"
-              className="absolute right-0 top-full mt-1 bg-[var(--panel)] border border-[var(--panel-border)] rounded-[var(--radius-card)] shadow-[var(--shadow-pop)] z-30 py-1 min-w-[130px] max-w-[calc(100vw-2rem)] animate-fade-in text-left"
-              onClick={e => e.stopPropagation()}
-            >
-              {onEdit ? (
-                <button
-                  type="button"
-                  role="menuitem"
-                  onClick={e => {
-                    e.stopPropagation();
-                    setShowMenu(false);
-                    onEdit(entry);
-                  }}
-                  className="flex items-center gap-2 w-full px-3 py-2 text-sm hover:bg-[var(--panel-2)] text-[var(--text)]"
-                >
-                  <Edit2 size={13} strokeWidth={LINE_ICON_STROKE} /> Edit
-                </button>
-              ) : null}
-              {onDelete ? (
-                <button
-                  type="button"
-                  role="menuitem"
-                  onClick={e => {
-                    e.stopPropagation();
-                    handleDelete();
-                  }}
-                  className="flex items-center gap-2 w-full px-3 py-2 text-sm text-[var(--danger-fg)] hover:bg-[var(--danger-bg)]"
-                >
-                  <Trash2 size={13} strokeWidth={LINE_ICON_STROKE} /> Delete
-                </button>
-              ) : null}
-            </div>
-          ) : null}
+        <div className="absolute top-3 right-3 sm:hidden" onClick={e => e.stopPropagation()}>
+          <KebabMenu portal ariaLabel="Post actions" items={ownerActions} />
         </div>
       ) : null}
 

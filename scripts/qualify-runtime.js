@@ -23,8 +23,7 @@ function runtimeDiagnostics(home) {
   }).join('\n');
 }
 
-async function qualifyRuntime() {
-  const resources = path.join(__dirname, '../resources');
+async function qualifyRuntime(resources = path.join(__dirname, '../resources')) {
   // Explicit empty overrides force the integrity-pinned bundled artifacts.
   const command = invocation({resources, command: '', prefix: ''});
   const home = fs.mkdtempSync(path.join(os.tmpdir(), 'integral-one-runtime-'));
@@ -40,13 +39,14 @@ async function qualifyRuntime() {
     throw error;
   } finally {
     // Stop before removal. If stopping fails, retain the synthetic home for recovery.
-    await runCli(command, ['stop', '--home', home, '--json']);
+    const stopped = await runCli(command, ['stop', '--home', home, '--json']);
+    if (stopped.state !== 'stopped') throw new Error('Runtime shutdown was not confirmed; synthetic home retained.');
     fs.rmSync(home, {recursive: true, force: true});
   }
 }
 
-module.exports = {runtimeDiagnostics};
-if (require.main === module) qualifyRuntime().catch(error => {
+module.exports = {runtimeDiagnostics, qualifyRuntime};
+if (require.main === module) qualifyRuntime(process.argv[2] ? path.resolve(process.argv[2]) : undefined).catch(error => {
   console.error(error.message);
   process.exitCode = 1;
 });

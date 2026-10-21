@@ -16,14 +16,24 @@ vi.mock('../../../context/ToastContext', () => ({
   useToast: () => ({ showToast }),
 }));
 
+beforeEach(() => {
+  vi.resetAllMocks();
+  vi.mocked(modelCredentialsApi.get).mockResolvedValue(null);
+  vi.mocked(modelCredentialsApi.upsert).mockImplementation(async data => ({
+    provider: data.provider,
+    model: data.model,
+    base_url: data.base_url,
+    key_fingerprint: data.clear_api_key ? '' : 'saved-key',
+    is_active: true,
+  }));
+});
+
 function showSettings() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   render(<QueryClientProvider client={client}><ModelCredentialsSection /></QueryClientProvider>);
 }
 
 describe('native model credentials', () => {
-  beforeEach(() => { vi.clearAllMocks(); vi.mocked(modelCredentialsApi.get).mockResolvedValue(null); });
-
   it('shows the primary model and voice input without retired gear controls', async () => {
     showSettings();
     await screen.findByRole('button', { name: 'Save' });
@@ -54,7 +64,6 @@ describe('native model credentials', () => {
 
 describe('custom endpoint credential boundaries', () => {
   beforeEach(() => {
-    vi.clearAllMocks();
     vi.mocked(modelCredentialsApi.get).mockResolvedValue({
       provider: 'custom_openai', model: 'my-model', base_url: 'https://first.example/v1',
       key_fingerprint: 'saved-key', is_active: true,
@@ -80,7 +89,9 @@ describe('custom endpoint credential boundaries', () => {
 
   it('retains the existing key only when the endpoint is unchanged', async () => {
     showSettings();
-    await screen.findByLabelText('Custom endpoint base URL');
+    const base = await screen.findByLabelText('Custom endpoint base URL');
+    await waitFor(() => expect(base).toHaveValue('https://first.example/v1'));
+    expect(screen.getByLabelText('Chat model provider')).toHaveValue('custom_openai');
     expect(screen.getByRole('button', { name: 'Test connection' })).toBeDisabled();
     fireEvent.click(screen.getByRole('button', { name: 'Save' }));
     await waitFor(() => expect(modelCredentialsApi.upsert).toHaveBeenCalledOnce());

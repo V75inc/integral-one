@@ -64,7 +64,7 @@ export function OnboardingStrip() {
           type="button"
           onClick={handleDismiss}
           aria-label="Ok"
-          className="min-h-10 shrink-0"
+          className="min-h-10 shrink-0 self-center"
         >
           Ok
         </Button>

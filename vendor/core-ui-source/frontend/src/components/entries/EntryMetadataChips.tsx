@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom';
 import { Pill } from '../ui/Pill';
+import { TagChip } from '../../ui';
 import type { PillVariant } from '../ui';
 import type { Entry, Tag } from '../../types';
 import { appPath } from '../../utils/resourcePaths';
@@ -45,15 +46,6 @@ function tagChipLabel(tag: Tag): string {
   return 'Tag';
 }
 
-function tagChipStyle(tag: Tag) {
-  return tag.color
-    ? {
-        borderColor: `${tag.color}55`,
-        backgroundColor: `${tag.color}18`,
-        color: tag.color,
-      }
-    : undefined;
-}
 
 interface EntryMetadataChipsProps {
   entry: Entry;
@@ -93,12 +85,11 @@ export function EntryMetadataChips({
         <Link
           key={tag.id}
           to={`/feed?tag=${encodeURIComponent(tag.id)}`}
-          className={chipLinkClass}
-          style={tagChipStyle(tag)}
+          className="inline-flex min-w-0 max-w-full rounded-[var(--radius-input)] transition-opacity hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus-ring-color)]"
           onClick={e => e.stopPropagation()}
           title={`Filter feed by ${tagChipLabel(tag)}`}
         >
-          #{tagChipLabel(tag)}
+          <TagChip label={tagChipLabel(tag)} color={tag.color} />
         </Link>
       ))}
     </div>

@@ -31,6 +31,9 @@ export type ThreadSessionState = {
   abortController: AbortController | null;
   lastLoadedAt: number;
   activeWorkItemId?: string | null;
+  cancellation?: "pending" | "failed" | null;
+  cancellationTarget?: import("../../api/aiChat").ChatCancellationTarget | null;
+  cancellationRequestId?: string | null;
 };
 
 export function createEmptySession(

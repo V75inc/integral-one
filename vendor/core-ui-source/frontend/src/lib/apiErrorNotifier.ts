@@ -34,7 +34,7 @@ function classify(err: unknown, contextLabel?: string): {
   const codeFromResp = (ax?.response?.data as { error_code?: string } | undefined)?.error_code;
   const ctx = contextLabel ? ` (${contextLabel.toLowerCase()})` : '';
 
-  if (status === 401 || status === 403) {
+  if (ax?.code === 'ERR_CANCELED' || status === 401 || status === 403) {
     return { title: '', body: '', severity: 'warning', skip: true };
   }
 

@@ -7,6 +7,7 @@ const root = path.join(__dirname,'..');
 const pins = verifyDistribution(root);
 const baseWheel = path.join(root,pins.core.base_wheel);
 const ui = path.join(root,'.build/frontend/dist');
+require('./verify-ui-styles').verifyUIStyles(ui);
 const buildManifest = JSON.parse(fs.readFileSync(path.join(root,'.build/frontend/distribution-build.json'),'utf8'));
 if (buildManifest.product !== 'integral-one' || buildManifest.core_source_tree_sha256 !== JSON.parse(fs.readFileSync(path.join(root,'vendor/core-ui-source/core-source.json'),'utf8')).source_tree_sha256) throw new Error('UI build came from a different source snapshot.');
 const overlayRoot = path.join(root, 'frontend/host');
@@ -24,6 +25,6 @@ execFileSync(process.env.PYTHON || 'python3',[path.join(__dirname,'compose-runti
 const executable = process.platform === 'win32' ? 'uv.exe' : 'uv';
 const uv = process.env.INTEGRAL_UV_BINARY || (process.env.PATH || '').split(path.delimiter).map(folder=>path.join(folder,executable)).find(file=>fs.existsSync(file));
 if (!uv) throw new Error('Install uv, or set INTEGRAL_UV_BINARY to the reviewed platform binary.');
-if (!/^uv 0\.11\.3(?:\s|$)/.test(execFileSync(uv, ['--version'], {encoding:'utf8'}))) throw new Error('Use the reviewed uv 0.11.3 runtime; its license notice is shipped with this distribution.');
+if (!/^uv 0\.13\.4(?:\s|$)/.test(execFileSync(uv, ['--version'], {encoding:'utf8'}))) throw new Error('Use the reviewed uv 0.13.4 runtime; its license notice is shipped with this distribution.');
 require('@integral/desktop-host/bundle-runtime').bundleRuntime({...process.env,INTEGRAL_CORE_WHEEL:output,INTEGRAL_UV_BINARY:uv},{base:path.join(root,'resources/core')});
 require('./collect-notices');

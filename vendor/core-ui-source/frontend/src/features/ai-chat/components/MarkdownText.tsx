@@ -22,8 +22,37 @@ import {
 } from "@assistant-ui/react-markdown";
 import remarkGfm from "remark-gfm";
 import remarkBreaks from "remark-breaks";
-import { memo } from "react";
+import { Children, isValidElement, memo, type ReactNode } from "react";
 import { IntegralMarkdownLink } from "../../../components/ui/IntegralMarkdownLink";
+
+// Highlight a short invitation to reply, preserving its original Markdown.
+// Match only direct requests, not arbitrary mentions of confirmation in prose.
+function paragraphText(children: ReactNode): string {
+  return Children.toArray(children).map((child): string => {
+    if (typeof child === "string" || typeof child === "number") return String(child);
+    return isValidElement<{ children?: ReactNode }>(child)
+      ? paragraphText(child.props.children) : "";
+  }).join("");
+}
+
+function ReplyPromptParagraph({ children, ...props }: React.ComponentProps<"p">) {
+  const text = paragraphText(children).trim();
+  const isReplyPrompt = text.length <= 320 && (
+    /^(?:please\s+)?(?:confirm|choose|select|tell me|let me know)\b/i.test(text) ||
+    /^(?:would you like|do you want|can you confirm|could you confirm|which .+ would you|what would you like)\b.*\?$/i.test(text)
+  );
+  return (
+    <p
+      {...props}
+      data-reply-prompt={isReplyPrompt || undefined}
+      className={isReplyPrompt
+        ? "my-3 rounded-r-md border-l-2 border-[var(--cta-bg)] bg-[var(--panel-2)] px-3 py-2 text-sm font-semibold leading-relaxed text-[var(--text)]"
+        : "mb-2 last:mb-0 text-sm leading-relaxed text-[var(--text)]"}
+    >
+      {children}
+    </p>
+  );
+}
 
 const MarkdownTextImpl = () => {
   const running = useAuiState((s) => s.message.status?.type === "running");
@@ -86,12 +115,7 @@ const defaultComponents = memoizeMarkdownComponents({
       {...props}
     />
   ),
-  p: ({ ...props }) => (
-    <p
-      className="mb-2 last:mb-0 text-sm leading-relaxed text-[var(--text)]"
-      {...props}
-    />
-  ),
+  p: ReplyPromptParagraph,
   a: ({ children, href, ...props }) => (
     <IntegralMarkdownLink href={href} {...props}>
       {children}

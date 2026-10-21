@@ -10,7 +10,7 @@
  */
 import React from 'react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { act, renderHook, waitFor, cleanup } from '@testing-library/react';
+import { act, render, renderHook, waitFor, cleanup } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 vi.mock('../../api/userTimezone', () => ({ userTimezoneApi: { set: vi.fn(async () => ({ timezone: 'America/Guyana', configured: true })) } }));
@@ -37,11 +37,13 @@ vi.mock('../../api/session', () => ({
 vi.mock('../../features/ai-chat/threadSessionStore', () => ({
   resetThreadSessions: vi.fn(),
 }));
+vi.mock('../../components/system/SessionRenewalDialog', () => ({ SessionRenewalDialog: () => null }));
 
 import { userTimezoneApi } from '../../api/userTimezone';
 import { authApi } from '../../api';
 import { clearTokens, redirectToLogin } from '../../api/session';
 import { AuthProvider, useAuth } from '../AuthContext';
+import { getSessionRecovery, requestSessionRecovery } from '../../api/sessionRecovery';
 
 const cachedUser = { id: 'u1', email: 'a@b.c', display_name: 'Ada' };
 
@@ -69,6 +71,20 @@ afterEach(() => {
 });
 
 describe('AuthContext boot hydration', () => {
+  it('registers recovery before authenticated child polling effects', async () => {
+    vi.mocked(authApi.me).mockImplementation(() => new Promise(() => {}));
+    let accepted: boolean | undefined;
+    function PollingChild() {
+      const { user } = useAuth();
+      React.useEffect(() => {
+        if (user) accepted = requestSessionRecovery('renew');
+      }, [user]);
+      return null;
+    }
+    render(<PollingChild />, { wrapper });
+    await waitFor(() => expect(accepted).toBe(true));
+    expect(getSessionRecovery()).toBe('renew');
+  });
   it('keeps the cached user when /auth/me fails for a non-auth reason', async () => {
     vi.mocked(authApi.me).mockRejectedValue(httpError(503));
 

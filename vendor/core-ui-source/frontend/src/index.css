@@ -70,6 +70,9 @@
   --bg: #fafafa;
   --panel: #ffffff;
   --panel-2: #f4f4f6;
+  --toast-bg: #29292e;
+  --toast-fg: #fafafa;
+  --toast-border: #51515a;
   /* Structural sections: navigation and both assistant layouts share a
      soft gray canvas; cards and input surfaces stay on --panel. */
   --section-bg: var(--panel-2);
@@ -264,6 +267,9 @@
   --bg: #1a1a1a;
   --panel: #212121;
   --panel-2: #272727;
+  --toast-bg: #f4f4f6;
+  --toast-fg: #202024;
+  --toast-border: #bcbcc5;
   --section-bg: var(--bg);
   --panel-border: #2d2d2d;
   /* Matches the reference's `--line-2`. Used for entry-row hairlines
@@ -936,6 +942,15 @@
     overflow-y: auto;
   }
 
+  .taggable-composer-input.taggable-composer-native {
+    color: var(--text);
+    -webkit-text-fill-color: var(--text);
+  }
+  .taggable-composer-input.taggable-composer-native::selection {
+    color: var(--text);
+    -webkit-text-fill-color: var(--text);
+  }
+
   /* Fix text selection appearance. The textarea text is transparent
      (-webkit-text-fill-color), so we give the selection a visible tinted
      background that matches the brand accent. The color stays transparent
@@ -1561,4 +1576,23 @@
    their neutral theme colors in both modes. */
 .home-overview section.home-widget {
   border-top: 3px solid var(--brand-accent);
+}
+
+/* Native session lock keeps every portal inert while the working view remains
+   recognizable through a translucent blur. Inputs stay mounted during renewal. */
+.session-renewal-dialog {
+  width: min(var(--dialog-w-confirm), calc(100vw - 2rem));
+  max-height: calc(100dvh - 2rem);
+  margin: auto;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-card);
+  background: var(--panel);
+  color: var(--text);
+  overflow-y: auto;
+}
+.session-renewal-dialog::backdrop {
+  background: color-mix(in srgb, var(--bg) 30%, transparent);
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
 }

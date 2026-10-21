@@ -7,32 +7,43 @@ export function isInternalAppHref(href: string | undefined): boolean {
   return internalAppHref(href) !== undefined;
 }
 
-/**
- * Return a local router target for Core paths. Markdown tooling normalizes a
- * relative link against ``https://integral.ai`` before this component sees it;
- * retaining that host would send a self-hosted user away from their active
- * workspace. Treat the canonical public host as another spelling of an
- * in-app path, while leaving every other external host external.
- */
+function typedResourcePath(path: string): string {
+  const match = /^\/(n\.(Track|Entry|WorkspaceApp)\.[A-Za-z0-9_-]+)([?#].*)?$/.exec(path);
+  if (!match) return path;
+  const routes: Record<string, string> = { Track: 'tracks', Entry: 'entries', WorkspaceApp: 'apps' };
+  return `/${routes[match[2]]}/${match[1]}${match[3] ?? ''}`;
+}
+
+/** Keep current-origin and recognized placeholder record links in the router. */
 function internalAppHref(href: string | undefined): string | undefined {
   if (!isSafeHref(href)) return undefined;
   const trimmed = href!.trim();
-  // Models sometimes add a second leading slash to a Core record path.
-  // Repair only typed Core IDs; ordinary protocol-relative hosts stay external.
-  if (/^\/\/(?:entries\/n\.Entry\.|tracks\/n\.Track\.|apps\/n\.WorkspaceApp\.)[^/\s?#]+(?:[?#].*)?$/.test(trimmed)) {
+  const typedRecordPath = /^\/(?:entries\/n\.Entry\.|tracks\/n\.Track\.|apps\/n\.WorkspaceApp\.)[^/\s?#]+$/;
+  // Repair model-added double slashes only for typed record paths. Other
+  // protocol-relative URLs still refer to external hosts.
+  if (trimmed.startsWith('//') && typedRecordPath.test(trimmed.slice(1).split(/[?#]/, 1)[0])) {
     return trimmed.slice(1);
   }
-  if (trimmed.startsWith('/') && !trimmed.startsWith('//')) return trimmed;
+  if (trimmed.startsWith('/') && !trimmed.startsWith('//')) return typedResourcePath(trimmed);
 
   try {
-    const url = new URL(trimmed);
-    if (url.protocol === 'https:' && url.hostname === 'integral.ai') {
-      return `${url.pathname}${url.search}${url.hash}`;
+    const url = new URL(trimmed, typeof window === 'undefined' ? undefined : window.location.origin);
+    if (url.username || url.password) return undefined;
+    const localPath = `${url.pathname}${url.search}${url.hash}`;
+    if (localPath.startsWith('//')) return undefined;
+    if (typeof window !== 'undefined' && url.origin === window.location.origin) {
+      return typedResourcePath(localPath);
     }
+    // Historical answers used these placeholder hosts. Only known Core record
+    // routes can be repaired; unrelated websites and other installations stay
+    // external. Never infer authority from a resource ID in a link.
+    const placeholderOrigin = ['https://integral.app', 'https://integral.local', 'http://integral.local'].includes(url.origin);
+    if (placeholderOrigin && typedRecordPath.test(url.pathname)) return localPath;
+    // Preserve compatibility with the public host normalization used by older
+    // markdown clients, without accepting credentials or nonstandard ports.
+    if (url.origin === 'https://integral.ai') return localPath;
   } catch {
-    // isSafeHref already rejected malformed URLs. Keep this defensive guard
-    // so a future validator change cannot turn a malformed external link into
-    // an in-app navigation target.
+    // Leave malformed/external URLs to the safe external-link renderer.
   }
   return undefined;
 }
@@ -69,6 +80,7 @@ export function IntegralMarkdownLink({
         to={internalHref}
         className={className ?? linkClassName}
         {...props}
+        target={undefined}
         onClick={event => { event.stopPropagation(); onClick?.(event); }}
       >
         {children}

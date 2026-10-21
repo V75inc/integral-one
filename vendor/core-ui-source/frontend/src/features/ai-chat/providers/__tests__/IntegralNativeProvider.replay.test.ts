@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-vi.mock('../../../../api/session', () => ({ getAccessToken: () => 'token', refreshAccessToken: vi.fn() }));
+vi.mock('../../../../api/session', () => ({ checkSessionDeadline: vi.fn(), pauseForSessionRenewal: vi.fn(), redirectToLogin: vi.fn(), getAccessToken: () => 'token', refreshAccessToken: vi.fn() }));
 vi.mock('../../../../api/client', () => ({ getActiveScopeHeader: () => 'ws:workspace' }));
 vi.mock('../../../../api/aiChat', () => ({ aiChatApi: {} }));
 vi.mock('../../../../config', () => ({ getApiBaseURL: () => 'http://api.test' }));
@@ -60,5 +60,26 @@ describe('native committed response replay', () => {
     vi.stubGlobal('fetch', fetchMock);
     expect(await drain(createServerChatProvider({ id: 'test-provider', label: 'Test', capabilities: IntegralNativeProvider.capabilities }))).toEqual([{ type: 'text-delta', delta: 'Legacy' }]);
     expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+});
+
+
+describe('native visual upload admission', () => {
+  it('sends stored attachment references without a duplicate inline image', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(response(settled, true));
+    vi.stubGlobal('fetch', fetchMock);
+    for await (const _event of IntegralNativeProvider.streamTurn({threadId: 'thread', userMessageText: 'Describe this', images: [{data:'pixels',content_type:'image/png'}], attachmentIds:['stored-image'], abortSignal: new AbortController().signal})) { /* drain */ }
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body);
+    expect(body.attachment_ids).toEqual(['stored-image']);
+    expect(body.images).toBeUndefined();
+    expect(IntegralNativeProvider.capabilities.vision).toBe(true);
+  });
+  it('does not silently discard an image whose upload never completed', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const events = [];
+    for await (const event of IntegralNativeProvider.streamTurn({threadId: 'thread', userMessageText: 'Describe this', images: [{data:'pixels',content_type:'image/png'}], abortSignal: new AbortController().signal})) events.push(event);
+    expect(events).toEqual([expect.objectContaining({code:'image_upload_required'})]);
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });

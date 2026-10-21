@@ -7,7 +7,7 @@ import {
   useQueryClient,
   type InfiniteData,
 } from '@tanstack/react-query';
-import { appsApi, tracksApi, entriesApi } from '../api';
+import { appsApi, tracksApi, entriesApi, tagsApi } from '../api';
 import { feedApi, type FeedEntriesPage } from '../api/feed';
 import { notifyApiFailure } from '../components/system';
 import { EntryCard } from '../components/entries/EntryCard';
@@ -40,6 +40,7 @@ import {
   FEED_ENTRIES_QUERY_KEY_ROOT,
   invalidateFeedCaches,
   tracksListQueryKey,
+  tagsForWorkspaceQueryKey,
 } from '../queryKeys';
 import { useToast } from '../context/ToastContext';
 import { useAuth } from '../context/AuthContext';
@@ -164,10 +165,16 @@ export function FeedPage() {
     };
   }, [entryIdForDeepLink, navigate, setSearchParams, showToast]);
 
+  const { data: workspaceTags = [], isError: tagsError } = useQuery({
+    queryKey: tagsForWorkspaceQueryKey(workspaceId),
+    queryFn: () => tagsApi.list(),
+    enabled: workspaceId !== '__none__',
+  });
+
   const feedQueryKey = useMemo(
     () =>
-      [...feedEntriesQueryKeyRoot, workspaceId, appIdFromQuery, filterTrack] as const,
-    [workspaceId, appIdFromQuery, filterTrack]
+      [...feedEntriesQueryKeyRoot, workspaceId, appIdFromQuery, filterTrack, filterTag] as const,
+    [workspaceId, appIdFromQuery, filterTrack, filterTag]
   );
 
   const {
@@ -186,6 +193,7 @@ export function FeedPage() {
         ...(filterTrack ? { track_id: filterTrack } : {}),
         ...(appIdFromQuery ? { app_id: appIdFromQuery } : {}),
         ...(pageParam ? { cursor: pageParam } : {}),
+        ...(filterTag ? { tag_id: filterTag } : {}),
       }),
     getNextPageParam: last =>
       last.hasMore && last.nextCursor ? last.nextCursor : undefined,
@@ -730,6 +738,9 @@ export function FeedPage() {
                 typeOptions={typeOptions}
                 feedSearch={feedSearch}
                 setFeedSearch={setFeedSearch}
+                tagTracks={tracks}
+                tags={workspaceTags.filter(tag => !appIdFromQuery || tag.app_id === appIdFromQuery || tracks.some(track => track.id === tag.track_id))}
+                tagsError={tagsError}
                 filterTag={filterTag}
                 setFilterTag={setFilterTag}
                 filterAuthor={filterAuthor}

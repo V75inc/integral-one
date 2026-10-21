@@ -46,7 +46,7 @@ Complete the [Clerk and Cloudflare walkthrough](CLERK-CLOUDFLARE-SETUP.md), incl
 
 ## 5. Sign, qualify and publish
 
-Build both Apple Silicon and Intel candidates, confirm signatures and notarization acceptance, and qualify the actual clean-machine installation, signup and offline restart. Complete the other release gates, then publish the reviewed stable release assets and bootstrap together.
+Build the approved Apple Silicon candidate for macOS 14+, confirm signatures and notarization acceptance, and qualify the actual clean-machine installation, signup and offline restart. Complete the other release gates, then publish the reviewed stable release assets and bootstrap together.
 
 Only then does the one-line command become live:
 

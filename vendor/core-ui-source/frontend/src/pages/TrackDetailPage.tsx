@@ -1,6 +1,6 @@
 import { useDeployment } from '../hooks/useDeployment';
 import type { EntryCreateInput } from '../views/types';
-import { TrackTagFilters, entriesMatchingTags } from '../components/tracks/TrackTagFilters';
+import { entriesMatchingTags } from '../components/tracks/TrackTagFilters';
 /* patch:kanban-hire-intercept */
 import {
   useState,
@@ -116,6 +116,7 @@ export function TrackDetailPage() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const entryIdFromQuery = searchParams.get('entry')?.trim() || '';
+  const requestedViewId = searchParams.get('view_id')?.trim() || '';
   const dashboardFiltersParam = searchParams.get('dashboard_filters');
   const dashboardFilters = useMemo(() => {
     if (!dashboardFiltersParam) return undefined;
@@ -473,8 +474,8 @@ export function TrackDetailPage() {
     const visibleTypedViews = typedViews.filter(
       v => !v.hidden && getWidget(v.type)?.scope !== 'entry'
     );
-    let defaultView: SavedView | null = null;
-    if (defaultViewKeySlug) {
+    let defaultView: SavedView | null = visibleTypedViews.find(v => v.id === requestedViewId) || null;
+    if (!defaultView && defaultViewKeySlug) {
       defaultView =
         visibleTypedViews.find(v => {
           const raw = String(v.config?._manifest_view_key || '').trim();
@@ -490,7 +491,14 @@ export function TrackDetailPage() {
     if (defaultView) {
       setActiveView(defaultView);
     }
-  }, [trackMetaQuery.data, viewsQuery.data, feedFallbackView]);
+  }, [trackMetaQuery.data, viewsQuery.data, feedFallbackView, requestedViewId]);
+
+  // A tool may select another saved view without leaving this collection.
+  useEffect(() => {
+    if (!requestedViewId) return;
+    const requested = viewsQuery.data?.find(v => v.id === requestedViewId && !v.hidden && getWidget(v.type)?.scope !== 'entry');
+    if (requested) setActiveView(requested);
+  }, [requestedViewId, viewsQuery.data]);
 
   // Re-route activeView if the user hides it from the config panel — pick
   // up the latest copy from cache and swap to a visible default if hidden.
@@ -833,10 +841,11 @@ export function TrackDetailPage() {
         });
       }
     }
-    return entriesMatchingTags(list, filterTags);
+    return entriesMatchingTags(list, isPagesView ? [] : filterTags);
   }, [
     allEntries,
     filterTags,
+    isPagesView,
     filterType,
     trackSearch,
     semanticMode,
@@ -1157,6 +1166,21 @@ export function TrackDetailPage() {
     },
     [id, queryClient, invalidateTrackMeta, showToast]
   );
+
+  const handleKanbanColumnRemove = useCallback(async (viewId: string, columnKey: string) => {
+    if (!id) return;
+    try {
+      await trackViewsApi.removeKanbanColumn(viewId, columnKey);
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: viewsForTrackQueryKey(id) }),
+        queryClient.invalidateQueries({ queryKey: entryTypesForTrackQueryKey(id) }),
+        queryClient.invalidateQueries({ queryKey: trackAttachedOperationalModelQueryKey(id) }),
+      ]);
+    } catch (error) {
+      showToast(errorMessageFromAxios(error, 'Could not remove this column.'), 'error');
+      throw error;
+    }
+  }, [id, queryClient, showToast]);
 
   /** Append a kanban column key to profile select enums when ``group_by``
    *  targets a schema field (e.g. Pipeline ``stage``). */
@@ -1766,7 +1790,6 @@ export function TrackDetailPage() {
           track.collaborator_effective_total ?? collaboratorList.length
         }
         isOwner={isOwner}
-        canImprove={canViewTrackConfig}
         onOpenCollaborators={() => setCollaboratorsModalOpen(true)}
         onOpenShare={() => setShareModalOpen(true)}
         onOpenEdit={() => setShowEditModal(true)}
@@ -1774,7 +1797,6 @@ export function TrackDetailPage() {
         onDeleteTrack={handleDeleteTrack}
       />
 
-      <TrackTagFilters entries={allEntries} selected={filterTags} onChange={setFilterTags} />
       {dashboardFilters ? (
         <div className="flex items-center justify-between gap-3 px-4 py-2">
           <Text variant="meta" tone="muted" as="p">
@@ -1800,6 +1822,12 @@ export function TrackDetailPage() {
         onChangeView={next => {
           setLayoutTarget(null);
           setActiveView(next);
+          setSearchParams(prev => {
+            const params = new URLSearchParams(prev);
+            if (next?.id) params.set('view_id', next.id);
+            else params.delete('view_id');
+            return params;
+          }, { replace: true });
         }}
         onEditLayout={canEditViewLayout && id && activeView
           ? () => setLayoutTarget({ trackId: id, viewId: activeView.id })
@@ -1830,6 +1858,9 @@ export function TrackDetailPage() {
           filterType={filterType}
           setFilterType={setFilterType}
           entryTypeSlugs={entryTypeSlugs}
+          tagFilterEntries={allEntries}
+          filterTags={filterTags}
+          setFilterTags={setFilterTags}
           trackSearch={trackSearch}
           setTrackSearch={setTrackSearch}
           retrievalMode={retrievalMode}
@@ -1857,6 +1888,7 @@ export function TrackDetailPage() {
           onEntryPersist={handleEntryPersist}
           onViewUpdate={handleViewUpdate}
           onKanbanColumnEnumSync={handleKanbanColumnEnumSync}
+          onKanbanColumnRemove={handleKanbanColumnRemove}
           onEntryCreate={handleEntryCreate}
           entryTypes={(entryTypesQuery.data ?? []) as EntryTypeNode[]}
           trackEntryTypeFields={trackEntryTypeFields}

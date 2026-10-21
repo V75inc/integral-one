@@ -1,5 +1,7 @@
 # Integral Account — Clerk, One activation and Business continuity
 
+**21 October update:** [Clerk-only setup](CLERK-ONLY-SETUP.md) implements the proposed launch simplification in configuration v2. The service-backed flow below remains the legacy v1 contract. Production qualification is still required.
+
 **Adopted: Clerk.** This supersedes the earlier Cognito/custom account-stack
 recommendation. Keep the first launch small: social/email signup, verified email and distinct-account adoption counts. Signup completes automatically;
 there is no separate activation action. A durable local setup receipt supports offline use.

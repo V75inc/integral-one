@@ -6,7 +6,7 @@ Integral One composes pinned Integral Core artifacts with desktop branding, onbo
 
 - Node.js **24 LTS** and npm; `.nvmrc` selects 24 for nvm users.
 - Python **3.11+** for wheel composition. Set `PYTHON` if the executable is not `python3` (Windows: `python`).
-- [uv](https://docs.astral.sh/uv/getting-started/installation/) **0.11.3** on PATH, or `INTEGRAL_UV_BINARY` pointing to that reviewed executable for your platform. CI and runtime bundling pin this version; its MIT notice ships in the application.
+- [uv](https://docs.astral.sh/uv/getting-started/installation/) **0.13.4** on PATH, or `INTEGRAL_UV_BINARY` pointing to that reviewed executable for your platform. CI and runtime bundling pin this patched version; its MIT notice ships in the application.
 - Internet, build-tool disk space and a supported desktop OS. The current live native qualification is macOS arm64; Windows/Linux remain release gates.
 
 The packaged Core runtime selects Python 3.12 through uv. Installing Python for source composition does not eliminate first-run runtime downloads.

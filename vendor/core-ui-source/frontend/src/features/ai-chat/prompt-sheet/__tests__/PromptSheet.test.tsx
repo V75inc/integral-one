@@ -67,9 +67,13 @@ describe('PromptSheet staged-write approval', () => {
 
 it('retains execution failure and partial progress in the review card', () => {
   renderPendingWrite(true);
-  expect(screen.getByRole('alert')).toHaveTextContent('Approval recorded; application failed');
+  const summary = screen.getByRole('button', { name: "Your approval was saved, but this change couldn't be finished." });
+  expect(summary).toHaveAttribute('aria-expanded', 'false');
+  expect(screen.queryByText(/Validation failed/)).not.toBeInTheDocument();
+  fireEvent.click(summary);
+  expect(summary).toHaveAttribute('aria-expanded', 'true');
   expect(screen.getByRole('alert')).toHaveTextContent('Validation failed');
-  expect(screen.getByRole('alert')).toHaveTextContent('2 operations already applied');
+  expect(screen.getByRole('alert')).toHaveTextContent("2 changes were already saved. Trying again continues with what's left.");
   expect(screen.getByRole('button', { name: 'Retry application' })).toBeVisible();
   expect(screen.queryByRole('button', { name: 'Approve' })).toBeNull();
 });

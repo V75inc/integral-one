@@ -94,3 +94,31 @@ describe('approval queue refresh', () => {
     await act(async () => { resolveOld(openQueue('token-a')); }); expect(result.current.current?.id).toBe('token-b');
   });
 });
+
+it.each(['approveWrite', 'rejectWrite'] as const)('records a terminal card decision without a model run: %s', async (action) => {
+  vi.mocked(getStagingTokenState).mockResolvedValue({requires_strong_confirmation: false} as never);
+  vi.mocked(blessStagingToken).mockResolvedValue({ok: true, consumed: true, staged_change: {state: 'consumed'}, execute_result: {ok: true}} as never);
+  vi.mocked(revokeStagingToken).mockResolvedValue({ok: true});
+  vi.mocked(markPromptWrite).mockResolvedValue({...closedQueue, closed: true, resume_text: 'Review completed', resume_required: false} as never);
+  const {result} = renderHook(() => usePromptQueue()); await settled();
+  vi.mocked(getPromptQueue).mockResolvedValue(closedQueue as Awaited<ReturnType<typeof getPromptQueue>>);
+  await act(async () => { await result.current[action](); });
+  expect(result.current.open).toBe(false);
+  expect(state.append).toHaveBeenCalledOnce();
+  expect(state.startRun).not.toHaveBeenCalled();
+});
+
+it('refreshes again when a committed staging signal arrives during an earlier read', async () => {
+  let resolveOld!: (value: Awaited<ReturnType<typeof getPromptQueue>>) => void;
+  vi.mocked(getPromptQueue).mockImplementationOnce(() => new Promise(resolve => { resolveOld = resolve; }));
+  vi.mocked(getPromptQueue).mockResolvedValue(openQueue('committed-card'));
+  const {result} = renderHook(() => usePromptQueue()); await settled();
+  expect(getPromptQueue).toHaveBeenCalledOnce();
+  await act(async () => {
+    window.dispatchEvent(new CustomEvent('integral:prompt-queue-refresh', {detail: {threadId: 'thread-a'}}));
+    resolveOld(closedQueue as Awaited<ReturnType<typeof getPromptQueue>>);
+  });
+  await settled();
+  expect(getPromptQueue).toHaveBeenCalledTimes(2);
+  expect(result.current.current?.id).toBe('committed-card');
+});

@@ -1,3 +1,4 @@
+import { ExpandableChatError } from "../components/ExpandableChatError";
 import { useMemo, useState, type ReactNode } from 'react';
 import { diffBodyWithoutSummary } from '../staging/diffBodyWithoutSummary';
 import { ChevronLeft, ChevronRight, X } from 'lucide-react';
@@ -114,9 +115,9 @@ function PromptSheetView({
       )}
 
       {sheet.error ? (
-        <Text as="p" variant="body-sm" tone="danger" className="mt-2">
-          {sheet.error}
-        </Text>
+        <ExpandableChatError summary={<Text as="span" variant="body-sm" tone="danger">{sheet.error}</Text>} className="mt-2">
+          <Text as="p" variant="body-sm" tone="danger">{sheet.error}</Text>
+        </ExpandableChatError>
       ) : null}
 
       <div className="mt-3 flex items-center justify-between border-t border-[var(--border-subtle)] pt-2.5">
@@ -280,10 +281,14 @@ function WritePage({
         {item.summary || 'Staged change'}
       </Text>
       {item.last_error && (
-        <div role="alert"><Text as="p" variant="meta" tone="danger" className="mb-2">
-          Approval recorded; application failed. {item.last_error.message || 'The change could not be applied.'}
-          {item.completed_operations ? ` ${item.completed_operations} operations already applied; retry resumes the remaining changes.` : ''}
-        </Text></div>
+        <div role="alert" className="mb-2">
+          <ExpandableChatError summary={<Text as="span" variant="meta" tone="danger">Your approval was saved, but this change couldn't be finished.</Text>}>
+            <Text as="p" variant="meta" tone="danger">
+              {item.last_error.message || 'The change could not be applied.'}
+              {item.completed_operations ? ` ${item.completed_operations} changes were already saved. Trying again continues with what's left.` : ''}
+            </Text>
+          </ExpandableChatError>
+        </div>
       )}
       {human ? (
         <div className="mb-2 max-h-40 overflow-auto rounded border border-[var(--border-subtle)] p-2 text-xs">

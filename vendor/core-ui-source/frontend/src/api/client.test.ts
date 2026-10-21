@@ -3,15 +3,25 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('./session', () => ({
   getAccessToken: vi.fn(), getRefreshToken: vi.fn(),
-  isRefreshInFlight: () => false, markActivity: vi.fn(),
+  isRefreshInFlight: () => false, checkSessionDeadline: vi.fn(), pauseForSessionRenewal: vi.fn(),
   redirectToLogin: vi.fn(), refreshAccessToken: vi.fn(),
 }));
 vi.mock('../lib/apiErrorNotifier', () => ({ clearApiFailure: vi.fn(), notifyApiFailure: vi.fn() }));
 
 import apiClient from './client';
 import { refreshAccessToken } from './session';
+import { enableSessionRecovery, requestSessionRecovery } from './sessionRecovery';
 
-afterEach(() => vi.useRealTimers());
+afterEach(() => { vi.useRealTimers(); vi.clearAllMocks(); enableSessionRecovery(null); });
+
+it('does not send or replay mutations while the session is locked', async () => {
+  enableSessionRecovery('owner');
+  requestSessionRecovery('renew');
+  const adapter: AxiosAdapter = vi.fn();
+  await expect(apiClient.post('/tools/example', {}, { adapter })).rejects.toMatchObject({ code: 'ERR_CANCELED' });
+  expect(adapter).not.toHaveBeenCalled();
+  expect(refreshAccessToken).not.toHaveBeenCalled();
+});
 
 describe('API request deadlines', () => {
   it('passes a finite two-minute deadline to the transport and permits a delayed response', async () => {

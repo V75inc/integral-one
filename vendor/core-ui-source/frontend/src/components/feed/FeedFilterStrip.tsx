@@ -3,7 +3,7 @@ import { Filter, Search, X } from 'lucide-react';
 import { AppSelect } from '../ui/AppSelect';
 import { Button } from '../ui/Button';
 import { LINE_ICON_STROKE } from '../ui/IconWell';
-import type { App, Track } from '../../types';
+import type { App, Track, Tag } from '../../types';
 
 /**
  * FeedFilterStrip — horizontal filter bar that replaces the right-rail
@@ -32,6 +32,7 @@ interface FeedFilterStripProps {
   filterTrack: string;
   setFilterTrack: (id: string) => void;
   tracks: Track[];
+  tagTracks?: Track[];
   filterType: string;
   setFilterType: (t: string) => void;
   typeOptions: string[];
@@ -41,6 +42,8 @@ interface FeedFilterStripProps {
    *  EntryCard clicks rather than FilterStrip dropdowns). When provided,
    *  the strip's "Clear all" extends to wipe these too — otherwise the
    *  user would still see chips after clearing. */
+  tags?: Tag[];
+  tagsError?: boolean;
   filterTag?: string;
   setFilterTag?: (id: string) => void;
   filterAuthor?: string;
@@ -75,11 +78,14 @@ export function FeedFilterStrip({
   filterTrack,
   setFilterTrack,
   tracks,
+  tagTracks = tracks,
   filterType,
   setFilterType,
   typeOptions,
   feedSearch,
   setFeedSearch,
+  tags = [],
+  tagsError = false,
   filterTag = '',
   setFilterTag,
   filterAuthor = '',
@@ -151,7 +157,7 @@ export function FeedFilterStrip({
   );
 
   const granularActiveCount =
-    (appIdFromQuery ? 1 : 0) + (filterTrack ? 1 : 0) + (filterType ? 1 : 0);
+    (appIdFromQuery ? 1 : 0) + (filterTrack ? 1 : 0) + (filterType ? 1 : 0) + (filterTag ? 1 : 0);
   const anyActive = Boolean(
     feedSearch.trim() ||
       appIdFromQuery ||
@@ -349,13 +355,28 @@ export function FeedFilterStrip({
                   className="app-input text-sm py-2.5 w-full"
                 />
               </div>
-              {(appIdFromQuery || filterTrack || filterType) && (
+              {setFilterTag && <div className="space-y-1.5">
+                <label className="text-[11px] font-medium text-[var(--text-subtle)] uppercase tracking-[0.08em]">Tag</label>
+                <AppSelect value={filterTag} onValueChange={setFilterTag}
+                  aria-label="Filter feed by tag" className="app-input text-sm py-2.5 w-full"
+                  options={[
+                    { value: '', label: 'All tags' },
+                    ...tags.filter(tag => !filterTrack || tag.track_id === filterTrack || tag.id === filterTag).map(tag => ({
+                      value: tag.id,
+                      label: `${tag.name} · ${tagTracks.find(track => track.id === tag.track_id)?.title ?? apps.find(app => app.id === tag.app_id)?.name ?? (tag.track_id ? 'Track tag' : 'App tag')}`,
+                    })),
+                    ...(filterTag && !tags.some(tag => tag.id === filterTag) ? [{ value: filterTag, label: 'Selected tag' }] : []),
+                  ]} />
+                {tagsError && <p role="status" className="text-xs text-[var(--text-muted)]">Could not load tags. Reopen the page to retry.</p>}
+              </div>}
+              {(appIdFromQuery || filterTrack || filterType || filterTag) && (
                 <button
                   type="button"
                   onClick={() => {
                     setAppFilter('');
                     setFilterTrack('');
                     setFilterType('');
+                    setFilterTag?.('');
                   }}
                   className="text-xs text-[var(--link)] hover:text-[var(--link-hover)] hover:underline"
                 >

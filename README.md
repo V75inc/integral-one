@@ -9,7 +9,7 @@ Integral One brings Apps, records and an AI coworker together in a personal desk
 - **One Integral account.** Simple signup today, with shared account identity planned for Integral Business.
 - **Open source.** Apache-2.0, built on [Integral Core](https://github.com/V75inc/integral-core).
 
-> **Release status:** development preview. Signed public installers are not available yet. The macOS development candidate has passed the [documented installation and local-use checks](docs/FIRST-RELEASE-QUALIFICATION.md); production account setup and release qualification remain open.
+> **Release status:** development preview. Signed public installers are not available yet. The macOS development candidate has passed the [documented installation and local-use checks](docs/FIRST-RELEASE-QUALIFICATION.md); signed production-package and release qualification remain open.
 
 ## Get started
 
@@ -17,7 +17,7 @@ Integral One brings Apps, records and an AI coworker together in a personal desk
 
 **Prepared for the first stable release; not live until signed release assets are published.** No Git, Node or Python installation is required for this path.
 
-**macOS** — paste into Terminal:
+**Apple Silicon Macs, macOS 14+** — paste into Terminal:
 
 ```sh
 curl -fsSL https://github.com/V75inc/integral-one/releases/latest/download/install.sh | /bin/bash
@@ -29,7 +29,7 @@ curl -fsSL https://github.com/V75inc/integral-one/releases/latest/download/insta
 irm https://github.com/V75inc/integral-one/releases/latest/download/install.ps1 | iex
 ```
 
-The initial release targets macOS; a Windows certificate is not required to publish the Mac installers. The command downloads the matching signed release, verifies it, installs it for your OS account and opens Integral One. Complete signup in the app; first-run runtime setup is automatic. Apple/Windows security checks stay enabled. Linux and Windows ARM64 are not yet qualified.
+The initial release targets Apple Silicon Macs running macOS 14 or newer; Intel Mac support is blocked by Core runtime compatibility. See [platform readiness](docs/PLATFORM-READINESS.md). For this initial release, a Windows certificate is not required to publish the Mac installers. The command downloads the matching signed release, verifies it, installs it for your OS account and opens Integral One. Complete signup in the app; first-run runtime setup is automatic. Apple/Windows security checks stay enabled. Linux and Windows ARM64 are not yet qualified.
 
 See [installation and troubleshooting](docs/INSTALL.md), or download directly from [GitHub Releases](https://github.com/V75inc/integral-one/releases) when the signed release is available.
 

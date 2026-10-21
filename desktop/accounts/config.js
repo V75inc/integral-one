@@ -13,11 +13,16 @@ function validateConfig(config) {
     "activationUrl",
     "publicKeys",
     "issuer",
+    "setupMode",
   ]);
   if (!config || Object.keys(config).some((name) => !fields.has(name)))
     throw new Error("Only public account configuration fields are accepted.");
-  if (config.provider !== "clerk" || config.contractVersion !== 1)
+  if (config.provider !== "clerk" || ![1, 2].includes(config.contractVersion))
     throw new Error("Unsupported Integral Account configuration.");
+  if (config.contractVersion === 2 && config.setupMode !== "clerk")
+    throw new Error("Account configuration v2 requires Clerk-only setup.");
+  if (config.contractVersion === 1 && config.setupMode !== undefined)
+    throw new Error("Clerk-only setup requires account configuration v2.");
   if (typeof config.configured !== "boolean")
     throw new Error(
       "Account configuration must explicitly state whether it is configured.",
@@ -34,24 +39,42 @@ function validateConfig(config) {
   )
     .toString("utf8")
     .replace(/\$$/, "");
-  const clerk = new URL(config.clerkIssuer),
-    service = new URL(config.activationUrl);
+  const clerk = new URL(config.clerkIssuer);
+  if (
+    clerk.protocol !== "https:" ||
+    clerk.origin !== config.clerkIssuer ||
+    clerk.hostname !== host ||
+    clerk.username ||
+    clerk.password
+  )
+    throw new Error(
+      "The Clerk issuer must be the exact HTTPS origin matching its key.",
+    );
+  if (
+    config.environment === "production" &&
+    !config.publishableKey.startsWith("pk_live_")
+  )
+    throw new Error("Production builds require a production Clerk instance.");
+  // Legacy keys remain optional in Clerk-only builds, but must be retained when
+  // upgrading installations that already hold service-signed receipts.
+  if (config.contractVersion === 2 && !config.activationUrl) {
+    if (config.issuer || Object.keys(config.publicKeys || {}).length)
+      throw new Error(
+        "Legacy receipt keys require their original service origin.",
+      );
+    return { ...config, publicKeys: {} };
+  }
+  const service = new URL(config.activationUrl);
   const testLoopback =
     config.environment === "development" &&
     config.publishableKey.startsWith("pk_test_") &&
     service.protocol === "http:" &&
     service.hostname === "127.0.0.1";
   if (
-    config.environment === "production" &&
-    !config.publishableKey.startsWith("pk_live_")
-  )
-    throw new Error("Production builds require a production Clerk instance.");
-  if (
-    clerk.protocol !== "https:" ||
-    clerk.origin !== config.clerkIssuer ||
-    clerk.hostname !== host ||
     (service.protocol !== "https:" && !testLoopback) ||
-    service.origin !== config.activationUrl
+    service.origin !== config.activationUrl ||
+    service.username ||
+    service.password
   )
     throw new Error(
       "Account origins must be exact HTTPS origins and match the Clerk key.",

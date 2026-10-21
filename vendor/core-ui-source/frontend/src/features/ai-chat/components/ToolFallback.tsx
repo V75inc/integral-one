@@ -1,5 +1,9 @@
 "use client";
 
+import { ExpandableChatError } from "./ExpandableChatError";
+
+import { friendlyToolFailure, fullErrorMessage } from "./assistantMessagePresentation";
+
 // jvchat-faithful per-tool-call card, ported from jvchat's
 // `components/assistant-ui/tool-fallback.tsx` and retokenized to integral CSS
 // vars.
@@ -28,6 +32,7 @@ import { memo, useCallback, useRef, useState } from "react";
 import {
   AlertCircleIcon,
   CheckIcon,
+  StopCircleIcon,
   ChevronDownIcon,
   LoaderIcon,
   XCircleIcon,
@@ -137,8 +142,8 @@ function ToolFallbackTrigger({
   const isCancelled =
     status?.type === "incomplete" && status.reason === "cancelled";
 
-  const Icon = statusIconMap[statusType];
-  const label = isCancelled ? "Cancelled tool" : "Used tool";
+  const Icon = isCancelled ? StopCircleIcon : statusIconMap[statusType];
+  const label = isCancelled ? "Stopped step" : "Used tool";
 
   return (
     <CollapsibleTrigger
@@ -161,7 +166,7 @@ function ToolFallbackTrigger({
         data-slot="tool-fallback-trigger-label"
         className={cn(
           "aui-tool-fallback-trigger-label-wrapper relative inline-block grow text-start leading-none",
-          isCancelled && "text-[var(--text-muted)] line-through",
+          isCancelled && "text-[var(--text-muted)]",
         )}
       >
         <span>
@@ -225,7 +230,7 @@ function ToolFallbackArgs({
 }: React.ComponentProps<"div"> & {
   argsText?: string;
 }) {
-  if (!argsText) return null;
+  if (!argsText || argsText.trim() === "{}") return null;
 
   return (
     <div
@@ -248,6 +253,13 @@ function ToolFallbackResult({
   result?: unknown;
 }) {
   if (result === undefined) return null;
+  let parsed = result;
+  if (typeof result === "string") {
+    try { parsed = JSON.parse(result); } catch { /* Ordinary text result. */ }
+  }
+  if (parsed && typeof parsed === "object" && "error" in parsed && parsed.error) {
+    return <ExpandableChatError className="px-4 text-[var(--danger-fg)]" summary={friendlyToolFailure(parsed)}>{fullErrorMessage(parsed)}</ExpandableChatError>;
+  }
 
   return (
     <div
@@ -275,17 +287,10 @@ function ToolFallbackError({
 }) {
   if (status?.type !== "incomplete") return null;
 
-  const error = status.error;
-  const errorText = error
-    ? typeof error === "string"
-      ? error
-      : JSON.stringify(error)
-    : null;
-
-  if (!errorText) return null;
-
+  if (!status.error && status.reason !== "cancelled") return null;
   const isCancelled = status.reason === "cancelled";
-  const headerText = isCancelled ? "Cancelled reason:" : "Error:";
+  const errorText = isCancelled ? "You stopped this request." : friendlyToolFailure(status.error);
+  const headerText = isCancelled ? "Stopped" : "This step couldn't be finished";
 
   return (
     <div
@@ -293,12 +298,16 @@ function ToolFallbackError({
       className={cn("aui-tool-fallback-error px-4", className)}
       {...props}
     >
-      <p className="aui-tool-fallback-error-header text-[var(--danger-fg)] font-semibold">
+      <p className={cn("aui-tool-fallback-error-header font-semibold", isCancelled ? "text-[var(--text-muted)]" : "text-[var(--danger-fg)]")}>
         {headerText}
       </p>
-      <p className="aui-tool-fallback-error-reason whitespace-pre-wrap text-[var(--danger-fg)]">
-        {errorText}
-      </p>
+      {isCancelled ? (
+        <p className="aui-tool-fallback-error-reason whitespace-pre-wrap text-[var(--text-muted)]">{errorText}</p>
+      ) : (
+        <ExpandableChatError summary={errorText} className="aui-tool-fallback-error-reason text-[var(--danger-fg)]">
+          {fullErrorMessage(status.error)}
+        </ExpandableChatError>
+      )}
     </div>
   );
 }
@@ -363,11 +372,11 @@ const ToolFallbackImpl: ToolCallMessagePartComponent = (props) => {
       <ToolFallbackTrigger toolName={displayToolName} status={effectiveStatus} />
       <ToolFallbackContent>
         <ToolFallbackError status={effectiveStatus} />
-        <ToolFallbackArgs
+        {effectiveStatus?.type !== "incomplete" && <ToolFallbackArgs
           argsText={resolvedArgsText}
           className={cn(isCancelled && "opacity-60")}
-        />
-        {!isCancelled && <ToolFallbackResult result={result} />}
+        />}
+        {effectiveStatus?.type !== "incomplete" && <ToolFallbackResult result={result} />}
       </ToolFallbackContent>
     </ToolFallbackRoot>
   );

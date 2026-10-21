@@ -75,7 +75,6 @@ import {
 } from './EntryContributionSlot';
 import { ProvenanceBadge } from './ProvenanceBadge';
 import { EntryAgentUndoButton } from './EntryAgentUndoButton';
-import { ImproveThisButton } from '../tracks/ImproveThisButton';
 import { WatchersControl } from './WatchersControl';
 import {
   planSprintTaskMembershipSync,
@@ -84,7 +83,7 @@ import {
 import { ActivityPanel } from '../activity/ActivityPanel';
 import { firstImageAttachmentFromAttachments, CARD_PREVIEW_ATTACHMENT_FIELD } from '../../utils/entryMedia';
 import { sortFieldsByOrder } from '../../utils/entryMetaFields';
-import { tagColorStyle } from '../../utils/tagColor';
+import { TagChip } from '../../ui';
 import type {
   Attachment,
   Comment,
@@ -1329,7 +1328,7 @@ export function EntryDetail({
           className="text-[var(--text-muted)] hover:text-[var(--text)] transition-colors duration-fast"
           onClick={e => e.stopPropagation()}
         >
-          <Pill tone="descriptive" style={tagColorStyle(tag.color)}>#{tag.name || 'Untitled tag'}</Pill>
+          <TagChip label={tag.name || 'Untitled tag'} color={tag.color} />
         </Link>
       ))}
     </div>
@@ -1712,14 +1711,6 @@ export function EntryDetail({
         >
           {isEditing ? 'Cancel' : 'Edit'}
         </Button>
-      ) : null}
-      {canEdit && !isEditing ? (
-        <ImproveThisButton
-          target="entry"
-          subjectName={entry.title}
-          subjectId={initialEntry.id}
-          trackId={trackId}
-        />
       ) : null}
       {canEdit && !isEditing && showStartProject ? (
         <Button variant="outline" size="sm" loading={startingProject}

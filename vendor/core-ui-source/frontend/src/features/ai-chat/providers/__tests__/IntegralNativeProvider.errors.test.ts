@@ -6,7 +6,7 @@
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-vi.mock('../../../../api/session', () => ({
+vi.mock('../../../../api/session', () => ({ checkSessionDeadline: vi.fn(), pauseForSessionRenewal: vi.fn(), redirectToLogin: vi.fn(),
   getAccessToken: vi.fn(() => 'access-1'),
   refreshAccessToken: vi.fn(),
 }));

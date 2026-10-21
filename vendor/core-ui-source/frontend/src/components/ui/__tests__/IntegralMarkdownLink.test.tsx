@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { MemoryRouter } from 'react-router-dom';
@@ -34,6 +34,16 @@ describe('isInternalAppHref', () => {
 });
 
 describe('IntegralMarkdownLink', () => {
+  afterEach(() => vi.unstubAllGlobals());
+  it.each([
+    ['/n.Track.saved', '/tracks/n.Track.saved'],
+    ['/n.Entry.saved?tab=notes', '/entries/n.Entry.saved?tab=notes'],
+    ['/n.WorkspaceApp.saved#details', '/apps/n.WorkspaceApp.saved#details'],
+  ])('repairs a bare local resource ID link %s', (href, expected) => {
+    const html = renderLink(href, 'Saved resource');
+    expect(html).toContain(`href="${expected}"`);
+    expect(html).not.toContain('target="_blank"');
+  });
   it('does not activate the surrounding entry card when a link is clicked', () => {
     const openEntry = vi.fn();
     const clickLink = vi.fn();
@@ -82,5 +92,56 @@ describe('IntegralMarkdownLink', () => {
     );
     expect(html).toContain('href="/tracks/t-1?entry=e-1"');
     expect(html).not.toContain('target="_blank"');
+  });
+
+  it('keeps absolute current-origin citations in this tab and preserves their target', () => {
+    vi.stubGlobal('location', new URL('http://localhost:3000'));
+    const url = new URL('/tracks/n.Track.saved?entry=n.Entry.saved#notes', window.location.origin).href;
+    const html = renderLink(url);
+    expect(html).toContain('href="/tracks/n.Track.saved?entry=n.Entry.saved#notes"');
+    expect(html).not.toContain('target="_blank"');
+    expect(isInternalAppHref('https://another-installation.example/tracks/n.Track.saved')).toBe(false);
+  });
+
+  it('repairs typed local-placeholder citations while leaving external links external', () => {
+    for (const origin of ['https://integral.local', 'http://integral.local', 'https://integral.app']) {
+      const html = renderLink(`${origin}/tracks/n.Track.saved?entry=n.Entry.saved#section`);
+      expect(html).toContain('href="/tracks/n.Track.saved?entry=n.Entry.saved#section"');
+      expect(html).not.toContain('target="_blank"');
+      expect(isInternalAppHref(`${origin}/entries/n.Entry.saved`)).toBe(true);
+      expect(isInternalAppHref(`${origin}/apps/n.WorkspaceApp.saved`)).toBe(true);
+    }
+    for (const href of [
+      'https://integral.local/help',
+      'https://integral.local/tracks/arbitrary',
+      'https://integral.local.example.com/tracks/n.Track.saved',
+      'https://integral.local:444/tracks/n.Track.saved',
+      'https://user:secret@integral.local/tracks/n.Track.saved',
+      'https://foreign.example/tracks/n.Track.saved',
+      'https://integral.ai//foreign.example/path',
+    ]) {
+      expect(renderLink(href)).toContain('target="_blank"');
+    }
+  });
+
+  it('ignores renderer-supplied new-tab targets for local links', () => {
+    const html = renderToStaticMarkup(<MemoryRouter>
+      <IntegralMarkdownLink href="/entries/n.Entry.saved" target="_blank">Record</IntegralMarkdownLink>
+    </MemoryRouter>);
+    expect(html).not.toContain('target="_blank"');
+  });
+
+  it('keeps typed legacy placeholder links local without rewriting ordinary external URLs', () => {
+    const html = renderLink('https://integral.app/tracks/n.Track.saved?entry=n.Entry.saved');
+    expect(html).toContain('href="/tracks/n.Track.saved?entry=n.Entry.saved"');
+    expect(html).not.toContain('target="_blank"');
+    for (const href of [
+      'https://integral.app/help',
+      'https://integral.app/tracks/arbitrary',
+      'https://integral.app.example.com/tracks/n.Track.saved',
+      'https://integral.app:444/tracks/n.Track.saved',
+    ]) {
+      expect(renderLink(href)).toContain('target="_blank"');
+    }
   });
 });

@@ -21,13 +21,25 @@ if (
     "Build the reviewed runtime first: npm run qualify:ui && npm run build:runtime.",
   );
 }
-require("@integral/desktop-host").runDesktop({
+let host;
+const updates = require("./updates").createUpdates({
+  app,
+  dialog: electron.dialog,
+  Menu: electron.Menu,
+  autoUpdater: require("electron-updater").autoUpdater,
+  production: config.configured && config.environment === "production" &&
+    require("../package.json").integralOneUpdates?.enabled === true,
+  prepareForInstall: () => host.stopRuntime({ requireExclusive: true }),
+});
+host = require("@integral/desktop-host").runDesktop({
   productName: "Integral One",
   windowTitle: "Integral | one",
   mode: "local",
   userDataName: "Integral",
   iconRoot: path.join(__dirname, "icons"),
   resources,
+  helpMenuItems: updates.menuItems,
+  onReady: updates.start,
   beforeBoot: controller.beforeBoot,
   account: {
     profile: controller.accountProfile,

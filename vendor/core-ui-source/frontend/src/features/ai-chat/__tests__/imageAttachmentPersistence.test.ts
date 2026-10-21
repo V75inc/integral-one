@@ -4,6 +4,7 @@ import {
   normalizePersistedParts,
   persistedAssistantErrorMessage,
   mergeColdTranscript,
+  toolSummaryResult,
 } from '../useAIChatRuntime';
 
 describe('normalizePersistedParts', () => {
@@ -90,7 +91,7 @@ describe('normalizePersistedParts', () => {
   it('uses a safe fallback for persisted errors without a message', () => {
     expect(
       persistedAssistantErrorMessage([{ type: 'error', code: 'unknown' }] as any),
-    ).toBe('The assistant could not complete this step.');
+    ).toBe("I couldn't finish this step. Please try again.");
   });
 
   it('reads the first persisted error message for MessageError status', () => {
@@ -132,5 +133,27 @@ describe('mergeColdTranscript attachment preservation', () => {
     // Local image attachment should have been preserved
     const contents = merged[0].content as any[];
     expect(contents.some(p => p.type === 'image')).toBe(true);
+  });
+});
+
+
+describe('durable tool diagnostics', () => {
+  it('retains a per-call failure across reload without the parent turn error', () => {
+    const parts = normalizePersistedParts([
+      { type: 'tool-call', toolCallId: 'failed', toolName: 'integral_update_app', status: 'error', isError: true,
+        diagnostic: { code: 'invalid_arguments', message: "The proposed arguments did not match the tool's contract." } },
+      { type: 'tool-call', toolCallId: 'done', toolName: 'integral_list_tracks', status: 'complete', isError: false },
+      { type: 'error', code: 'harness_usage_limit', message: 'Turn exhausted' },
+    ] as any) as any[];
+    expect(parts[0].result).toMatchObject({ error: true, error_code: 'invalid_arguments' });
+    expect(parts[1].result.message).toContain('This step finished');
+    expect(JSON.stringify(parts)).not.toContain('Turn exhausted');
+  });
+
+  it('keeps authoritative results and does not settle running tools', () => {
+    expect(toolSummaryResult({ status: 'running' })).toBeUndefined();
+    const result = { token: 'approval-1', state: 'pending' };
+    expect(toolSummaryResult({ status: 'complete', result })).toBe(result);
+    expect(toolSummaryResult({ status: 'error' })).toMatchObject({ error: true });
   });
 });

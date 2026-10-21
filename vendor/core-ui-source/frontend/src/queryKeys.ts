@@ -163,6 +163,10 @@ export function entryTypesForTrackQueryKey(trackId: string) {
   return ['entryTypes', 'list', { track_id: trackId }] as const;
 }
 
+export function tagsForWorkspaceQueryKey(workspaceId: string) {
+  return ['tags', 'workspace', workspaceId] as const;
+}
+
 export function tagsForTrackQueryKey(trackId: string) {
   return ['tags', 'list', { track_id: trackId }] as const;
 }

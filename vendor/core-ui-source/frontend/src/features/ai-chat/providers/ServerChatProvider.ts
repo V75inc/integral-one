@@ -1,6 +1,8 @@
+import { isModelSetupFailure } from "../components/assistantMessagePresentation";
 import { aiChatApi } from "../../../api/aiChat";
 import { getActiveScopeHeader } from "../../../api/client";
-import { getAccessToken, refreshAccessToken } from "../../../api/session";
+import { checkSessionDeadline, getAccessToken, pauseForSessionRenewal, redirectToLogin, refreshAccessToken } from "../../../api/session";
+import { isSessionPaused } from "../../../api/sessionRecovery";
 import { getApiBaseURL } from "../../../config";
 import { randomUUID } from "../../../utils/randomUUID";
 import type { ChatProvider, NormalizedEvent, TurnContext } from "./types";
@@ -107,6 +109,12 @@ export function createServerChatProvider({
   },
 
   async *streamTurn(ctx: TurnContext): AsyncIterable<NormalizedEvent> {
+    checkSessionDeadline();
+    if (isSessionPaused()) {
+      yield { type: "error", code: "session_renewal_required",
+        message: "Renew your session, then send your message again." };
+      return;
+    }
     if (!ctx.threadId) {
       yield {
         type: "error",
@@ -136,6 +144,11 @@ export function createServerChatProvider({
       };
       return;
     }
+    if (id === "integral_native" && (ctx.images?.length ?? 0) > (ctx.attachmentIds?.length ?? 0)) {
+      yield { type: "error", code: "image_upload_required",
+        message: "The image upload didn't finish. Please attach the image again." };
+      return;
+    }
     const resumeWorkItemId = id === "integral_native" ? ctx.resumeWorkItemId : undefined;
 
     // This stream is a raw fetch (SSE), so it does NOT pass through the axios
@@ -147,10 +160,8 @@ export function createServerChatProvider({
     //
     // Mirror the interceptor's contract here: try once, and on a 401 exchange
     // the refresh token (single-flight, shared with the interceptor via
-    // api/session) and replay the request exactly once. `refreshAccessToken`
-    // owns the failure semantics — 4xx tears the session down and emits
-    // `integral:logout`, 5xx leaves tokens alone for a later retry — so a null
-    // return here means "genuinely unauthenticated", not "try again".
+    // api/session) and replay the rejected request exactly once. Once the
+    // renewal prompt opens, stop; renewing must never resubmit a chat turn.
     const doFetch = (bearer: string | null): Promise<Response> =>
       fetch(
         resumeWorkItemId
@@ -169,7 +180,9 @@ export function createServerChatProvider({
             text: ctx.userMessageText,
             agent_id: ctx.agentId ?? null,
             entity_refs: ctx.entityRefs?.length ? ctx.entityRefs : undefined,
-            images: ctx.images?.length ? ctx.images : undefined,
+            // Native image pixels come from the canonical uploaded attachment.
+            // Sending a second inline copy breaks durable admission and its binding.
+            images: id !== "integral_native" && ctx.images?.length ? ctx.images : undefined,
             attachment_ids: ctx.attachmentIds?.length ? ctx.attachmentIds : undefined,
             focused_track_id: ctx.focusedTrackId ?? undefined,
             focused_view_id: ctx.focusedViewId ?? undefined,
@@ -186,8 +199,17 @@ export function createServerChatProvider({
       response = await doFetch(getAccessToken());
       if (response.status === 401) {
         const refreshed = await refreshAccessToken();
-        if (refreshed) {
+        if (refreshed && !isSessionPaused()) {
           response = await doFetch(refreshed);
+        }
+        if (response.status === 401 && !isSessionPaused()) {
+          if (refreshed) redirectToLogin();
+          else pauseForSessionRenewal();
+        }
+        if (isSessionPaused()) {
+          yield { type: "error", code: "session_renewal_required",
+            message: "Renew your session, then send your message again." };
+          return;
         }
       }
     } catch (err) {
@@ -246,15 +268,19 @@ export function createServerChatProvider({
       // envelope carries one, otherwise a human line with the status. The raw
       // JSON envelope used to be rendered verbatim as the assistant's reply.
       let serverMessage = "";
+      let setupCode: string | undefined;
       try {
-        const parsed = JSON.parse(body) as { message?: unknown };
+        const parsed = JSON.parse(body) as { message?: unknown; error_code?: unknown; details?: { reason?: unknown } };
+        const reason = parsed?.details?.reason;
+        const code = isModelSetupFailure(reason) ? reason : parsed?.error_code;
+        if (isModelSetupFailure(code)) setupCode = code as string;
         if (typeof parsed?.message === "string") serverMessage = parsed.message.trim();
       } catch {
         /* non-JSON body — use the generic sentence */
       }
       yield {
         type: "error",
-        code: `http_${response.status}`,
+        code: setupCode ?? `http_${response.status}`,
         message:
           serverMessage ||
           `The assistant could not process this request (HTTP ${response.status}). Please try again.`,
@@ -325,10 +351,25 @@ export function createServerChatProvider({
         }, signal: ctx.abortSignal },
       );
       try {
+        checkSessionDeadline();
+        if (isSessionPaused()) {
+          yield { type: "error", code: "session_renewal_required",
+            message: "Renew your session, then reopen this conversation to check the saved response." };
+          return;
+        }
         response = await fetchReplay(getAccessToken());
         if (response.status === 401) {
           const refreshed = await refreshAccessToken();
-          if (refreshed) response = await fetchReplay(refreshed);
+          if (refreshed && !isSessionPaused()) response = await fetchReplay(refreshed);
+          if (response.status === 401 && !isSessionPaused()) {
+            if (refreshed) redirectToLogin();
+            else pauseForSessionRenewal();
+          }
+          if (isSessionPaused()) {
+            yield { type: "error", code: "session_renewal_required",
+              message: "Renew your session, then reopen this conversation to check the saved response." };
+            return;
+          }
         }
         if (!response.ok) {
           yield { type: "error", code: `chat_reconnect_http_${response.status}`,

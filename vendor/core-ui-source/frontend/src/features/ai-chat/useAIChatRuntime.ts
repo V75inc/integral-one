@@ -1,3 +1,5 @@
+import { friendlyAssistantText, friendlyChatFailure, friendlyToolFailure } from "./components/assistantMessagePresentation";
+import { agentNavigationPath } from "./agentNavigation";
 import {
   useCallback,
   useEffect,
@@ -114,6 +116,7 @@ type AssistantMessageDraft = {
       name: string;
       args?: unknown;
       result?: unknown;
+      diagnostic?: { code: string; message: string };
       isError?: boolean;
       status: "pending" | "running" | "complete" | "error";
     }
@@ -130,6 +133,8 @@ type AssistantMessageDraft = {
   // source-of-truth.
   finalContent?: string;
   finalPayload?: Record<string, unknown>;
+  errorCode?: string;
+  errorDetail?: string;
 };
 
 function freshDraft(id: string): AssistantMessageDraft {
@@ -208,7 +213,7 @@ function draftToMessage(draft: AssistantMessageDraft): ThreadMessageLike {
       toolCallId: callId,
       toolName: call.name,
       args: (call.args ?? {}) as never,
-      result: call.result,
+      result: toolSummaryResult(call),
       isError: call.isError,
     });
   }
@@ -238,8 +243,11 @@ function draftToMessage(draft: AssistantMessageDraft): ThreadMessageLike {
         draft.customSteps?.length ||
         draft.interactPayload ||
         draft.finalContent ||
-        draft.finalPayload
+        draft.finalPayload ||
+        draft.errorCode
           ? {
+              ...(draft.errorCode ? { errorCode: draft.errorCode } : undefined),
+              ...(draft.errorDetail ? { errorDetail: draft.errorDetail } : undefined),
               ...(draft.customSteps?.length
                 ? { steps: draft.customSteps }
                 : undefined),
@@ -387,6 +395,29 @@ function coalescePersistedReasoning(parts: MutableContent[]): MutableContent[] {
   return out;
 }
 
+export function toolSummaryResult(call: {
+  result?: unknown;
+  diagnostic?: unknown;
+  status?: unknown;
+  isError?: unknown;
+}): unknown {
+  if (call.result !== undefined) return call.result;
+  const diagnostic = call.diagnostic as { code?: unknown; message?: unknown } | undefined;
+  if (diagnostic && typeof diagnostic.message === "string") {
+    return { error: true, error_code: diagnostic.code, message: friendlyToolFailure({ error_code: diagnostic.code }) };
+  }
+  if (call.status === "error" || call.isError === true) {
+    return { error: true, message: "I couldn't finish this step. Check anything already saved before trying again." };
+  }
+  if (call.status === "complete") {
+    // assistant-ui otherwise inherits the parent turn's error when a completed
+    // tool has no retained raw result, blaming every earlier call for one limit.
+    return { message: "This step finished." };
+  }
+  return undefined;
+}
+
+
 /**
  * Normalize persisted message parts so that image and file parts conform to
  * assistant-ui's expected shapes.
@@ -414,12 +445,19 @@ export function normalizePersistedParts(rawParts: MutableContent[]): MutableCont
     // Older durable transcripts saved start/result updates as separate parts.
     // Hydrate one resource per call ID, preserving its position and latest state.
     if (p?.type === "tool-call" && typeof p.toolCallId === "string" && p.toolCallId) {
+      const summaryResult = toolSummaryResult(p);
+      const normalized = { ...part, result: summaryResult } as MutableContent;
       const previous = toolPositions.get(p.toolCallId);
       if (previous !== undefined) {
-        out[previous] = { ...out[previous], ...part } as MutableContent;
+        out[previous] = {
+          ...out[previous], ...normalized,
+          result: p.result ?? (p.diagnostic || p.status === "error"
+            ? summaryResult
+            : (out[previous] as Record<string, unknown>).result ?? summaryResult),
+        } as MutableContent;
       } else {
         toolPositions.set(p.toolCallId, out.length);
-        out.push(part);
+        out.push(normalized);
       }
       continue;
     }
@@ -449,10 +487,7 @@ export function persistedAssistantErrorMessage(
   for (const part of rawParts) {
     const p = part as Record<string, unknown>;
     if (!p || p.type !== "error") continue;
-    if (typeof p.message === "string" && p.message.trim()) {
-      return p.message.trim();
-    }
-    return "The assistant could not complete this step.";
+    return friendlyChatFailure(p.code, p.message);
   }
   return null;
 }
@@ -491,7 +526,11 @@ function persistedToMessage(m: AIChatPersistedMessage): ThreadMessageLike {
   const rawParts = (m.parts ?? []) as MutableContent[];
   const turnError =
     role === "assistant" ? persistedAssistantErrorMessage(rawParts) : null;
-  const normalizedParts = normalizePersistedParts(rawParts);
+  const normalizedParts = normalizePersistedParts(rawParts).map((part) =>
+    role === "assistant" && part.type === "text"
+      ? { ...part, text: friendlyAssistantText(part.text) }
+      : part,
+  );
   const parts = repairCutDesignInvitation(
     coalescePersistedReasoning(normalizedParts),
   );
@@ -533,23 +572,33 @@ function persistedToMessage(m: AIChatPersistedMessage): ThreadMessageLike {
     // rows that only stamped metadata still show MessageError once.
     const metaError =
       typeof pm?.error?.message === "string" && pm.error.message.trim()
-        ? pm.error.message.trim()
+        ? friendlyChatFailure(pm.error.code, pm.error.message)
         : null;
     const errorMessage = turnError ?? metaError;
+    // Cancellation is an intentional user action, including when restored
+    // from older transcripts that persisted it as an error event.
+    const persistedError = rawParts.find(
+      (part) => (part as { type?: string }).type === "error",
+    ) as { code?: string; message?: string } | undefined;
+    const errorCode = persistedError?.code ?? pm?.error?.code;
+    const isCancelled = errorCode === "work.cancelled";
 
     const hasMetadata =
       pmSteps.length > 0 ||
       !!pmTiming ||
       !!pmInteract ||
       !!pmFinalContent ||
-      !!pmFinalPayload;
+      !!pmFinalPayload ||
+      !!errorCode;
     return {
       id: m.id,
       role: "assistant",
       content,
-      status: errorMessage
-        ? { type: "incomplete", reason: "error", error: errorMessage }
-        : { type: "complete", reason: "stop" },
+      status: isCancelled
+        ? { type: "incomplete", reason: "cancelled" }
+        : errorMessage
+          ? { type: "incomplete", reason: "error", error: errorMessage }
+          : { type: "complete", reason: "stop" },
       metadata: hasMetadata
         ? {
             steps: pmSteps.map((s) => ({
@@ -576,6 +625,10 @@ function persistedToMessage(m: AIChatPersistedMessage): ThreadMessageLike {
                 }
               : undefined,
             custom: {
+              ...(errorCode ? { errorCode } : undefined),
+              ...(persistedError?.message || pm?.error?.message
+                ? { errorDetail: persistedError?.message || pm?.error?.message }
+                : undefined),
               ...(pmSteps.length > 0 ? { steps: pmSteps } : undefined),
               ...(pmInteract ? { interactPayload: pmInteract } : undefined),
               ...(pmFinalContent
@@ -772,6 +825,7 @@ export function mergeColdTranscript(
 }
 
 export interface UseAIChatRuntimeOptions {
+  onNavigate?: (path: string, threadId: string) => void;
   consumeEntityRefs?: () => ChatEntityRef[];
   resetComposerEntityRefs?: () => void;
   /** When set (e.g. from `/agent?thread=`), select this thread on mount. */
@@ -811,8 +865,17 @@ export function useAIChatRuntime(
   const { focusedTrackId, focusedViewId, focusedAppId } = useChatPageFocus();
   const snapshotPageContext = useChatPageContextSnapshot();
   const workspaceId = scope?.workspaceId ?? null;
+  const onNavigateRef = useRef(options.onNavigate);
+  onNavigateRef.current = options.onNavigate;
+  const navigationMountedRef = useRef(true);
+  useEffect(() => {
+    navigationMountedRef.current = true;
+    return () => { navigationMountedRef.current = false; };
+  }, []);
   const auth = useAuthOptional();
   const principalId = auth?.user?.id ?? null;
+  const principalIdRef = useRef(principalId);
+  principalIdRef.current = principalId;
   const selectionScopeReady = Boolean(workspaceId) && !auth?.loading && (auth === null || Boolean(principalId));
   const freshChatScope = useMemo(
     () => ({ principalId, workspaceId, providerId: provider.id }),
@@ -901,7 +964,7 @@ export function useAIChatRuntime(
   const isRunning =
     activeThreadId != null &&
     (streamingThreadIds.includes(activeThreadId) ||
-      activeThreadId in remoteTurns);
+      Boolean(activeSession?.cancellation) || activeThreadId in remoteTurns);
   const composerReady = selectionReady && (
     !provider.serverPersisted || activeThreadId == null ||
     activeThreadId.startsWith("local-") || isRunning ||
@@ -1176,7 +1239,11 @@ export function useAIChatRuntime(
         }
         // Do not overwrite a cache that started streaming while we fetched.
         if (peekStreamingThreadIds().includes(threadId)) return "skip";
-        const server = t.messages.map(persistedToMessage);
+        // Durable host receipts drive continuation and audit, but are not
+        // conversation bubbles (including after a reload or reconnect).
+        const server = t.messages
+          .filter(message => message.role !== "system")
+          .map(persistedToMessage);
         updateSession(threadId, (session) => ({
           ...session,
           // A cache that was never loaded may hold messages drafted by a send
@@ -1308,7 +1375,7 @@ export function useAIChatRuntime(
    */
   const admissionError = useCallback((threadId: string, attachToRemote = false): string | null => {
     const streaming = peekStreamingThreadIds();
-    if (streaming.includes(threadId) || (!attachToRemote && threadId in getRemoteTurnsSnapshot())) {
+    if (peekSessions()[threadId]?.cancellation || streaming.includes(threadId) || (!attachToRemote && threadId in getRemoteTurnsSnapshot())) {
       return THREAD_ALREADY_RESPONDING;
     }
     if (streaming.length >= MAX_CONCURRENT_STREAMS) {
@@ -1353,6 +1420,15 @@ export function useAIChatRuntime(
       // (duplicate action bar under the model line).
       let closedDraft: AssistantMessageDraft | null = null;
       let closedId: string | null = null;
+      let refreshedForReply = false;
+      let navigationPath: string | null = null;
+      let turnFailed = false;
+      const navigationOrigin = window.location.pathname + window.location.search;
+      const navigationWorkspace = workspaceIdRef.current;
+      const navigationPrincipal = principalIdRef.current;
+      const refreshApprovalQueue = () => window.dispatchEvent(
+        new CustomEvent("integral:prompt-queue-refresh", { detail: { threadId } }),
+      );
 
       const controller = new AbortController();
       markThreadStreaming(threadId);
@@ -1413,6 +1489,26 @@ export function useAIChatRuntime(
 
         for await (const ev of stream as AsyncIterable<NormalizedEvent>) {
           if (controller.signal.aborted) break;
+          if (ev.type === "navigation") {
+            navigationPath = agentNavigationPath({ ok: true, navigation: ev }, threadId, navigationWorkspace);
+            continue;
+          }
+          // Staging pushes can arrive before their transaction is visible.
+          // Committed stream results and the first answer text give the sheet
+          // a fresh read boundary without waiting for its idle poll.
+          if (ev.type === "tool-call" && ev.status === "complete") {
+            let result = ev.result;
+            if (typeof result === "string") {
+              try { result = JSON.parse(result); } catch { /* not a structured result */ }
+            }
+            if (result && typeof result === "object" && "_kind" in result && result._kind === "staged_change") {
+              refreshApprovalQueue();
+            }
+          }
+          if (!refreshedForReply && (ev.type === "text-delta" || ev.type === "text-replace")) {
+            refreshedForReply = true;
+            refreshApprovalQueue();
+          }
           if (ev.type === "status") {
             const text = (ev as { text?: string }).text || "";
             if (text) {
@@ -1423,7 +1519,18 @@ export function useAIChatRuntime(
               );
             }
           }
+          if (ev.type === "tool-call" || ev.type === "text-delta" || ev.type === "text-replace") {
+            // A retry notice describes a temporary pause. Once work resumes,
+            // let the trail describe the current operation again. Preserve an
+            // outstanding user cancellation until its acknowledgement arrives.
+            updateSession(threadId, (session) =>
+              session.activityText && session.cancellation !== "pending"
+                ? { ...session, activityText: null }
+                : session,
+            );
+          }
           if (ev.type === "error") {
+            turnFailed = true;
             // MessageError (draft status incomplete) is the single surface for
             // turn failures. Do not also stamp streamError — ActivityStrip was
             // echoing the same copy under the bubble.
@@ -1496,6 +1603,7 @@ export function useAIChatRuntime(
 
         void refreshThreads();
       } catch (err) {
+        turnFailed = true;
         const errMsg = err instanceof Error ? err.message : String(err);
         draft.status = controller.signal.aborted
           ? { type: "incomplete", reason: "cancelled" }
@@ -1504,11 +1612,12 @@ export function useAIChatRuntime(
         flush();
       } finally {
         unmarkThreadStreaming(threadId);
+        refreshApprovalQueue();
         updateSession(threadId, (session) => ({
           ...session,
           streaming: false,
           abortController: null,
-          activityText: null,
+          activityText: session.cancellation === "pending" ? "Stopping…" : null,
           // A busy-thread refusal recorded during this turn is false once the
           // turn ends. Other stream errors survive so a rejected send can
           // still be read after the stream closes.
@@ -1527,6 +1636,19 @@ export function useAIChatRuntime(
           (resumeWorkItemId || !session || session.lastLoadedAt === 0)
         ) {
           void loadThread(threadId);
+        }
+        // Navigation is a live, foreground UI effect. Never replay it from
+        // history/recovery, interrupt a newer route, or move another chat.
+        if (
+          navigationMountedRef.current && navigationPath && !turnFailed && !controller.signal.aborted && !resumeWorkItemId &&
+          activeThreadIdRef.current === threadId && workspaceIdRef.current === navigationWorkspace &&
+          principalIdRef.current === navigationPrincipal &&
+          document.visibilityState === "visible" &&
+          window.location.pathname + window.location.search === navigationOrigin
+        ) {
+          const composing = [...document.querySelectorAll<HTMLTextAreaElement>('textarea[aria-label="Message input"]')]
+            .some(input => Boolean(input.value.trim()));
+          if (!composing) onNavigateRef.current?.(navigationPath, threadId);
         }
       }
     },
@@ -1733,24 +1855,37 @@ export function useAIChatRuntime(
 
   const onCancel = useCallback(async () => {
     const threadId = activeThreadId;
-    if (!threadId) return;
+    if (!threadId || peekSessions()[threadId]?.cancellation === "pending") return;
     const controller = peekSessions()[threadId]?.abortController;
-    // Settle the visible draft before the transport unwinds. A follow-up
-    // can otherwise capture the old running row in its priorMessages and
-    // preserve a permanent "Working" indicator in the next turn.
-    updateSession(threadId, (session) => ({
-      ...session,
-      messages: session.messages.map((message) =>
-        message.role === "assistant" && message.status?.type === "running"
-          ? { ...message, status: { type: "incomplete", reason: "cancelled" } }
-          : message,
-      ),
-    }));
-    controller?.abort();
-    if (provider.serverPersisted) {
-      aiChatApi.cancelThread(threadId).catch(() => {});
+    const requestId = nextId("cancel");
+    const remoteTurn = getRemoteTurnsSnapshot()[threadId];
+    updateSession(threadId, { cancellation: "pending", cancellationRequestId: requestId,
+      activityText: "Stopping…", streamError: null });
+    const stillCurrent = () => peekSessions()[threadId]?.cancellationRequestId === requestId;
+    try {
+      if (provider.serverPersisted && !threadId.startsWith("local-")) {
+        await aiChatApi.cancelThread(threadId, peekSessions()[threadId]?.cancellationTarget,
+          target => { if (stillCurrent()) updateSession(threadId, { cancellationTarget: target }); });
+      }
+      if (!stillCurrent()) return;
+      // Aborting only the SSE connection does not cancel durable backend work.
+      controller?.abort();
+      if (remoteTurn && getRemoteTurnsSnapshot()[threadId] === remoteTurn) {
+        markRemoteTurnFinished(threadId, remoteTurn.turnId);
+      }
+      updateSession(threadId, (session) => ({
+        ...session, cancellation: null, cancellationTarget: null, cancellationRequestId: null, activityText: null,
+        messages: session.messages.map(message =>
+          message.role === "assistant" && message.status?.type === "running"
+            ? { ...message, status: { type: "incomplete", reason: "cancelled" } } : message),
+      }));
+      void refreshThreads();
+    } catch (error) {
+      if (!stillCurrent()) return;
+      updateSession(threadId, { cancellation: "failed", activityText: null,
+        streamError: error instanceof Error ? error.message : "I couldn't stop this request. Please try Stop again." });
     }
-  }, [activeThreadId, provider.serverPersisted, updateSession]);
+  }, [activeThreadId, provider.serverPersisted, updateSession, nextId, refreshThreads]);
 
   const switchToNewThread = useCallback(() => {
     // An explicit choice wins over an initial list request still in flight.
@@ -1987,6 +2122,7 @@ function applyEvent(draft: AssistantMessageDraft, ev: NormalizedEvent) {
         name: ev.name,
         args: ev.args ?? existing?.args,
         result: ev.result ?? existing?.result,
+        diagnostic: ev.diagnostic ?? existing?.diagnostic,
         isError: ev.status === "error" || existing?.isError,
         status: ev.status,
       });
@@ -2094,11 +2230,15 @@ function applyEvent(draft: AssistantMessageDraft, ev: NormalizedEvent) {
       // through to the unknown-type warning.
       return;
     case "error":
-      draft.status = {
-        type: "incomplete",
-        reason: "error",
-        error: ev.message,
-      };
+      draft.errorCode = ev.code;
+      draft.errorDetail = ev.message;
+      draft.status = ev.code === "work.cancelled"
+        ? { type: "incomplete", reason: "cancelled" }
+        : {
+            type: "incomplete",
+            reason: "error",
+            error: friendlyChatFailure(ev.code, ev.message),
+          };
       return;
     default: {
       // Unknown event type — surface in devtools so newly-shipped

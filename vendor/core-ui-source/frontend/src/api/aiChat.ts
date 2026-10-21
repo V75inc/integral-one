@@ -1,5 +1,10 @@
 import { apiClient } from './index';
 
+export interface ChatCancellationTarget {
+  work_item_id?: string | null;
+  turn_id?: string | null;
+}
+
 export interface AIChatProviderInfo {
   id: string;
   label: string;
@@ -75,9 +80,9 @@ export const aiChatApi = {
   async getAgentPreference(
     workspaceId: string,
   ): Promise<AgentPreferenceValue | null> {
-    const res = await apiClient.get<{ preference: AgentPreferenceValue | null }>(
-      `/workspaces/${encodeURIComponent(workspaceId)}/agent-preference`,
-    );
+    const res = await apiClient.get<{
+      preference: AgentPreferenceValue | null;
+    }>(`/workspaces/${encodeURIComponent(workspaceId)}/agent-preference`);
     return res.data.preference;
   },
 
@@ -171,13 +176,71 @@ export const aiChatApi = {
     return res.data;
   },
 
-  /** Best-effort cancel for an in-flight turn on a thread. */
+  /** Cancel the observed turn and wait for backend admission to be released. */
   async cancelThread(
     threadId: string,
+    target?: ChatCancellationTarget | null,
+    onTarget?: (target: ChatCancellationTarget) => void,
   ): Promise<{ thread_id: string; cancelled: boolean }> {
-    const res = await apiClient.post<{ thread_id: string; cancelled: boolean }>(
+    if (!target) {
+      const { data } = await apiClient.get<
+        ChatCancellationTarget & { running: boolean }
+      >(`/chat/threads/${encodeURIComponent(threadId)}/activity`, {
+        timeout: 5000,
+      });
+      if (data.running === false)
+        return { thread_id: threadId, cancelled: true };
+      if (data.running !== true || (!data.work_item_id && !data.turn_id)) {
+        throw new Error('Could not confirm the active turn. Try Stop again.');
+      }
+      target = { work_item_id: data.work_item_id, turn_id: data.turn_id };
+      onTarget?.(target);
+    }
+    const res = await apiClient.post<{
+      thread_id: string;
+      cancelled: boolean;
+      work_item_id?: string;
+      turn_id?: string | null;
+    }>(
       `/chat/threads/${encodeURIComponent(threadId)}/cancel`,
+      {
+        expected_work_item_id: target.work_item_id,
+        expected_turn_id: target.turn_id,
+      },
+      { timeout: 10_000 },
     );
-    return res.data;
+    if (!res.data.cancelled) return res.data;
+    const deadline = Date.now() + 30_000;
+    let pollDelay = 500;
+    while (true) {
+      const { data } = await apiClient.get<{
+        running: boolean;
+        work_item_id?: string | null;
+        turn_id?: string | null;
+      }>(`/chat/threads/${encodeURIComponent(threadId)}/activity`, {
+        timeout: 5000,
+      });
+      if (typeof data.running !== 'boolean')
+        throw new Error('Could not confirm cancellation. Try Stop again.');
+      const hasTarget = Boolean(res.data.work_item_id || res.data.turn_id);
+      const sameWork = Boolean(
+        res.data.work_item_id && res.data.work_item_id === data.work_item_id,
+      );
+      const sameTurn = Boolean(
+        res.data.turn_id && res.data.turn_id === data.turn_id,
+      );
+      // A newer turn in another tab must not extend this cancellation or be stopped.
+      if (!data.running || (hasTarget && !sameWork && !sameTurn))
+        return res.data;
+      if (Date.now() >= deadline) {
+        throw new Error(
+          'Stopping is taking longer than expected. Try Stop again to check cancellation.',
+        );
+      }
+      await new Promise((resolve) =>
+        setTimeout(resolve, Math.min(pollDelay, deadline - Date.now())),
+      );
+      pollDelay = Math.min(pollDelay * 2, 2000);
+    }
   },
 };
