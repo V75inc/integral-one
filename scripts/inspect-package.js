@@ -35,10 +35,10 @@ const accountConfig=JSON.parse(asar.extractFile(archive,path.join('desktop','acc
 require('../desktop/accounts/config').validateConfig(accountConfig);
 for (const member of ['desktop/updates.js','node_modules/electron-updater/out/main.js']) assert.ok(members.includes('/'+member), `Missing ${member}`);
 for (const file of ['desktop/main.js','desktop/updates.js','desktop/accounts/controller.js','desktop/accounts/clerk-setup.js','desktop/accounts/receipt.js','desktop/accounts/config.js','desktop/accounts/ui/account.js','desktop/accounts/ui/account.css','desktop/accounts/preload.js']) {
-  const packedHash = require('node:crypto').createHash('sha256').update(asar.extractFile(archive, file)).digest('hex');
+  const packedHash = require('node:crypto').createHash('sha256').update(asar.extractFile(archive, path.join(...file.split('/')))).digest('hex');
   assert.equal(packedHash, hash(path.join(root, file)), `Packaged source differs: ${file}`);
 }
-assert.equal(require('node:crypto').createHash('sha256').update(asar.extractFile(archive, 'node_modules/@integral/desktop-host/lib/host.js')).digest('hex'), hash(path.join(root, 'packages/desktop-host/lib/host.js')), 'Packaged host differs from its maintained source');
+assert.equal(require('node:crypto').createHash('sha256').update(asar.extractFile(archive, path.join('node_modules','@integral','desktop-host','lib','host.js'))).digest('hex'), hash(path.join(root, 'packages/desktop-host/lib/host.js')), 'Packaged host differs from its maintained source');
 const updateConfigFile = path.join(resources, 'app-update.yml');
 const packagedProduct = JSON.parse(asar.extractFile(archive, 'package.json').toString());
 if (fs.existsSync(updateConfigFile)) {
