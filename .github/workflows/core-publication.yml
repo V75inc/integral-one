@@ -109,7 +109,7 @@ jobs:
       - run: npm run build:accounts
       - run: npm run build:runtime
       - run: npm run qualify:runtime
-      - run: node scripts/qualify-upgrade.js .candidate/baseline
+      - run: node scripts/qualify-upgrade.js .candidate/baseline --require-settings
       - run: npx electron-builder --dir --publish never
       - if: runner.os == 'macOS'
         run: node scripts/qualify-mac-signing.js release
