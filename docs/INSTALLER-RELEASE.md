@@ -4,13 +4,12 @@ This is the maintainer counterpart to [Install Integral One](INSTALL.md). Prepar
 
 ## Deliverables
 
-The initial launch targets macOS. A stable GitHub release tagged `vX.Y.Z` must contain:
+The owner-selected initial launch targets Apple Silicon Macs on macOS 14+. Intel is blocked by Core runtime compatibility; see [platform readiness](PLATFORM-READINESS.md). A stable GitHub release tagged `vX.Y.Z` must contain:
 
 - `integral-one-X.Y.Z-mac-arm64.zip`
-- `integral-one-X.Y.Z-mac-x64.zip`
 - `install-manifest.json`, assembled from the verified platform parts
 - `install.sh`, `install.ps1`, LICENSE, NOTICE and LICENSING.md
-- `latest-mac.yml`, assembled from both verified Mac ZIPs for the in-app updater
+- `latest-mac.yml`, assembled from the verified Apple Silicon ZIP for the in-app updater
 
 Windows is optional: add `integral-one-X.Y.Z-win-x64.exe` and its manifest entry only after Windows signing and clean-machine qualification. A missing Windows certificate does not block the macOS release.
 
@@ -47,7 +46,7 @@ Clerk secret keys and receipt-signing private keys stay on the account service, 
 
 ## 3. Build candidates
 
-Core pin changes on main automatically start **Signed installer candidate**, gated by the protected release environment. For a reviewed rerun, manually dispatch it with the exact stable source version. Leave **include_windows** off for the initial macOS launch. It uses native macOS arm64 and Intel runners (plus Windows x64 only when explicitly enabled), builds the source, runs qualification, signs/notarizes, inspects packages and generates per-platform installer manifests. It then assembles a downloadable candidate bundle. No `contents: write` permission or GitHub Release publication step is present.
+Core pin changes on main automatically start **Signed installer candidate**, gated by the protected release environment. For a reviewed rerun, manually dispatch it with the exact stable source version. Leave **include_windows** off for the initial macOS launch. It uses a native macOS arm64 runner (plus Windows x64 only when explicitly enabled), builds the source, runs qualification, signs/notarizes, inspects packages and generates per-platform installer manifests. It then assembles a downloadable candidate bundle. No `contents: write` permission or GitHub Release publication step is present.
 
 Equivalent native commands after source setup:
 
@@ -58,13 +57,13 @@ npm run release:manifest
 
 Set the public account config and signing/notarization environment through the approved secret mechanism. On the qualified local Mac, `APPLE_KEYCHAIN_PROFILE=integral-one-notary` uses the existing Keychain credential without exporting its password. Missing or incomplete notarization configuration now fails before signing. Run `npm run qualify:ui:dependencies` before the final runtime/package build and retain its emitted-file hashes with the unresolved tooling-advisory disposition. `build:installers` without `--signed` is a development build; it cannot pass public manifest/signature checks.
 
-After gathering the two Mac outputs (and the Windows output when enabled) into a directory:
+After gathering the Apple Silicon Mac output into a directory:
 
 ```sh
 node scripts/installer-manifest.js merge release-assets release-assets/install-manifest.json
 ```
 
-The merge requires both Mac architectures and rejects duplicate platforms, mixed versions and altered installer bytes. Windows is optional. Include the reviewed bootstrap scripts and notices with those outputs.
+The merge requires the Apple Silicon Mac artifact and rejects Intel assets, duplicate platforms, mixed versions and altered installer bytes. Include the reviewed bootstrap scripts and notices with those outputs.
 
 The native signing hook refreshes the bundled launcher's hash after its child
 signature and before the outer app resource seal. The immutable Core wheel hash,
@@ -74,11 +73,11 @@ and clean-machine acceptance remain release checks.
 
 Signed builds also run `node scripts/qualify-upgrade.js resources/core
 --require-settings` before signing, with signing credentials removed from the
-runtime child's environment. The current rc28 pin intentionally fails this
-release journey on HTTP 403 settings writes; compose the reviewed Core correction
-before producing a launch candidate. See [Core publication updates](CORE-RELEASE-UPDATES.md).
+runtime child's environment. The rc28 negative control failed this journey on HTTP 403 settings writes.
+The published rc29 pin includes the correction; the exact composed candidate
+must pass the complete journey before signing. See [Core publication updates](CORE-RELEASE-UPDATES.md).
 
-Then run `node scripts/update-metadata.js release-assets` to generate one combined
+Then run `node scripts/update-metadata.js release-assets` to generate the
 Mac update feed from those verified artifacts. Include it with the matching ZIPs;
 never overwrite it with a runner-specific YAML. Signed Mac preparation enables the
 updater; development candidates keep it disabled. See [auto-updates](AUTO-UPDATES.md)

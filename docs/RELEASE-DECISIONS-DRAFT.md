@@ -6,9 +6,10 @@ verified independently against the exact installer bytes.
 
 ## Prepared release scope
 
-- Product candidate: Integral One 0.1.0, Apache-2.0 with inherited notices and
+- Product candidate: Integral One 0.1.1, Apache-2.0 with inherited notices and
   dependency exceptions retained. No historical copyright grant is revoked.
-- Initial installers: macOS Apple Silicon and Intel; Windows remains a separate
+- Initial installers, owner approved 21 October: Apple Silicon Macs on macOS 14+.
+  Intel is blocked by Core runtime compatibility; Windows remains a separate
   signed-platform qualification. No Linux/Windows ARM64 readiness claim.
 - Mac auto-updates notify first, require download and restart approvals, and
   preserve local identities/data paths. Automatic checks are opt-in. Two-version

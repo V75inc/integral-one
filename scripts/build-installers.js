@@ -10,6 +10,7 @@ if (!['darwin', 'win32'].includes(process.platform) || !['arm64', 'x64'].include
 const npm = process.env.npm_execpath;
 if (!npm) throw new Error('Run through npm run build:installers.');
 if (signed) {
+  if (process.platform === 'darwin' && process.arch !== 'arm64') throw new Error('Signed Mac release currently supports Apple Silicon on macOS 14+; Intel is blocked by Core runtime dependency compatibility.');
   if (process.platform === 'win32') throw new Error('Windows signed release remains blocked until its signing and automatic-update path are qualified. The initial signed release targets macOS.');
   const { version } = require('../package.json');
   const pins = require('../distribution.json');

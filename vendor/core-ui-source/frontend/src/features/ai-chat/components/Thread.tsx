@@ -1,3 +1,4 @@
+import { ExpandableChatError } from "./ExpandableChatError";
 import { KebabMenu } from '../../../components/ui/KebabMenu';
 import './composer.css';
 import { useChatEntityRefsOptional } from '../../../context/ChatEntityRefsContext';
@@ -33,6 +34,7 @@ import {
   RefreshCwIcon,
   Sparkles,
   SquareIcon,
+  StopCircleIcon,
   XIcon,
 } from "lucide-react";
 import {
@@ -43,7 +45,6 @@ import {
   useState,
 } from "react";
 import type { PartState } from "@assistant-ui/react";
-import { Link } from "react-router-dom";
 import { useScope } from "../../../context/ScopeContext";
 import { getComposerAccessory } from "../../../host/registry";
 import { sanitizeMarkdownHref } from "../../../utils/safeHref";
@@ -61,6 +62,7 @@ import type { ChatEntityRef } from "../../../types/chatEntityRefs";
 import { AuiTaggableComposer } from "./AuiTaggableComposer";
 import { ComposerSendWithRefs } from "./ComposerSendWithRefs";
 import { MarkdownText } from "./MarkdownText";
+import { MarkdownContent } from "../../../components/ui/MarkdownContent";
 import { ChatAttachmentList } from "./ChatAttachmentList";
 import { extractAttachmentListsFromParts } from "./extractAttachmentListsFromParts";
 import { MessageObservability, useMessageModelLabel } from "./MessageObservability";
@@ -77,7 +79,8 @@ import { MessageUndoActions } from "./MessageUndoActions";
 import { ComposerAttachmentErrorToast } from "./ComposerAttachmentErrorToast";
 import { ComposerMicButton } from "./ComposerMicButton";
 import { ComposerDictationProvider } from "../../speech/ComposerDictationContext";
-import { hasAssistantDebugPayload } from "./assistantMessagePresentation";
+import { hasAssistantDebugPayload, isModelSetupFailure } from "./assistantMessagePresentation";
+import { ModelSetupNotice } from "./ModelSetupNotice";
 import {
   CHAT_SURFACE_ATTR,
   useTypeAnywhereComposer,
@@ -296,7 +299,7 @@ export function ActivityStrip() {
         data-testid="chat-activity-strip"
       >
         <span className="inline-flex shrink-0" aria-hidden>⚠</span>
-        <span>{streamError}</span>
+        <ExpandableChatError summary={streamError} className="min-w-0 flex-1" />
       </div>
     );
   }
@@ -350,11 +353,39 @@ function clipStatus(text: string): string {
 export function liveWorkSynopsis(
   activity: string | undefined,
   latestTool: string | undefined,
+  completedTools = 0,
+  hasAnswerText = false,
 ): string {
   const activityLine = activity?.replace(/\s+/g, " ").trim();
-  if (activityLine && !/^working[.…]*$/i.test(activityLine)) return clipStatus(activityLine);
-  if (latestTool?.trim()) return "Using tools";
-  return "Thinking";
+  if (activityLine && !/^(working|thinking)[.…]*$/i.test(activityLine)) return clipStatus(activityLine);
+  if (latestTool?.trim()) return toolWorkSynopsis(latestTool);
+  if (hasAnswerText) return "Writing your answer";
+  if (completedTools > 0) return "Reviewing the results";
+  return "Preparing your response";
+}
+
+/** Describe observable operations, never model reasoning or tool arguments. */
+function toolWorkSynopsis(name: string): string {
+  if (name === "integral_call_workspace_tool") return "Working in your App";
+  if (name === "integral_get_index_status") return "Checking search readiness";
+  if (name === "integral_reindex_track") return "Preparing a search refresh for review";
+  if (name === "integral_configure_search_index") return "Preparing search settings for review";
+  if (name === "integral_get_page_context" || name === "integral_get_scope") return "Checking your workspace";
+  if (/^(search_capabilities|load_capability|load_skill|search_tools)$/.test(name)) return "Finding the right way to help";
+  if (/query|search|retrieve|find/.test(name)) return "Finding relevant information";
+  if (/list|describe|inspect|get|read/.test(name)) return "Reading the information you can access";
+  if (/verify|validate|check/.test(name)) return "Checking the results";
+  if (/create|update|delete|remove|configure|propose|build/.test(name)) return "Preparing your changes";
+  return "Working on the next step";
+}
+
+export function latestActiveTool(parts: readonly {
+  type: string; toolName?: string; result?: unknown; status?: { type?: string };
+}[]): string {
+  return [...parts].reverse().find((part) =>
+    part.type === "tool-call" && part.result === undefined &&
+    part.status?.type !== "complete" && part.status?.type !== "incomplete",
+  )?.toolName ?? "";
 }
 
 /**
@@ -375,16 +406,17 @@ export function WorkTrail({ children }: { children: ReactNode }) {
       (s.message.metadata?.custom as { statusLabel?: string } | undefined)
         ?.statusLabel,
   );
+  const setupNeeded = useAuiState((s) => isModelSetupFailure(
+    (s.message.metadata?.custom as { errorCode?: string } | undefined)?.errorCode,
+  ));
   const modelLabel = useMessageModelLabel();
   const toolCount = useAuiState(
     (s) => (s.message.parts ?? []).filter((p) => p.type === "tool-call").length,
   );
-  const latestTool = useAuiState((s) => {
-    const tools = (s.message.parts ?? []).filter((p) => p.type === "tool-call");
-    const last = tools[tools.length - 1] as { toolName?: string; result?: unknown; status?: { type?: string } } | undefined;
-    if (last?.result !== undefined || last?.status?.type === "complete" || last?.status?.type === "incomplete") return "";
-    return last?.toolName ?? "";
-  });
+  const latestTool = useAuiState((s) => latestActiveTool(s.message.parts ?? []));
+  const hasAnswerText = useAuiState((s) =>
+    (s.message.parts ?? []).some((p) => p.type === "text" && Boolean(p.text?.trim())),
+  );
   const toolFailed = useAuiState((s) =>
     (s.message.parts ?? []).some((p) => {
       if (p.type !== "tool-call") return false;
@@ -397,9 +429,11 @@ export function WorkTrail({ children }: { children: ReactNode }) {
   const live = liveWorkSynopsis(
     activityText ?? statusLabel,
     latestTool,
+    latestTool ? 0 : toolCount,
+    hasAnswerText,
   );
   const done = [
-    interruptedReason === "cancelled" ? "Stopped" : interruptedReason ? "Interrupted" : "Finished",
+    setupNeeded ? "Setup needed" : interruptedReason === "cancelled" ? "Stopped" : interruptedReason ? "Interrupted" : "Finished",
     toolCount > 0 ? `${toolCount} ${toolCount === 1 ? "tool call" : "tool calls"}` : "",
     modelLabel,
     toolFailed ? "a step failed" : "",
@@ -486,7 +520,6 @@ function AssistantMessage() {
   const isCancelled = useAuiState(
     (s) => s.message.status?.type === "incomplete" && s.message.status.reason === "cancelled",
   );
-  const hasParts = useAuiState((s) => s.message.parts.length > 0);
   // Empty boundary artifacts stay action-free. Metadata-only final payloads
   // retain a debug-only action so diagnostics remain reachable without
   // rendering copy/regenerate controls for blank text.
@@ -594,10 +627,13 @@ function AssistantMessage() {
     >
       <div className="[overflow-wrap:anywhere] px-2 leading-relaxed text-[var(--text)]">
         <RoutineRunBadge />
-        {isCancelled && !hasParts && (
-          <span role="status" className="text-xs text-[var(--text-muted)]">Stopped</span>
-        )}
         {renderParts(false)}
+        {isCancelled && (
+          <div role="status" className="my-2 flex items-center gap-2 text-xs text-[var(--text-muted)]">
+            <StopCircleIcon aria-hidden="true" className="size-3.5 shrink-0" />
+            <span>You stopped this request.</span>
+          </div>
+        )}
         {/* Prompt Sheet (composer) owns live sequester for questions +
             staged writes. Inline attachment lists stay as transcript
             artifacts when already in message parts. */}
@@ -625,7 +661,7 @@ export function PromptSheetResumeNote({ text }: { text: string }) {
         <ul className="list-disc space-y-1 pl-4">
           {view.items.map((item, index) => (
             <li key={`${index}:${item}`}>
-              <Text as="span" variant="body" tone="muted">{item}</Text>
+              <MarkdownContent compact>{item}</MarkdownContent>
             </li>
           ))}
         </ul>
@@ -710,6 +746,15 @@ function InlineAttachmentLists() {
 // ---------------------------------------------------------------------------
 
 function MessageError() {
+  const detail = useAuiState((s) =>
+    (s.message.metadata?.custom as { errorDetail?: string } | undefined)?.errorDetail,
+  );
+  const code = useAuiState((s) =>
+    (s.message.metadata?.custom as { errorCode?: string } | undefined)?.errorCode,
+  );
+  if (isModelSetupFailure(code)) {
+    return <MessagePrimitive.Error><ModelSetupNotice code={code} /></MessagePrimitive.Error>;
+  }
   return (
     <MessagePrimitive.Error>
       <ErrorPrimitive.Root
@@ -718,7 +763,9 @@ function MessageError() {
           bg-[var(--chat-error-bg)] p-3 text-sm text-[var(--chat-error-fg)]
         "
       >
-        <ErrorPrimitive.Message className="line-clamp-2" />
+        <ExpandableChatError summary={<ErrorPrimitive.Message />}>
+          {detail || <ErrorPrimitive.Message />}
+        </ExpandableChatError>
       </ErrorPrimitive.Root>
     </MessagePrimitive.Error>
   );
@@ -1224,26 +1271,8 @@ export function Composer({ locked = false, home = false, onSendAttempt }: { lock
     return <div role="status" className="px-3 py-3 text-sm text-[var(--text-muted)]">Loading conversation…</div>;
   }
 
-  if (blockedReason === "model_key_required") {
-    return (
-      <div
-        className="
-          flex w-full flex-col gap-2 rounded-[var(--radius-card)]
-          border border-[var(--border-subtle)] bg-[var(--panel)] p-4 text-sm
-        "
-      >
-        <p className="text-[var(--text)]">
-          This deployment requires primary and secondary model API keys before
-          chat can run.
-        </p>
-        <Link
-          to="/settings#agents"
-          className="font-medium text-[var(--accent)] hover:underline"
-        >
-          Configure model credentials in Settings → Agents
-        </Link>
-      </div>
-    );
+  if (isModelSetupFailure(blockedReason)) {
+    return <ModelSetupNotice code={blockedReason} />;
   }
 
   if (locked) {

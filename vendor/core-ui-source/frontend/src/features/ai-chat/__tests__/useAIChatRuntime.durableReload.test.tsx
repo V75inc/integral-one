@@ -77,10 +77,12 @@ describe("owned durable work after reload", () => {
       .mockResolvedValueOnce({...thread, active_work_item_id: "chat-turn:owned", messages: [user]})
       .mockResolvedValue({...thread, active_work_item_id: null, messages: [user, assistant]});
     const stream = vi.fn(async function* (_ctx: Parameters<ChatProvider["streamTurn"]>[0]): AsyncIterable<NormalizedEvent> {
+      yield {type: "navigation", path: "/tracks/n.Track.collection", thread_id: "t1", workspace_id: "ws1"};
       yield {type: "text-delta", delta: "Recovered answer"};
       yield {type: "message-finish"};
     });
-    const {result} = renderHook(() => useAIChatRuntime(nativeProvider(stream), {initialThreadId: "t1"}));
+    const onNavigate = vi.fn();
+    const {result} = renderHook(() => useAIChatRuntime(nativeProvider(stream), {initialThreadId: "t1", onNavigate}));
     await waitFor(() => expect(stream).toHaveBeenCalledTimes(1));
     expect(stream.mock.calls[0][0]).toEqual(expect.objectContaining({resumeWorkItemId: "chat-turn:owned", userMessageText: ""}));
     await waitFor(() => {
@@ -89,6 +91,40 @@ describe("owned durable work after reload", () => {
     });
     expect(aiChatApi.createThread).not.toHaveBeenCalled();
     expect(aiChatApi.getThread).toHaveBeenCalledTimes(2);
+    expect(onNavigate).not.toHaveBeenCalled();
+  });
+  it.each([false, true])("defers live navigation and protects a composer draft (%s)", async blocked => {
+    vi.mocked(aiChatApi.listThreads).mockResolvedValue([thread]);
+    vi.mocked(aiChatApi.getThread).mockResolvedValue({...thread, messages: [user]});
+    const visibility = vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('visible');
+    const composer = document.createElement('textarea');
+    composer.setAttribute('aria-label', 'Message input');
+    composer.value = blocked ? 'An unfinished message' : '';
+    document.body.append(composer);
+    let settle!: () => void;
+    const completion = new Promise<void>(resolve => { settle = resolve; });
+    const stream = vi.fn(async function* (): AsyncIterable<NormalizedEvent> {
+      yield {type: "navigation", path: "/tracks/n.Track.collection", thread_id: "t1", workspace_id: "ws1"};
+      await completion;
+      yield {type: "message-finish"};
+    });
+    const onNavigate = vi.fn();
+    const {result} = renderHook(() => useAIChatRuntime(nativeProvider(stream), {initialThreadId: "t1", onNavigate}));
+    try {
+      await waitFor(() => expect(result.current.composerReady).toBe(true));
+      await act(async () => {
+        await result.current.runtime.thread.append({role: "user", content: [{type: "text", text: "Show me that."}]});
+      });
+      await waitFor(() => expect(stream).toHaveBeenCalledTimes(1));
+      expect(onNavigate).not.toHaveBeenCalled();
+      await act(async () => { settle(); await completion; });
+      await waitFor(() => expect(result.current.isRunning).toBe(false));
+      if (blocked) expect(onNavigate).not.toHaveBeenCalled();
+      else expect(onNavigate).toHaveBeenCalledWith('/tracks/n.Track.collection', 't1');
+    } finally {
+      composer.remove();
+      visibility.mockRestore();
+    }
   });
   it("does not loop when the saved response cannot be delivered", async () => {
     vi.mocked(aiChatApi.listThreads).mockResolvedValue([thread]);
@@ -100,6 +136,23 @@ describe("owned durable work after reload", () => {
     await waitFor(() => expect(aiChatApi.getThread).toHaveBeenCalledTimes(2));
     expect(stream).toHaveBeenCalledTimes(1);
     expect(aiChatApi.createThread).not.toHaveBeenCalled();
+  });
+  it("keeps durable host continuation receipts out of conversation bubbles", async () => {
+    vi.mocked(aiChatApi.listThreads).mockResolvedValue([thread]);
+    vi.mocked(aiChatApi.getThread).mockResolvedValue({
+      ...thread,
+      active_work_item_id: null,
+      messages: [user, {
+        id: "host-receipt", thread_id: "t1", role: "system",
+        parts: [{type: "text", text: "Approval outcome received."}],
+      }, assistant],
+    });
+    const stream = vi.fn(async function* (): AsyncIterable<NormalizedEvent> {});
+    const {result} = renderHook(() => useAIChatRuntime(nativeProvider(stream), {initialThreadId: "t1"}));
+    await waitFor(() => expect(result.current.composerReady).toBe(true));
+    expect(result.current.runtime.thread.getState().messages.map(message => message.id))
+      .toEqual(["accepted-user", "saved-assistant"]);
+    expect(stream).not.toHaveBeenCalled();
   });
 });
 

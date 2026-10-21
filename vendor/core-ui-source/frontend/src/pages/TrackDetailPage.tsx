@@ -116,6 +116,7 @@ export function TrackDetailPage() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const entryIdFromQuery = searchParams.get('entry')?.trim() || '';
+  const requestedViewId = searchParams.get('view_id')?.trim() || '';
   const dashboardFiltersParam = searchParams.get('dashboard_filters');
   const dashboardFilters = useMemo(() => {
     if (!dashboardFiltersParam) return undefined;
@@ -473,8 +474,8 @@ export function TrackDetailPage() {
     const visibleTypedViews = typedViews.filter(
       v => !v.hidden && getWidget(v.type)?.scope !== 'entry'
     );
-    let defaultView: SavedView | null = null;
-    if (defaultViewKeySlug) {
+    let defaultView: SavedView | null = visibleTypedViews.find(v => v.id === requestedViewId) || null;
+    if (!defaultView && defaultViewKeySlug) {
       defaultView =
         visibleTypedViews.find(v => {
           const raw = String(v.config?._manifest_view_key || '').trim();
@@ -490,7 +491,14 @@ export function TrackDetailPage() {
     if (defaultView) {
       setActiveView(defaultView);
     }
-  }, [trackMetaQuery.data, viewsQuery.data, feedFallbackView]);
+  }, [trackMetaQuery.data, viewsQuery.data, feedFallbackView, requestedViewId]);
+
+  // A tool may select another saved view without leaving this collection.
+  useEffect(() => {
+    if (!requestedViewId) return;
+    const requested = viewsQuery.data?.find(v => v.id === requestedViewId && !v.hidden && getWidget(v.type)?.scope !== 'entry');
+    if (requested) setActiveView(requested);
+  }, [requestedViewId, viewsQuery.data]);
 
   // Re-route activeView if the user hides it from the config panel — pick
   // up the latest copy from cache and swap to a visible default if hidden.
@@ -1814,6 +1822,12 @@ export function TrackDetailPage() {
         onChangeView={next => {
           setLayoutTarget(null);
           setActiveView(next);
+          setSearchParams(prev => {
+            const params = new URLSearchParams(prev);
+            if (next?.id) params.set('view_id', next.id);
+            else params.delete('view_id');
+            return params;
+          }, { replace: true });
         }}
         onEditLayout={canEditViewLayout && id && activeView
           ? () => setLayoutTarget({ trackId: id, viewId: activeView.id })

@@ -7,6 +7,13 @@ export function isInternalAppHref(href: string | undefined): boolean {
   return internalAppHref(href) !== undefined;
 }
 
+function typedResourcePath(path: string): string {
+  const match = /^\/(n\.(Track|Entry|WorkspaceApp)\.[A-Za-z0-9_-]+)([?#].*)?$/.exec(path);
+  if (!match) return path;
+  const routes: Record<string, string> = { Track: 'tracks', Entry: 'entries', WorkspaceApp: 'apps' };
+  return `/${routes[match[2]]}/${match[1]}${match[3] ?? ''}`;
+}
+
 /** Keep current-origin and recognized placeholder record links in the router. */
 function internalAppHref(href: string | undefined): string | undefined {
   if (!isSafeHref(href)) return undefined;
@@ -17,7 +24,7 @@ function internalAppHref(href: string | undefined): string | undefined {
   if (trimmed.startsWith('//') && typedRecordPath.test(trimmed.slice(1).split(/[?#]/, 1)[0])) {
     return trimmed.slice(1);
   }
-  if (trimmed.startsWith('/') && !trimmed.startsWith('//')) return trimmed;
+  if (trimmed.startsWith('/') && !trimmed.startsWith('//')) return typedResourcePath(trimmed);
 
   try {
     const url = new URL(trimmed, typeof window === 'undefined' ? undefined : window.location.origin);
@@ -25,7 +32,7 @@ function internalAppHref(href: string | undefined): string | undefined {
     const localPath = `${url.pathname}${url.search}${url.hash}`;
     if (localPath.startsWith('//')) return undefined;
     if (typeof window !== 'undefined' && url.origin === window.location.origin) {
-      return localPath;
+      return typedResourcePath(localPath);
     }
     // Historical answers used these placeholder hosts. Only known Core record
     // routes can be repaired; unrelated websites and other installations stay

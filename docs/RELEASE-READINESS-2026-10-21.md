@@ -1,60 +1,62 @@
-# Integral One 0.1.0 release preparation
+# Integral One 0.1.1 release preparation
 
 Worktree: `codex/release-readiness`, based on public main `a3187f5`.
-This is an evidence ledger, not a release approval. No public release exists.
-The owner authorized committing and publishing the current One source changes
-as a pull request on 21 October; installer publication remains a separate gate.
+This is an evidence ledger, not a release approval. No One installer was published.
+The owner authorized the source PR, Core #166/#167 merges and governed rc29
+publication, and selected Apple Silicon on macOS 14+ for the initial signed
+release. Signing-material use and One publication remain separate approvals.
 
 | Gate | Current evidence | Remaining work |
 | --- | --- | --- |
-| Stable version | package, lock and distribution set to candidate 0.1.0 | Review before tagging |
-| Clerk-only setup | Verified-session/local-record implementation and adversarial tests | Packaged production signup/callback/offline/upgrade qualification |
-| Local engine boundary | Published TestPyPI Core rc28 (5d0f605) matches its tag; desktop-host updated locally to 0.1.7-dev.4 for updater lifecycle/menu support; fresh runtime and controller session pass | Final Core fix release/pin, existing-installation upgrade and component disposition remain applicable; rc28 is not on production PyPI |
-| Desktop dependencies | Root npm audit: zero findings after global-agent 4.1.3 override; proxy API tested | Recheck exact final package closure |
-| Composed UI | Core rc28 production build and all 1,960 tests pass; missing layout CSS in the dependency-check rebuild corrected by restoring Tailwind's working directory; packaging rejects missing layout utilities; rebuilt native Home/Apps verified in dark mode and Apps in light mode | Production module closure excludes all four advisory-bearing packages; unresolved tooling exposure requires upstream remediation or reviewed disposition |
-| Local settings | Narrow Core transport fix passes real native PostgreSQL pin/timezone writes, restart retention, identity continuity and unauthenticated/foreign-user/hostile-origin denial in an explicitly local desktopqa build; expanded Core make verify passes, including the seeded-log assertion repair and image guards | Release reviewed Core before updating immutable One pins |
-| Auto-updater | Owner chose notification and approval before download/restart; Mac implementation, menu/lifecycle support, combined architecture metadata and 13 updater/metadata tests pass; 34 host tests pass; package inspection and native unsigned-build refusal pass; Google-linked setup/installation files remain byte-identical after warm-cache restart | Signed two-version update, invalid-download/signature and data-retention qualification on Apple Silicon/Intel; exact matching public feed and assets; signed Windows build blocked until its updater/signing qualification |
-| Production account instance | Created in V75 Inc / Integral for onintegral.ai | Provider credentials, all selected sign-in paths and operator/privacy qualification |
-| Google | Owner saved credentials; approved audience In production; real packaged macOS sign-in completed and local setup record verifies; owner confirmed Google worked | Google's tab can remain spinning after app handoff; user can close it once One opens. Other platforms and returning-account qualification remain |
-| Microsoft | Owner saved credentials and approved account-only consent; organization consent stayed unchecked. Packaged Microsoft callback and owner-entered email verification completed; durable production setup record verifies without a stored JWT. Latest updater preview restarts to Home with profile and installation/setup files unchanged | External/non-admin/personal-account, returning online sign-in and publisher/disclosure qualification remain; warm-cache restart is not a whole-machine network outage test |
-| Python dependencies | Earlier rc28 runtime audit found Pillow 12.3.0 advisories. Refreshed Core #165 retains main's text-only ONNX adapter and Pillow 13; its backend audit reports no known vulnerabilities, and decoder restrictions pass focused tests and full make verify | Release/pin the reviewed artifact, rebuild One's unchanged rc28 runtime and rerun its audit before claiming packaged remediation |
-| DNS | Clerk's five DNS-only CNAME records applied; primary domain Verified; normal Mac HTTPS and live signup now work | Recheck final release endpoints |
-| Native API/callback | Native API enabled; approved callback and origin configured; exact-origin native bootstrap returns 200 and negative control returns 400; real Google callback completed | Qualify other selected providers and platforms |
-| Session claims | Production verified-email/name session claims accepted by the packaged verifier; verified local setup record exists | Complete remaining email/Microsoft and returning-account checks |
-| Apple agreement/credentials | Credentials and Developer ID identity rechecked; no One notarization submission exists | Sign/notarize exact reviewed Mac candidates; assess actual downloaded bytes |
-| Signed runtime integrity | Fixed: the native signer verifies the approved input, signs the launcher, refreshes its hash before the outer app seal, then verifies the final app. Real ad hoc signing and package inspection pass; the wheel is unchanged | Qualify Developer ID signing/notarization and downloaded artifacts on supported Macs |
-| Core publication updates | Owner selected complete tested One releases. Registry polling, exact tagged-source/wheel/notice verification, native candidate matrix and source-PR workflow implemented. Live rc28 publication replay verifies all 776 packaged Python files and refreshed pins | Merge this workflow to activate scheduling; each new Core publication must pass its actual native matrix before an update PR is created |
-| Existing-store replacement | Real rc23 → rc28 app-style replacement retains the App/Track/record, installation keys, local setup binding and owner session after a cold backup | Repeat against each new Core version; signed A → B application replacement remains separate |
-| Installer protection | Repository permits bot PR creation. Configured desktop-release with eldonm as required human reviewer, main as its only permitted branch, and the reviewed public production account variable. Core pin changes on main automatically start protected candidate preparation | No repository/environment signing secrets are configured. Provision approved signing material and qualify the exact artifacts; no public release is created automatically |
-| Runtime launcher | uv 0.13.4 replaces 0.11.3 in all native jobs and bundle validation; the packaged upstream MIT notice is byte-identical | Rebuild and inspect each platform's final signed runtime |
-| Windows | No SignPath grant/certificate; no public Windows installer | Complete application/eligibility, approved signing integration and native QA |
-| Privacy/rights/brand | Prepared owner decision package | Owner/legal evidence and approved public disclosures |
-| Publication | Core [#165](https://github.com/V75inc/integral-core/pull/165) passed CI and merged. Version-bump [#166](https://github.com/V75inc/integral-core/pull/166) remains open for rc29; no rc29 tag/publication exists at this checkpoint. One [#2](https://github.com/V75inc/integral-one/pull/2) carries source preparation | Publish a reviewed Core artifact containing the fixes, refresh One pins through the new preparation flow, complete One source review and obtain final installer approval |
+| Version/pins | One package, lock and distribution are 0.1.1. Published TestPyPI Core rc29, exact tag `818542e`, wheel SHA-256 `73df3b958043e0146fbdaa3d6622f2a629dac38037c3ea63b082a9545e145c85`; all 781 packaged Python files and original notices match source. Host remains 0.1.7-dev.4. | Review exact source before tagging One. |
+| Core release | #165 settings/decoder fixes, #166 rc29 version and #167 manual-CI recovery are merged. Exact-main CI and governed publication/tag recording passed. | Continue exact-source/artifact gates for later Core releases. |
+| Mac platform | Owner selected Apple Silicon/macOS 14+. Cross-target resolution passes there. Intel has no compatible wheel for the required ONNX Runtime; public assembly refuses Intel assets. | Developer ID, notarization and supported-machine qualification. Intel needs an upstream compatibility solution. |
+| Mac minimum | Package declares macOS 14.0; actual application metadata is checked. Bootstrap rejects earlier systems before downloading. | Clean-machine acceptance of each advertised OS version. |
+| Local runtime | Fresh composed published-wheel startup, local runtime contract and controller session pass. | Final signed application startup. |
+| Store replacement | Actual rc28 → rc29 replacement follows a cold backup; App/Track/record, installation identity/keys, local setup binding and owner access remain intact. | Repeat for each Core pin; signed whole-application replacement remains separate. |
+| Desktop settings | Published-wheel timezone and App pin writes/readback pass and persist through a cold restart. Invalid model-credential requests reach normal validation rather than profile 403. | Real AI-provider inference/credential and full signed-user journey qualification. |
+| Source checks | 86 Node tests, 16 Python tests and 34 host tests pass. Published-tag UI snapshot exactly equals the preflight that passed build/types and all 1,984 UI tests across 343 files. | Exact-head native PR CI. |
+| Desktop dependencies | Production desktop npm audit reports zero findings. Earlier root-tooling audit also passed after global-agent 4.1.3; proxy API is tested. | Recheck final release dependency set. |
+| Python dependencies | Actual composed runtime's resolved versions exactly match its audited preflight; no known vulnerabilities found. Published rc29 includes Pillow 13, decoder restrictions and the text-only ONNX adapter. | Future pins require fresh audit/compatibility checks. |
+| Composed UI | Actual production closure checks 3,698 modules and excludes braces/sprintf-js from browser chunks. Tooling audit remains 5 high/3 moderate propagated findings. Packaged UI hashes and layout utilities pass. | Upstream remediation or reviewed disposition of remaining tooling exposure; build reviewed inputs without release credentials. |
+| Native package | Actual macOS ARM package, notices, private-file exclusions, source hashes, macOS floor and runtime hashes pass inspection. | Developer ID/notarization and downloaded ZIP/clean-machine checks. |
+| Signing integrity | Real ad hoc signing verifies the original inputs, signs the launcher, refreshes its hash before the outer seal and verifies the completed app. Startup from the signed package resources passes; wheel bytes stay unchanged. | Ad hoc signing does not qualify Gatekeeper, Developer ID or notarization. |
+| Updater | Opt-in checks, separate download/restart approvals, public credential-free feed and verified Core shutdown are implemented. ARM-only feed/SDK selection and Intel rejection are tested. | Signed A → B installation, invalid-download/signature rejection, retained data and first startup on the supported Mac target. |
+| Core publication updates | Registry polling, actual wheel/tag/source/notice checks, immutable pins and Linux/macOS/Windows candidate qualification prepare a draft One update PR. Current rc29 was consumed through that same preparation helper. | Merge workflow to activate scheduling; every later publication must pass its candidate matrix before an update PR is created. |
+| Installer protection | `desktop-release` has eldonm human review, main-only deployment and the public production account variable. Candidate plan resolves native dependencies before requesting signing approval. | Approved signing-material provisioning/use; no signing key was exported or used in this work. No automatic installer publication. |
+| Clerk-only setup | Installation-bound token-free local setup record and adversarial tests pass; legacy receipts remain compatible. | Final packaged production signup/return/outage/upgrade qualification. |
+| Production account/DNS | V75 Inc / Integral production Clerk instance and onintegral.ai DNS are configured; HTTPS and native bootstrap/callback controls were checked. | Final endpoint/provider/operator/privacy acceptance. |
+| Google | Owner-configured production consent and real earlier packaged Mac callback passed; local setup record verified. | Final signed package and returning-account cases. Google's tab may keep spinning after successful app handoff. |
+| Microsoft | Owner-configured account-only consent and earlier packaged callback/email verification passed; durable record verifies without a stored JWT. | External/non-admin/personal-account, returning-account and final signed-package checks. |
+| Runtime launcher | Reviewed uv 0.13.4 is bundled with its byte-identical upstream MIT notice. | Inspect the final signed runtime. |
+| Windows | Dependency resolution passes; prior native CI produced an unsigned rc28 installer. Signed build explicitly stays blocked until signing/updater qualification. | Exact rc29 native CI, approved signing provider and native acceptance. |
+| Privacy/rights/brand | Owner decision and disclosure package is prepared; inherited Apache grants and notices are preserved. | Required owner/legal/component evidence and approved public disclosures. |
+| One publication | One PR #2 carries source preparation; production bootstrap assets remain unpublished. | Signed installer, update/recovery, account/privacy/component gates and final publication approval. |
 
-Local logs and JSON evidence are in `.local/verification/release-readiness/`.
-They are excluded from the application and public import. Public source docs
-summarize results without credentials, user profiles, tokens or private account data.
+## Exact release evidence
 
-## Source review checkpoint
+- [Core source CI](https://github.com/V75inc/integral-core/actions/runs/39626017941)
+  passed on `818542ef29390f4350253808668cb4ab13a1334e`, including both containers.
+- [Governed rc29 publication](https://github.com/V75inc/integral-core/actions/runs/39633195204)
+  passed source qualification, artifact verification, TestPyPI upload and tag recording.
+- [TestPyPI rc29](https://test.pypi.org/project/integral-core/0.1.1rc29/) is the
+  consumed channel. The approved policy currently follows TestPyPI prereleases;
+  switching to stable PyPI requires a reviewed policy change.
 
-The source PR preserves the rc28 pin and records its known limitations. A fresh
-temporary-home probe opened the native controller session, then received HTTP
-403 for timezone, pinning and model-credential writes. These local settings
-remain blocked until the reviewed Core transport fix is released and composed
-into One. Passing host/account tests do not qualify those application flows.
+The manual CI recovery run was cancelled when a delayed push run for the same
+revision entered its shared concurrency group. The replacement run linked above
+completed successfully; the cancelled run is not used as publication evidence.
 
-Fresh source checks pass: 84 Node tests, 16 Python tests, 34 desktop-host tests,
-the UI production build/type check and all 1,960 UI tests. The production
-dependency-closure check inspected 3,695 modules and excluded all four
-advisory-bearing packages. Fresh composed-runtime startup and the native
-controller session pass in a temporary home. The originally failing ad hoc
-signing probe now passes with the signing-order correction, and the same native
-qualification is part of ordinary macOS CI. It is not Developer ID/notarization
-or a signed two-version updater acceptance test.
+The older rc28 negative control received HTTP 403 for settings writes. The exact
+published rc29 now passes the desktop settings and cold-restart journey. These
+checks run before signing, and ordinary native PR CI requires the same settings
+admission/retention checks. API validation admission does not claim a real online
+AI inference or provider-key acceptance test.
 
-This PR is release preparation. It does not publish an installer, enable the
-unsigned preview's updater, deploy account infrastructure or clear the signed
-installation, update, recovery, privacy and component-review gates.
+Task-local logs, synthetic homes and JSON evidence remain outside the application
+and public source import. Reports contain no account tokens, keys, private user
+profiles or operational data. No production data migration, Developer ID signing,
+notarization submission or One publication was performed by this preparation.
 
-See [Clerk-only setup](CLERK-ONLY-SETUP.md), [prepared decisions](RELEASE-DECISIONS-DRAFT.md)
-and [installer runbook](INSTALLER-RELEASE.md).
+See [platform readiness](PLATFORM-READINESS.md), [Core release updates](CORE-RELEASE-UPDATES.md),
+[auto-updates](AUTO-UPDATES.md) and the [installer runbook](INSTALLER-RELEASE.md).

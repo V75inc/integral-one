@@ -13,6 +13,9 @@ main() {
   fail() { echo "Integral One: $*" >&2; exit 1; }
   [ "$(uname -s)" = Darwin ] || fail 'This command supports macOS. Use the PowerShell command on Windows; Linux is not yet qualified.'
   [ "$(id -u)" -ne 0 ] || fail 'Run this command as your normal user, without sudo.'
+  mac_version=$(/usr/bin/sw_vers -productVersion)
+  mac_major=${mac_version%%.*}
+  [[ "$mac_major" =~ ^[0-9]+$ ]] && [ "$mac_major" -ge 14 ] || fail 'This runtime requires macOS 14 or newer.'
   installed=0
   arch=$(uname -m)
   # A Terminal running under Rosetta still needs the Apple Silicon build.
@@ -42,7 +45,7 @@ main() {
   expected=$(read_value "artifacts.$platform.sha256") || fail 'Missing download checksum.'
   [[ "$expected" =~ ^[a-f0-9]{64}$ ]] || fail 'Invalid download checksum.'
   team=$(read_value "artifacts.$platform.appleTeamId") || fail 'Missing publisher identity.'
-  [[ "$team" =~ ^[A-Z0-9]{10}$ ]] || fail 'Invalid publisher identity.'
+  [ "$team" = M43V972XU9 ] || fail 'This release is not from the approved V75 publisher.'
   size=$(read_value "artifacts.$platform.bytes") || fail 'Missing download size.'
   [[ "$size" =~ ^[1-9][0-9]*$ ]] || fail 'Invalid download size.'
   if [ "$check" -eq 1 ]; then echo "Integral One $version is available for $platform. No files installed."; return; fi

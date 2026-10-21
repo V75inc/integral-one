@@ -4,6 +4,24 @@ This is a development foundation PR, not a production release clearance.
 `npm audit` findings must be reported separately from passing functional tests.
 The source UI and host remain reviewed Core dependencies; fixes belong upstream.
 
+## Current rc29 checkpoint — 21 October 2026
+
+One now pins the published TestPyPI rc29 wheel and its exact source tag. The
+composed native runtime's resolved Python packages match the audited source
+preflight exactly: **no known vulnerabilities found**. This supersedes the older
+rc28/Pillow assessment below. Core's decoder restrictions remain in place.
+
+The actual rc29 UI lock audit reports **5 high and 3 moderate propagated
+findings**, from braces and sprintf-js. The production closure inspected **3,698
+modules** and excludes both affected packages from browser chunks. Vite and
+follow-redirects are updated in this consumed release. Desktop production
+`npm audit --omit=dev` reports zero findings. Remaining build-tool exposure and
+native/asset/component review still require their own disposition.
+
+The installed One runtime and packaged wheel were rebuilt and checked. These
+results apply to this exact dependency set; signing/notarization and clean-machine
+acceptance remain separate. Earlier checkpoints follow for traceability.
+
 ## Findings and disposition
 
 | Advisory | Exposure in this composition | Disposition |
@@ -30,7 +48,7 @@ build agents isolated from production credentials and never execute unreviewed
 contribution/package code in a privileged release context.
 
 
-## Release-candidate recheck — 21 October 2026
+## Earlier rc28 recheck — 21 October 2026
 
 The root desktop tooling chain now overrides `global-agent` to exact 4.1.3,
 removing its old roarr/sprintf-js chain without downgrading electron-builder.
@@ -65,17 +83,18 @@ Updater preparation adds exact electron-updater 6.8.9, semver 7.7.3 and patched
 js-yaml 4.3.2; the root audit remains zero. Core's upstream candidate updates Vite
 to 8.1.6 and follow-redirects to 1.16.1 with a successful production build and
 1,954 frontend tests; its lock audit drops to 5 high/3 moderate propagated
-findings, all from unpatched braces/sprintf-js chains. Those fixes are local to
-Core until reviewed/released and must not be claimed as part of One's rc28 pin.
+findings, all from unpatched braces/sprintf-js chains. At that earlier checkpoint, those fixes were not part of One's rc28 pin.
+The current rc29 checkpoint above supersedes that limitation.
 
-## Python image dependencies — 21 October 2026
+## Earlier Python image assessment — 21 October 2026
 
 An earlier resolved One runtime audit reported eight Pillow 12.3.0 advisories.
 The initial Pillow 13 experiment conflicted with FastEmbed's published cap and
 was not a valid release dependency set. Core main now incorporates PR #163's
 text-only ONNX adapter and compatible Pillow 13, certifi and uv updates. The
 updated #165 candidate retains those dependencies; its backend audit reports no
-known vulnerabilities. None of these source changes updates One's rc28 pin.
+known vulnerabilities. At that earlier checkpoint, One still pinned rc28; the current rc29
+checkpoint above records the subsequently published and audited runtime.
 
 Core #165 also restricts decoder dispatch at its three image ingress services:
 avatars accept PNG/JPEG/WebP, signature overlays require verified PNG bytes, and

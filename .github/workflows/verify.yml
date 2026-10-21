@@ -32,7 +32,7 @@ jobs:
       - run: npm run build:runtime
       - run: npm run build:accounts
       - run: npm run qualify:runtime
-      - run: node scripts/qualify-upgrade.js resources/core
+      - run: node scripts/qualify-upgrade.js resources/core --require-settings
       - run: npx electron-builder --dir --publish never
       - if: runner.os == 'macOS'
         run: node scripts/qualify-mac-signing.js release

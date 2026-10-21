@@ -1,7 +1,7 @@
 {
   "contract_version": 1,
   "product": "integral-one",
-  "product_version": "0.1.0",
+  "product_version": "0.1.1",
   "mode": "local",
   "desktop_host": {
     "version": "0.1.7-dev.4",
@@ -9,14 +9,14 @@
     "sha256": "b59ab45c67507e8415adfb5c685411d25332af16f44829c5eae9567e9b33adc3"
   },
   "core": {
-    "version": "0.1.1rc28",
-    "source_commit": "5d0f60553764c1350362e35be002a922064fc400",
-    "source_state": "Published TestPyPI release v0.1.1rc28; wheel Python source and licensing match the exact release tag",
+    "version": "0.1.1rc29",
+    "source_commit": "818542ef29390f4350253808668cb4ab13a1334e",
+    "source_state": "Published wheel matches exact Core release tag; consumer qualification required",
     "desktop_contract_version": 1,
-    "wheel_sha256": "6c9574d97f4e7957ada68d552f8bcdd557e2b29ebfb4df4408405285ab99c3b2",
-    "wheel_filename": "integral_core-0.1.1rc28-py3-none-any.whl",
-    "ui_manifest_sha256": "946ded153434346e9e8646538e7ee0397749af2f2a10a8c76826c3cbc83d0195",
-    "base_wheel": "vendor/core-runtime/integral_core-0.1.1rc28-py3-none-any.whl",
+    "wheel_sha256": "73df3b958043e0146fbdaa3d6622f2a629dac38037c3ea63b082a9545e145c85",
+    "wheel_filename": "integral_core-0.1.1rc29-py3-none-any.whl",
+    "ui_manifest_sha256": "8e705676d379afd712d824c5e6b7370da810524a060306ed791e72fca8c38e5f",
+    "base_wheel": "vendor/core-runtime/integral_core-0.1.1rc29-py3-none-any.whl",
     "runtime_contract_version": 1,
     "runtime_preset": "local"
   },

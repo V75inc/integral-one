@@ -1,0 +1,8 @@
+{
+  "core_version": "0.1.1rc29",
+  "one_version": "0.1.1",
+  "core_commit": "818542ef29390f4350253808668cb4ab13a1334e",
+  "registry": "testpypi",
+  "wheel_sha256": "73df3b958043e0146fbdaa3d6622f2a629dac38037c3ea63b082a9545e145c85",
+  "automatic_publication": false
+}

@@ -1,3 +1,4 @@
+import { ExpandableChatError } from "../components/ExpandableChatError";
 /**
  * Approval card for an agent-staged write.
  *
@@ -307,7 +308,7 @@ export function StagedChangeCard({ staged, onTerminal }: StagedChangeCardProps) 
 
       {status.kind === 'error' && (
         <div className="mt-2 rounded-[var(--radius-input)] bg-[var(--danger-bg)] px-2 py-1 text-xs text-[var(--danger-fg)]">
-          {status.message}
+          <ExpandableChatError summary={status.message} />
         </div>
       )}
     </div>

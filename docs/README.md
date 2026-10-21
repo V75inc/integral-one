@@ -45,3 +45,5 @@
 User instructions describe the current preview unless explicitly marked as a future release path. Qualification evidence does not imply a signed or production-ready release.
 
 Architecture: [accepted Core/host boundary](CORE-HOST-BOUNDARY-PROPOSAL.md).
+
+- [Native platform readiness](PLATFORM-READINESS.md) — Apple Silicon/macOS 14+ launch scope and Intel compatibility blocker.

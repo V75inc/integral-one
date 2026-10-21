@@ -112,6 +112,31 @@ describe("useAIChatRuntime parallel streams", () => {
     __resetThreadSessionStoreForTests();
   });
 
+  it("replaces a retry notice when observable work resumes", async () => {
+    let resume!: () => void;
+    let finish!: () => void;
+    const resumed = new Promise<void>((resolve) => { resume = resolve; });
+    const finished = new Promise<void>((resolve) => { finish = resolve; });
+    const provider: ChatProvider = {
+      ...mockProvider,
+      streamTurn: async function* () {
+        yield { type: "status", text: "Trying the connection again" };
+        await resumed;
+        yield { type: "tool-call", toolCallId: "read-1", name: "integral_get_index_status", status: "running" };
+        await finished;
+        yield { type: "message-finish" };
+      },
+    };
+    const { result } = renderHook(() => useAIChatRuntime(provider, { initialThreadId: "t1" }));
+    await waitFor(() => expect(result.current.composerReady).toBe(true));
+    await act(async () => { await result.current.runtime.thread.append({ role: "user", content: [{ type: "text", text: "Check search" }] }); });
+    await waitFor(() => expect(result.current.activityText).toBe("Trying the connection again"));
+    act(() => resume());
+    await waitFor(() => expect(result.current.activityText).toBeNull());
+    act(() => finish());
+    await waitFor(() => expect(result.current.isRunning).toBe(false));
+  });
+
   it("keeps Stop pending and the stream connected until backend acknowledgement", async () => {
     let acknowledge!: () => void;
     let signal: AbortSignal | undefined;

@@ -47,3 +47,27 @@ test("the packaged public GitHub provider ignores ambient GitHub credentials", t
   assert.equal(config.owner, 'V75inc');
   assert.equal(config.repo, 'integral-one');
 });
+
+test('Apple Silicon-only feed resolves its native asset and offers no Intel download', t => {
+  const f = fixture(t);
+  delete f.manifest.artifacts['darwin-x64']; f.save();
+  const feed = generate(f.dir, '0.1.0');
+  assert.equal(feed.files.length, 1);
+  assert.match(feed.path, /-arm64\.zip$/);
+  const { MacUpdater } = require('electron-updater/out/MacUpdater');
+  const files = feed.files.map(info => ({ info, url: new URL(info.url, 'https://github.com/') }));
+  assert.equal(MacUpdater.filterFilesForArch(files, true).length, 1);
+  assert.equal(MacUpdater.filterFilesForArch(files, false).length, 0);
+});
+
+test('public manifest assembly permits Apple Silicon alone and refuses Intel assets', t => {
+  const f = fixture(t), { merge } = require('../scripts/installer-manifest');
+  const part = arch => ({ schemaVersion: 1, version: f.manifest.version,
+    artifacts: { [`darwin-${arch}`]: f.manifest.artifacts[`darwin-${arch}`] } });
+  fs.writeFileSync(path.join(f.dir, 'install-manifest-darwin-arm64.json'), JSON.stringify(part('arm64')));
+  const output = path.join(f.dir, 'assembled.json');
+  merge(f.dir, output);
+  assert.deepEqual(Object.keys(JSON.parse(fs.readFileSync(output)).artifacts), ['darwin-arm64']);
+  fs.writeFileSync(path.join(f.dir, 'install-manifest-darwin-x64.json'), JSON.stringify(part('x64')));
+  assert.throws(() => merge(f.dir, output), /Intel Mac release is blocked/);
+});

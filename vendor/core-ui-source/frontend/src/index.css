@@ -70,6 +70,9 @@
   --bg: #fafafa;
   --panel: #ffffff;
   --panel-2: #f4f4f6;
+  --toast-bg: #29292e;
+  --toast-fg: #fafafa;
+  --toast-border: #51515a;
   /* Structural sections: navigation and both assistant layouts share a
      soft gray canvas; cards and input surfaces stay on --panel. */
   --section-bg: var(--panel-2);
@@ -264,6 +267,9 @@
   --bg: #1a1a1a;
   --panel: #212121;
   --panel-2: #272727;
+  --toast-bg: #f4f4f6;
+  --toast-fg: #202024;
+  --toast-border: #bcbcc5;
   --section-bg: var(--bg);
   --panel-border: #2d2d2d;
   /* Matches the reference's `--line-2`. Used for entry-row hairlines

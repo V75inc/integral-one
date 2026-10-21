@@ -11,6 +11,8 @@ import {
   useChatEntityRefs,
 } from "../../context/ChatEntityRefsContext";
 import { useScope } from "../../context/ScopeContext";
+import { useNavigate } from "react-router-dom";
+import { requestOpenCompanionChat } from "./chatHandoff";
 
 /**
  * Context that surfaces runtime-level affordances to descendants of
@@ -142,6 +144,7 @@ function AIChatRuntimeBoundaryInner({
   startNewThread?: boolean;
   handoffEnabled?: boolean;
 }) {
+  const navigate = useNavigate();
   const { consumePendingEntityRefs, resetComposerEntityRefs } =
     useChatEntityRefs();
   const {
@@ -159,6 +162,10 @@ function AIChatRuntimeBoundaryInner({
     threadGroups,
     threads,
   } = useAIChatRuntime(provider, {
+    onNavigate: (path, threadId) => {
+      requestOpenCompanionChat({ threadId });
+      navigate(path);
+    },
     consumeEntityRefs: consumePendingEntityRefs,
     resetComposerEntityRefs,
     initialThreadId,

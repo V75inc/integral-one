@@ -20,6 +20,9 @@ permissions:
   contents: read
 jobs:
   plan:
+    permissions:
+      contents: read
+      actions: read # Environment metadata read required by the protection preflight.
     runs-on: ubuntu-latest
     outputs:
       matrix: ${{ steps.targets.outputs.matrix }}
@@ -54,10 +57,33 @@ jobs:
           INCLUDE_WINDOWS: ${{ inputs.include_windows }}
         run: >-
           node -e "const fs=require('fs');const include=[
-          {runner:'macos-15',platform:'darwin',arch:'arm64',certificate:'MACOS_CSC_LINK',password:'MACOS_CSC_KEY_PASSWORD'},
-          {runner:'macos-15-intel',platform:'darwin',arch:'x64',certificate:'MACOS_CSC_LINK',password:'MACOS_CSC_KEY_PASSWORD'}];
+          {runner:'macos-15',platform:'darwin',arch:'arm64',certificate:'MACOS_CSC_LINK',password:'MACOS_CSC_KEY_PASSWORD'}];
           if(process.env.INCLUDE_WINDOWS==='true')include.push({runner:'windows-latest',platform:'win32',arch:'x64',certificate:'WINDOWS_CSC_LINK',password:'WINDOWS_CSC_KEY_PASSWORD'});
           fs.appendFileSync(process.env.GITHUB_OUTPUT,'matrix='+JSON.stringify({include})+'\n');"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install uv==0.13.4
+      - name: Resolve selected Mac runtime targets before requesting signing approval
+        env:
+          TARGET_MATRIX: ${{ steps.targets.outputs.matrix }}
+        shell: bash
+        run: |
+          node scripts/verify-distribution.js
+          python3 - <<'PYTHON'
+          import json, os, pathlib, subprocess
+          root = pathlib.Path.cwd()
+          pins = json.loads((root / 'distribution.json').read_text())
+          package = json.loads((root / 'package.json').read_text())
+          source = pathlib.Path(os.environ['RUNNER_TEMP']) / 'core-runtime.in'
+          source.write_text('integral-core @ ' + (root / pins['core']['base_wheel']).as_uri() + '\n')
+          env = dict(os.environ, MACOSX_DEPLOYMENT_TARGET=package['build']['mac']['minimumSystemVersion'])
+          for target in json.loads(os.environ['TARGET_MATRIX'])['include']:
+              if target['platform'] != 'darwin':
+                  continue
+              platform = {'arm64': 'aarch64-apple-darwin', 'x64': 'x86_64-apple-darwin'}[target['arch']]
+              subprocess.run(['uv', 'pip', 'compile', str(source), '--index-url', 'https://pypi.org/simple', '--python-version', '3.12', '--python-platform', platform, '--only-binary', 'onnxruntime', '--output-file', str(source.with_name(platform + '.txt'))], env=env, check=True)
+          PYTHON
   build:
     needs: plan
     environment: desktop-release

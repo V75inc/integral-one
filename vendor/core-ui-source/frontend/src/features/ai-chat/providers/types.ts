@@ -12,6 +12,7 @@ import type { ChatPageContextPayload } from "../../../types/chatPageContext";
  */
 
 export type NormalizedEvent =
+  | { type: "navigation"; path: string; thread_id: string; workspace_id: string }
   | { type: "text-delta"; delta: string }
   | { type: "text-replace"; content: string }
   | { type: "reasoning-delta"; delta: string; segmentId?: string }
@@ -101,7 +102,7 @@ export interface TurnContext {
   agentId?: string;
   /** Picker-selected @ / # references from the composer. */
   entityRefs?: ChatEntityRef[];
-  /** Inline images the user attached — forwarded to the vision reflex. */
+  /** Image preview payloads; native chat reads pixels from persisted attachmentIds. */
   images?: ChatImageInput[];
   /** Ids of general files already uploaded via the chat-upload endpoint
    *  (Slice B) — the backend builds a per-turn context note from these. */

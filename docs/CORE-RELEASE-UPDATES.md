@@ -54,17 +54,22 @@ failure or publication outage fails preparation without changing installed apps.
 
 The source PR is reviewed and merged. Changes to the Core pins on `main`
 automatically start the protected signed-candidate workflow, which then
-builds Apple Silicon and Intel installers with production public account settings,
-Developer ID signing and notarization. It assembles the matching ZIPs,
+builds the initial Apple Silicon installer for macOS 14+ with production public account settings,
+Developer ID signing and notarization. It assembles the matching ZIP,
 `install-manifest.json` and a single `latest-mac.yml`. It requires a protected
 `desktop-release` environment with human reviewers and branch restrictions before
 any signing job can start; missing protection fails preparation. The explicit
 manual dispatch remains available for reviewed reruns.
 
+The read-only plan first resolves the selected Mac runtime dependencies, before
+requesting signing-environment approval. Intel currently fails this check; the
+owner selected Apple Silicon first. See [platform readiness](PLATFORM-READINESS.md).
+
 Signed preparation also requires a real temporary-home desktop journey to pass:
 App/Track/record creation, backup/restart, timezone, pinning and model-credential
-request admission. The current rc28 pin fails this gate with HTTP 403. A reviewed
-Core release containing #165 must be published and composed before launch.
+request admission. The rc28 negative control failed this gate with HTTP 403. The reviewed rc29
+release containing #165 is published and composed; its actual consumer journey
+is required before signing.
 
 After the exact installers and a signed version-A-to-version-B update are approved,
 publish those assets together as the next stable **Integral One** release. The

@@ -80,7 +80,20 @@ async function qualify(directory, { requireSettings = false } = {}) {
         body: "{}", signal: AbortSignal.timeout(30_000), redirect: "error",
       });
       assert.ok([400, 422].includes(invalid.status), "Desktop model setup is unavailable or accepts invalid credentials");
-      console.log("Release desktop settings: timezone, pinning and model setup transport passed.");
+      assert.equal((await runCli(current, ["stop", "--home", home, "--json"])).state, "stopped");
+      const restarted = await startCore({ home, resources, command: current });
+      assert.equal(restarted.installation_id, oldRuntime.installation_id);
+      const restartedSession = await localSession(restarted);
+      const savedTimezone = await api(restarted, restartedSession, "/api/users/me/timezone");
+      const savedPins = await api(restarted, restartedSession, "/api/users/me/pinned");
+      assert.equal(savedTimezone.timezone, "America/Guyana");
+      assert.ok(savedPins.pinned.apps.includes(app.id), "Pinned App must survive a cold restart");
+      const savedEntry = await api(restarted, restartedSession, `/api/entries/${entry.id}`);
+      assert.equal((savedEntry.entry || savedEntry).body, "Synthetic upgrade continuity");
+      assert.deepEqual(privateKeys(), keysBefore, "Installation keys changed after restart");
+      assert.deepEqual(["activation.json", "setup-key.json"].map(name => hash(fs.readFileSync(path.join(home, "one-account", name)))), accountBefore);
+      verifyAccount(home, loadState(home), config);
+      console.log("Release desktop settings: timezone, pinning, model setup transport and cold-restart retention passed.");
     }
     console.log("Previous Core → composed One engine: backup, App/Track/record, installation keys, account binding and local session retained.");
   } finally {

@@ -1,4 +1,5 @@
 import { friendlyAssistantText, friendlyChatFailure, friendlyToolFailure } from "./components/assistantMessagePresentation";
+import { agentNavigationPath } from "./agentNavigation";
 import {
   useCallback,
   useEffect,
@@ -132,6 +133,8 @@ type AssistantMessageDraft = {
   // source-of-truth.
   finalContent?: string;
   finalPayload?: Record<string, unknown>;
+  errorCode?: string;
+  errorDetail?: string;
 };
 
 function freshDraft(id: string): AssistantMessageDraft {
@@ -240,8 +243,11 @@ function draftToMessage(draft: AssistantMessageDraft): ThreadMessageLike {
         draft.customSteps?.length ||
         draft.interactPayload ||
         draft.finalContent ||
-        draft.finalPayload
+        draft.finalPayload ||
+        draft.errorCode
           ? {
+              ...(draft.errorCode ? { errorCode: draft.errorCode } : undefined),
+              ...(draft.errorDetail ? { errorDetail: draft.errorDetail } : undefined),
               ...(draft.customSteps?.length
                 ? { steps: draft.customSteps }
                 : undefined),
@@ -569,20 +575,30 @@ function persistedToMessage(m: AIChatPersistedMessage): ThreadMessageLike {
         ? friendlyChatFailure(pm.error.code, pm.error.message)
         : null;
     const errorMessage = turnError ?? metaError;
+    // Cancellation is an intentional user action, including when restored
+    // from older transcripts that persisted it as an error event.
+    const persistedError = rawParts.find(
+      (part) => (part as { type?: string }).type === "error",
+    ) as { code?: string; message?: string } | undefined;
+    const errorCode = persistedError?.code ?? pm?.error?.code;
+    const isCancelled = errorCode === "work.cancelled";
 
     const hasMetadata =
       pmSteps.length > 0 ||
       !!pmTiming ||
       !!pmInteract ||
       !!pmFinalContent ||
-      !!pmFinalPayload;
+      !!pmFinalPayload ||
+      !!errorCode;
     return {
       id: m.id,
       role: "assistant",
       content,
-      status: errorMessage
-        ? { type: "incomplete", reason: "error", error: errorMessage }
-        : { type: "complete", reason: "stop" },
+      status: isCancelled
+        ? { type: "incomplete", reason: "cancelled" }
+        : errorMessage
+          ? { type: "incomplete", reason: "error", error: errorMessage }
+          : { type: "complete", reason: "stop" },
       metadata: hasMetadata
         ? {
             steps: pmSteps.map((s) => ({
@@ -609,6 +625,10 @@ function persistedToMessage(m: AIChatPersistedMessage): ThreadMessageLike {
                 }
               : undefined,
             custom: {
+              ...(errorCode ? { errorCode } : undefined),
+              ...(persistedError?.message || pm?.error?.message
+                ? { errorDetail: persistedError?.message || pm?.error?.message }
+                : undefined),
               ...(pmSteps.length > 0 ? { steps: pmSteps } : undefined),
               ...(pmInteract ? { interactPayload: pmInteract } : undefined),
               ...(pmFinalContent
@@ -805,6 +825,7 @@ export function mergeColdTranscript(
 }
 
 export interface UseAIChatRuntimeOptions {
+  onNavigate?: (path: string, threadId: string) => void;
   consumeEntityRefs?: () => ChatEntityRef[];
   resetComposerEntityRefs?: () => void;
   /** When set (e.g. from `/agent?thread=`), select this thread on mount. */
@@ -844,8 +865,17 @@ export function useAIChatRuntime(
   const { focusedTrackId, focusedViewId, focusedAppId } = useChatPageFocus();
   const snapshotPageContext = useChatPageContextSnapshot();
   const workspaceId = scope?.workspaceId ?? null;
+  const onNavigateRef = useRef(options.onNavigate);
+  onNavigateRef.current = options.onNavigate;
+  const navigationMountedRef = useRef(true);
+  useEffect(() => {
+    navigationMountedRef.current = true;
+    return () => { navigationMountedRef.current = false; };
+  }, []);
   const auth = useAuthOptional();
   const principalId = auth?.user?.id ?? null;
+  const principalIdRef = useRef(principalId);
+  principalIdRef.current = principalId;
   const selectionScopeReady = Boolean(workspaceId) && !auth?.loading && (auth === null || Boolean(principalId));
   const freshChatScope = useMemo(
     () => ({ principalId, workspaceId, providerId: provider.id }),
@@ -1209,7 +1239,11 @@ export function useAIChatRuntime(
         }
         // Do not overwrite a cache that started streaming while we fetched.
         if (peekStreamingThreadIds().includes(threadId)) return "skip";
-        const server = t.messages.map(persistedToMessage);
+        // Durable host receipts drive continuation and audit, but are not
+        // conversation bubbles (including after a reload or reconnect).
+        const server = t.messages
+          .filter(message => message.role !== "system")
+          .map(persistedToMessage);
         updateSession(threadId, (session) => ({
           ...session,
           // A cache that was never loaded may hold messages drafted by a send
@@ -1386,6 +1420,15 @@ export function useAIChatRuntime(
       // (duplicate action bar under the model line).
       let closedDraft: AssistantMessageDraft | null = null;
       let closedId: string | null = null;
+      let refreshedForReply = false;
+      let navigationPath: string | null = null;
+      let turnFailed = false;
+      const navigationOrigin = window.location.pathname + window.location.search;
+      const navigationWorkspace = workspaceIdRef.current;
+      const navigationPrincipal = principalIdRef.current;
+      const refreshApprovalQueue = () => window.dispatchEvent(
+        new CustomEvent("integral:prompt-queue-refresh", { detail: { threadId } }),
+      );
 
       const controller = new AbortController();
       markThreadStreaming(threadId);
@@ -1446,6 +1489,26 @@ export function useAIChatRuntime(
 
         for await (const ev of stream as AsyncIterable<NormalizedEvent>) {
           if (controller.signal.aborted) break;
+          if (ev.type === "navigation") {
+            navigationPath = agentNavigationPath({ ok: true, navigation: ev }, threadId, navigationWorkspace);
+            continue;
+          }
+          // Staging pushes can arrive before their transaction is visible.
+          // Committed stream results and the first answer text give the sheet
+          // a fresh read boundary without waiting for its idle poll.
+          if (ev.type === "tool-call" && ev.status === "complete") {
+            let result = ev.result;
+            if (typeof result === "string") {
+              try { result = JSON.parse(result); } catch { /* not a structured result */ }
+            }
+            if (result && typeof result === "object" && "_kind" in result && result._kind === "staged_change") {
+              refreshApprovalQueue();
+            }
+          }
+          if (!refreshedForReply && (ev.type === "text-delta" || ev.type === "text-replace")) {
+            refreshedForReply = true;
+            refreshApprovalQueue();
+          }
           if (ev.type === "status") {
             const text = (ev as { text?: string }).text || "";
             if (text) {
@@ -1456,7 +1519,18 @@ export function useAIChatRuntime(
               );
             }
           }
+          if (ev.type === "tool-call" || ev.type === "text-delta" || ev.type === "text-replace") {
+            // A retry notice describes a temporary pause. Once work resumes,
+            // let the trail describe the current operation again. Preserve an
+            // outstanding user cancellation until its acknowledgement arrives.
+            updateSession(threadId, (session) =>
+              session.activityText && session.cancellation !== "pending"
+                ? { ...session, activityText: null }
+                : session,
+            );
+          }
           if (ev.type === "error") {
+            turnFailed = true;
             // MessageError (draft status incomplete) is the single surface for
             // turn failures. Do not also stamp streamError — ActivityStrip was
             // echoing the same copy under the bubble.
@@ -1529,6 +1603,7 @@ export function useAIChatRuntime(
 
         void refreshThreads();
       } catch (err) {
+        turnFailed = true;
         const errMsg = err instanceof Error ? err.message : String(err);
         draft.status = controller.signal.aborted
           ? { type: "incomplete", reason: "cancelled" }
@@ -1537,6 +1612,7 @@ export function useAIChatRuntime(
         flush();
       } finally {
         unmarkThreadStreaming(threadId);
+        refreshApprovalQueue();
         updateSession(threadId, (session) => ({
           ...session,
           streaming: false,
@@ -1560,6 +1636,19 @@ export function useAIChatRuntime(
           (resumeWorkItemId || !session || session.lastLoadedAt === 0)
         ) {
           void loadThread(threadId);
+        }
+        // Navigation is a live, foreground UI effect. Never replay it from
+        // history/recovery, interrupt a newer route, or move another chat.
+        if (
+          navigationMountedRef.current && navigationPath && !turnFailed && !controller.signal.aborted && !resumeWorkItemId &&
+          activeThreadIdRef.current === threadId && workspaceIdRef.current === navigationWorkspace &&
+          principalIdRef.current === navigationPrincipal &&
+          document.visibilityState === "visible" &&
+          window.location.pathname + window.location.search === navigationOrigin
+        ) {
+          const composing = [...document.querySelectorAll<HTMLTextAreaElement>('textarea[aria-label="Message input"]')]
+            .some(input => Boolean(input.value.trim()));
+          if (!composing) onNavigateRef.current?.(navigationPath, threadId);
         }
       }
     },
@@ -2141,11 +2230,15 @@ function applyEvent(draft: AssistantMessageDraft, ev: NormalizedEvent) {
       // through to the unknown-type warning.
       return;
     case "error":
-      draft.status = {
-        type: "incomplete",
-        reason: "error",
-        error: friendlyChatFailure(ev.code, ev.message),
-      };
+      draft.errorCode = ev.code;
+      draft.errorDetail = ev.message;
+      draft.status = ev.code === "work.cancelled"
+        ? { type: "incomplete", reason: "cancelled" }
+        : {
+            type: "incomplete",
+            reason: "error",
+            error: friendlyChatFailure(ev.code, ev.message),
+          };
       return;
     default: {
       // Unknown event type — surface in devtools so newly-shipped

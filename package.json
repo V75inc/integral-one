@@ -1,12 +1,12 @@
 {
   "name": "integral-one",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "integralOneUpdates": {
     "enabled": false
   },
   "license": "Apache-2.0",
-  "description": "Integral One — local, single-owner desktop built on Apache-licensed Integral Core",
+  "description": "Integral One \u2014 local, single-owner desktop built on Apache-licensed Integral Core",
   "main": "desktop/main.js",
   "scripts": {
     "setup": "node scripts/setup.js",
@@ -109,7 +109,8 @@
       "target": [
         "zip"
       ],
-      "artifactName": "integral-one-${version}-mac-${arch}.${ext}"
+      "artifactName": "integral-one-${version}-mac-${arch}.${ext}",
+      "minimumSystemVersion": "14.0"
     },
     "win": {
       "target": [

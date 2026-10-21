@@ -28,7 +28,7 @@ that recovery action does not promise a database rollback.
 
 ## Integrity and local continuity
 
-The first supported automatic-update platform is **macOS**. Source launches,
+The initial supported automatic-update target is **Apple Silicon on macOS 14+**. Intel is blocked by Core runtime compatibility; see [platform readiness](PLATFORM-READINESS.md). Source launches,
 unsigned development candidates, prerelease product versions and other platforms
 leave the updater disabled. Signed installer preparation enables it after the
 existing production-account, signing and notarization preflight. Windows signing
@@ -59,9 +59,10 @@ signed candidate workflow assembles install-manifest.json, then runs:
 node scripts/update-metadata.js release-assets
 ```
 
-The script checks both architectures against their verified SHA-256, byte size
-and V75 Apple Team ID. It writes one **latest-mac.yml** with both native ZIPs and
-their SHA-512 values. The actual SDK architecture selector is tested against this
+The script checks the supplied Mac artifacts against their verified SHA-256, byte
+size and approved V75 Apple Team ID. The initial **latest-mac.yml** contains the
+Apple Silicon ZIP and its SHA-512. The generator retains multi-architecture
+selection tests, but current public manifest assembly rejects Intel assets. The actual SDK architecture selector is tested against this
 combined feed. Do not overwrite the YAML with runner-specific files. Publish the
 exact matching ZIPs and metadata together in a stable release; metadata must not
 point to missing, draft-only or differently signed assets.
@@ -69,8 +70,8 @@ point to missing, draft-only or differently signed assets.
 Local tests cover consent, duplicate checks, disabled builds, settings, version
 rejection, stop/download/install failures, architecture selection and changed
 artifact rejection. They do not prove native update installation. Before release,
-install signed version A and update to signed version B on Apple Silicon and
-Intel. Exercise offline/error behavior, declined download/restart, invalid
+install signed version A and update to signed version B on the supported Apple
+Silicon/macOS 14+ target. Exercise offline/error behavior, declined download/restart, invalid
 signature/checksum rejection, retained records, account continuity and first
 startup after a Core upgrade. No public two-version qualification is claimed.
 

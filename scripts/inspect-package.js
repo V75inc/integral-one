@@ -28,6 +28,7 @@ const runtime=JSON.parse(fs.readFileSync(path.join(resources,'core/runtime.json'
 assert.equal(runtime.deployment_profile,'desktop_single_user');
 assert.equal(runtime.runtime_contract_version,1);
 assert.equal(runtime.runtime_preset,'local');
+if(process.platform==='darwin')assert.equal(require('node:child_process').execFileSync('/usr/libexec/PlistBuddy',['-c','Print :LSMinimumSystemVersion',path.join(resources,'..','Info.plist')],{encoding:'utf8'}).trim(),require('../package.json').build.mac.minimumSystemVersion,'Packaged macOS minimum differs from the runtime support floor');
 for(const [name,key] of [[runtime.coreWheel,runtime.coreWheel],[process.platform==='win32'?'uv.exe':'uv','uv']])assert.equal(hash(path.join(resources,'core',name)),runtime.sha256[key]);
 // ASAR also resolves nested extraction paths with the host OS separator.
 assert.match(asar.extractFile(archive,path.join('desktop','main.js')).toString(),/Integral \| one/);

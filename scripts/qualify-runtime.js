@@ -39,7 +39,8 @@ async function qualifyRuntime(resources = path.join(__dirname, '../resources')) 
     throw error;
   } finally {
     // Stop before removal. If stopping fails, retain the synthetic home for recovery.
-    await runCli(command, ['stop', '--home', home, '--json']);
+    const stopped = await runCli(command, ['stop', '--home', home, '--json']);
+    if (stopped.state !== 'stopped') throw new Error('Runtime shutdown was not confirmed; synthetic home retained.');
     fs.rmSync(home, {recursive: true, force: true});
   }
 }

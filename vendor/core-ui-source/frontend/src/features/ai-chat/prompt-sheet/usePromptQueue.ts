@@ -115,9 +115,15 @@ export function usePromptQueue() {
       () => live.current.activeThreadId === threadId && !live.current.isThreadStreaming(threadId), resumeRequired);
   }, []);
 
-  const refresh = useCallback(async () => {
+  const refreshRequested = useRef<string | null>(null);
+  const refreshCallback = useRef<(() => Promise<void>) | null>(null);
+  const refresh = useCallback(async (): Promise<void> => {
     const threadId = activeThreadId;
-    if (!threadId || fetching.current === threadId || Date.now() < retryAt.current) return;
+    if (!threadId || Date.now() < retryAt.current) return;
+    if (fetching.current === threadId) {
+      refreshRequested.current = threadId;
+      return;
+    }
     fetching.current = threadId;
     const requestGeneration = generation.current;
     try {
@@ -158,8 +164,15 @@ export function usePromptQueue() {
       setRefreshError('Could not refresh approval status. Your current review is kept; retrying shortly.');
     } finally {
       if (fetching.current === threadId) fetching.current = null;
+      if (refreshRequested.current === threadId) {
+        refreshRequested.current = null;
+        if (live.current.activeThreadId === threadId && generation.current === requestGeneration) {
+          queueMicrotask(() => void refreshCallback.current?.());
+        }
+      }
     }
   }, [activeThreadId, resumeOnce]);
+  useLayoutEffect(() => { refreshCallback.current = refresh; }, [refresh]);
 
   useEffect(() => {
     generation.current += 1;
@@ -167,7 +180,9 @@ export function usePromptQueue() {
     failures.current = 0;
     let stopped = false;
     queueMicrotask(() => { if (!stopped) void refresh(); });
-    const onStaging = () => {
+    const onStaging = (event: Event) => {
+      const threadId = (event as CustomEvent<{ threadId?: string }>).detail?.threadId;
+      if (threadId && threadId !== live.current.activeThreadId) return;
       void refresh();
     };
     // Local, same-tab signal emitted by this hook's own actions below.
@@ -180,6 +195,7 @@ export function usePromptQueue() {
     // where the user could start a second turn against an open sheet.
     window.addEventListener('integral:staging-state-changed', onStaging);
     window.addEventListener('integral:staging-created', onStaging);
+    window.addEventListener('integral:prompt-queue-refresh', onStaging);
     // Poll lightly while open so tool results from a streaming turn appear.
     // Back off when there is no sheet: the fast cadence only earns its keep
     // while the user is looking at one, but some polling has to continue so a
@@ -194,6 +210,7 @@ export function usePromptQueue() {
       window.removeEventListener('staging-state-changed', onStaging);
       window.removeEventListener('integral:staging-state-changed', onStaging);
       window.removeEventListener('integral:staging-created', onStaging);
+      window.removeEventListener('integral:prompt-queue-refresh', onStaging);
       stopped = true;
       generation.current += 1;
       window.clearTimeout(timer);

@@ -35,6 +35,15 @@ describe('isInternalAppHref', () => {
 
 describe('IntegralMarkdownLink', () => {
   afterEach(() => vi.unstubAllGlobals());
+  it.each([
+    ['/n.Track.saved', '/tracks/n.Track.saved'],
+    ['/n.Entry.saved?tab=notes', '/entries/n.Entry.saved?tab=notes'],
+    ['/n.WorkspaceApp.saved#details', '/apps/n.WorkspaceApp.saved#details'],
+  ])('repairs a bare local resource ID link %s', (href, expected) => {
+    const html = renderLink(href, 'Saved resource');
+    expect(html).toContain(`href="${expected}"`);
+    expect(html).not.toContain('target="_blank"');
+  });
   it('does not activate the surrounding entry card when a link is clicked', () => {
     const openEntry = vi.fn();
     const clickLink = vi.fn();

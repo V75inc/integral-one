@@ -183,15 +183,12 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
     [scheduleDismiss],
   );
   const styles: Record<TType, string> = {
-    success:
-      'bg-[var(--success-fg)] text-white shadow-[var(--shadow-pop)]',
-    error: 'bg-[var(--danger-fg)] text-white shadow-[var(--shadow-pop)]',
-    info:
-      'bg-[var(--panel)] text-[var(--text)] border border-[var(--panel-border)] border-l-4 border-l-[var(--brand-accent)] shadow-[var(--shadow-pop)]',
+    success: 'border-l-[var(--success-fg)]',
+    error: 'border-l-[var(--danger-fg)]',
+    info: 'border-l-[var(--brand-accent)]',
     // Pending uses the same chrome as info but with a spinner glyph
     // injected into the row below — no auto-dismiss until resolved.
-    pending:
-      'bg-[var(--panel)] text-[var(--text)] border border-[var(--panel-border)] border-l-4 border-l-[var(--brand-accent)] shadow-[var(--shadow-pop)]',
+    pending: 'border-l-[var(--brand-accent)]',
   };
   // Memoized: all four members are already useCallback-stable, but an inline
   // object literal here handed every consumer a fresh context value on each
@@ -226,7 +223,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
             onMouseLeave={() => {
               if (t.type !== 'pending') resumeDismiss(t.id);
             }}
-            className={`flex items-center gap-3 px-4 py-3 rounded-[var(--radius-card)] text-sm font-medium animate-slide-up w-full md:w-auto md:max-w-sm pointer-events-auto ${styles[t.type]}`}
+            className={`flex items-center gap-3 px-4 py-3 rounded-[var(--radius-card)] text-sm font-medium animate-slide-up w-full md:w-[26rem] max-w-full pointer-events-auto bg-[var(--toast-bg)] text-[var(--toast-fg)] border border-[var(--toast-border)] border-l-4 shadow-[var(--shadow-pop)] ${styles[t.type]}`}
           >
             {t.type === 'pending' && (
               <Loader2
@@ -236,16 +233,20 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
                 aria-hidden
               />
             )}
-            <span className="min-w-0 flex-1 truncate" title={t.message}>{t.message}</span>
-            {t.action ? (
-              <Link
-                to={t.action.href}
-                onClick={() => dismissToast(t.id)}
-                className="shrink-0 text-xs font-semibold underline underline-offset-2 opacity-90 hover:opacity-100"
-              >
-                {t.action.label}
-              </Link>
-            ) : null}
+            <div className="min-w-0 flex-1">
+              <span className="line-clamp-3 whitespace-pre-line [overflow-wrap:anywhere] leading-5" title={t.message}>
+                {t.message}
+              </span>
+              {t.action ? (
+                <Link
+                  to={t.action.href}
+                  onClick={() => dismissToast(t.id)}
+                  className="inline-block mt-1 text-xs font-semibold underline underline-offset-2 opacity-90 hover:opacity-100"
+                >
+                  {t.action.label}
+                </Link>
+              ) : null}
+            </div>
             <button
               type="button"
               onClick={() => dismissToast(t.id)}
