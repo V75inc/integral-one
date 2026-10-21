@@ -1,0 +1,158 @@
+name: Prepare One from published Core
+on:
+  schedule:
+    - cron: '23 */6 * * *'
+  workflow_dispatch:
+    inputs:
+      core_version:
+        description: Optional exact newer published Core version; otherwise use the newest eligible publication
+        required: false
+        type: string
+  repository_dispatch:
+    types: [integral-core-published]
+permissions:
+  contents: read
+concurrency:
+  group: core-publication-preparation
+  cancel-in-progress: false
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    outputs:
+      changed: ${{ steps.publication.outputs.changed }}
+      version: ${{ steps.publication.outputs.version }}
+      ready: ${{ steps.candidate.outputs.ready }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - id: publication
+        name: Require an eligible actual package publication
+        env:
+          CORE_VERSION: ${{ inputs.core_version || github.event.client_payload.version || '' }}
+        shell: bash
+        run: |
+          args=()
+          if [ -n "$CORE_VERSION" ]; then args+=(--version "$CORE_VERSION"); fi
+          python scripts/core_release.py check "${args[@]}"
+      - id: candidate
+        if: steps.publication.outputs.changed == 'true'
+        name: Keep existing candidate branches intact
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CORE_VERSION: ${{ steps.publication.outputs.version }}
+        shell: bash
+        run: |
+          refs=$(gh api "repos/$GITHUB_REPOSITORY/git/matching-refs/heads/codex/core-$CORE_VERSION" --jq '.[].ref')
+          if printf '%s\n' "$refs" | grep -Fx "refs/heads/codex/core-$CORE_VERSION"; then
+            echo 'ready=false' >> "$GITHUB_OUTPUT"
+          else
+            echo 'ready=true' >> "$GITHUB_OUTPUT"
+          fi
+      - if: steps.candidate.outputs.ready == 'true'
+        name: Verify wheel, exact release tag, Python sources and notices; compose candidate pins
+        env:
+          CORE_VERSION: ${{ steps.publication.outputs.version }}
+        shell: bash
+        run: |
+          mkdir -p .candidate/baseline
+          python -c 'import json,pathlib,shutil; p=pathlib.Path(json.load(open("distribution.json"))["core"]["base_wheel"]); shutil.copyfile(p,pathlib.Path(".candidate/baseline")/p.name)'
+          git clone --depth 1 --single-branch --branch "v$CORE_VERSION" https://github.com/V75inc/integral-core.git "$RUNNER_TEMP/core-source"
+          python scripts/core_release.py prepare --version "$CORE_VERSION" --source "$RUNNER_TEMP/core-source"
+          git add package.json package-lock.json distribution.json docs/SOURCE-PROVENANCE.json docs/CORE-UPDATE-CANDIDATE.json vendor/core-runtime vendor/core-ui-source
+          git diff --cached --binary > .candidate/candidate.patch
+      - uses: actions/upload-artifact@v4
+        if: steps.candidate.outputs.ready == 'true'
+        with:
+          name: core-candidate-input
+          path: .candidate/
+          include-hidden-files: true
+          retention-days: 3
+          if-no-files-found: error
+  qualify:
+    needs: prepare
+    if: needs.prepare.outputs.ready == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    env:
+      CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          name: core-candidate-input
+          path: .candidate
+      - run: git apply --index .candidate/candidate.patch
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install uv==0.13.4
+      - run: npm ci
+      - run: npm run verify
+      - run: npm run test:host
+      - run: npm run qualify:ui
+      - if: runner.os == 'Linux'
+        run: npm run test:ui
+      - run: npm run qualify:ui:dependencies
+      - run: npm run build:accounts
+      - run: npm run build:runtime
+      - run: npm run qualify:runtime
+      - run: node scripts/qualify-upgrade.js .candidate/baseline
+      - run: npx electron-builder --dir --publish never
+      - if: runner.os == 'macOS'
+        run: node scripts/qualify-mac-signing.js release
+      - run: node scripts/inspect-package.js
+      - if: runner.os == 'Windows'
+        run: npm run build:installers
+  source-pr:
+    needs: [prepare, qualify]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      actions: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: core-candidate-input
+          path: .candidate
+      - name: Apply only validated product pins and immutable upstream artifacts
+        shell: bash
+        run: |
+          git apply --index .candidate/candidate.patch
+          python - <<'PY'
+          import subprocess
+          allowed = {'package.json', 'package-lock.json', 'distribution.json', 'docs/SOURCE-PROVENANCE.json', 'docs/CORE-UPDATE-CANDIDATE.json'}
+          files = subprocess.check_output(['git', 'diff', '--cached', '--name-only', '-z']).decode().split('\0')
+          assert all(not p or p in allowed or p.startswith(('vendor/core-runtime/', 'vendor/core-ui-source/')) for p in files), 'Unexpected candidate path'
+          PY
+      - name: Open a tested source PR; never sign, merge or publish installers
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CORE_VERSION: ${{ needs.prepare.outputs.version }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        shell: bash
+        run: |
+          branch="codex/core-$CORE_VERSION"
+          git checkout -b "$branch"
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m "chore: prepare One for Core $CORE_VERSION"
+          git push -u origin "$branch"
+          printf 'Compose published Core %s into a new One patch release. The package hash, exact tag, engine source and notices match. Native Linux/macOS/Windows builds, UI/runtime tests and existing-store upgrade checks passed in [the preparation run](%s/%s/actions/runs/%s).\n\nSigning/notarization, signed two-version update and final installer publication still require review. No installed engine was hot-swapped and no installer was published.\n' "$CORE_VERSION" "$GITHUB_SERVER_URL" "$GITHUB_REPOSITORY" "$GITHUB_RUN_ID" > .candidate/pr.md
+          gh pr create --draft --base "$DEFAULT_BRANCH" --head "$branch" --title "Prepare One for Core $CORE_VERSION" --body-file .candidate/pr.md
+          gh workflow run verify.yml --ref "$branch"
+        # GITHUB_TOKEN PR events do not start ordinary CI; the explicit dispatch does.

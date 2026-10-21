@@ -22,10 +22,14 @@ as a pull request on 21 October; installer publication remains a separate gate.
 | Native API/callback | Native API enabled; approved callback and origin configured; exact-origin native bootstrap returns 200 and negative control returns 400; real Google callback completed | Qualify other selected providers and platforms |
 | Session claims | Production verified-email/name session claims accepted by the packaged verifier; verified local setup record exists | Complete remaining email/Microsoft and returning-account checks |
 | Apple agreement/credentials | Credentials and Developer ID identity rechecked; no One notarization submission exists | Sign/notarize exact reviewed Mac candidates; assess actual downloaded bytes |
-| Signed runtime integrity | A fresh ad hoc signing probe changed the bundled native uv bytes after runtime.json was generated; the wheel hash remained correct, but package inspection rejected the uv hash | Correct and qualify the signing/manifest ordering before a signed release; retain both native signature checks and runtime integrity verification |
+| Signed runtime integrity | Fixed: the native signer verifies the approved input, signs the launcher, refreshes its hash before the outer app seal, then verifies the final app. Real ad hoc signing and package inspection pass; the wheel is unchanged | Qualify Developer ID signing/notarization and downloaded artifacts on supported Macs |
+| Core publication updates | Owner selected complete tested One releases. Registry polling, exact tagged-source/wheel/notice verification, native candidate matrix and source-PR workflow implemented. Live rc28 publication replay verifies all 776 packaged Python files and refreshed pins | Merge this workflow to activate scheduling; each new Core publication must pass its actual native matrix before an update PR is created |
+| Existing-store replacement | Real rc23 → rc28 app-style replacement retains the App/Track/record, installation keys, local setup binding and owner session after a cold backup | Repeat against each new Core version; signed A → B application replacement remains separate |
+| Installer protection | Repository permits bot PR creation. Configured desktop-release with eldonm as required human reviewer, main as its only permitted branch, and the reviewed public production account variable. Core pin changes on main automatically start protected candidate preparation | No repository/environment signing secrets are configured. Provision approved signing material and qualify the exact artifacts; no public release is created automatically |
+| Runtime launcher | uv 0.13.4 replaces 0.11.3 in all native jobs and bundle validation; the packaged upstream MIT notice is byte-identical | Rebuild and inspect each platform's final signed runtime |
 | Windows | No SignPath grant/certificate; no public Windows installer | Complete application/eligibility, approved signing integration and native QA |
 | Privacy/rights/brand | Prepared owner decision package | Owner/legal evidence and approved public disclosures |
-| Publication | Core [#163](https://github.com/V75inc/integral-core/pull/163) merged as 2d6c593c. Core [#165](https://github.com/V75inc/integral-core/pull/165) is refreshed on that main at acb6e8a4, with full local verification and both audit gates passing; fresh CI pending. Version-bump [#166](https://github.com/V75inc/integral-core/pull/166) is open for rc29. The owner authorized the One source PR | Merge reviewed #165 before #166 for rc29 to include desktop fixes; verify the released artifact, refresh One pins, complete One source review and obtain final release approval |
+| Publication | Core [#165](https://github.com/V75inc/integral-core/pull/165) passed CI and merged. Version-bump [#166](https://github.com/V75inc/integral-core/pull/166) remains open for rc29; no rc29 tag/publication exists at this checkpoint. One [#2](https://github.com/V75inc/integral-one/pull/2) carries source preparation | Publish a reviewed Core artifact containing the fixes, refresh One pins through the new preparation flow, complete One source review and obtain final installer approval |
 
 Local logs and JSON evidence are in `.local/verification/release-readiness/`.
 They are excluded from the application and public import. Public source docs
@@ -39,12 +43,14 @@ temporary-home probe opened the native controller session, then received HTTP
 remain blocked until the reviewed Core transport fix is released and composed
 into One. Passing host/account tests do not qualify those application flows.
 
-Fresh source checks pass: 80 Node tests, 10 Python tests, 34 desktop-host tests,
+Fresh source checks pass: 84 Node tests, 16 Python tests, 34 desktop-host tests,
 the UI production build/type check and all 1,960 UI tests. The production
 dependency-closure check inspected 3,695 modules and excluded all four
 advisory-bearing packages. Fresh composed-runtime startup and the native
-controller session pass in a temporary home. The separate ad hoc signing probe
-above is a failed release-readiness check, not a qualified signed package.
+controller session pass in a temporary home. The originally failing ad hoc
+signing probe now passes with the signing-order correction, and the same native
+qualification is part of ordinary macOS CI. It is not Developer ID/notarization
+or a signed two-version updater acceptance test.
 
 This PR is release preparation. It does not publish an installer, enable the
 unsigned preview's updater, deploy account infrastructure or clear the signed

@@ -34,7 +34,7 @@ The Node/Python/uv source prerequisites are build tools, not end-user requiremen
 
 The local V75 Inc. Developer ID certificate is verified; Apple agreement and notarization-credential checks passed on 20 October; no Integral One candidate has yet been accepted by notarization. Follow the [macOS signing walkthrough](MACOS-SIGNING.md). No Windows certificate is currently available; follow the [Windows signing walkthrough](WINDOWS-SIGNING.md) and leave Windows disabled in this signed workflow until the chosen provider adapter is qualified. A separate unsigned Windows development workflow permits native engineering independently of Apple.
 
-Configure the GitHub environment **desktop-release** with required reviewers and appropriate branch restrictions **before** adding signing secrets. The manual workflow builds candidates only; it cannot publish a release.
+Configure the GitHub environment **desktop-release** with required reviewers and appropriate branch restrictions **before** adding signing secrets. The workflow checks this protection before entering signing jobs. It builds candidates automatically after Core pin changes land on main, or by explicit manual dispatch; it cannot publish a release.
 
 | Setting | Purpose |
 | --- | --- |
@@ -47,7 +47,7 @@ Clerk secret keys and receipt-signing private keys stay on the account service, 
 
 ## 3. Build candidates
 
-Manually dispatch **Signed installer candidate (manual)** with the stable version. Leave **include_windows** off for the initial macOS launch. It uses native macOS arm64 and Intel runners (plus Windows x64 only when explicitly enabled), builds the source, runs qualification, signs/notarizes, inspects packages and generates per-platform installer manifests. It then assembles a downloadable candidate bundle. No `contents: write` permission or GitHub Release publication step is present.
+Core pin changes on main automatically start **Signed installer candidate**, gated by the protected release environment. For a reviewed rerun, manually dispatch it with the exact stable source version. Leave **include_windows** off for the initial macOS launch. It uses native macOS arm64 and Intel runners (plus Windows x64 only when explicitly enabled), builds the source, runs qualification, signs/notarizes, inspects packages and generates per-platform installer manifests. It then assembles a downloadable candidate bundle. No `contents: write` permission or GitHub Release publication step is present.
 
 Equivalent native commands after source setup:
 
@@ -65,6 +65,18 @@ node scripts/installer-manifest.js merge release-assets release-assets/install-m
 ```
 
 The merge requires both Mac architectures and rejects duplicate platforms, mixed versions and altered installer bytes. Windows is optional. Include the reviewed bootstrap scripts and notices with those outputs.
+
+The native signing hook refreshes the bundled launcher's hash after its child
+signature and before the outer app resource seal. The immutable Core wheel hash,
+launcher signature, final app seal and packaged runtime are all checked. Ordinary
+macOS CI reproduces this ordering with ad hoc signing; Developer ID notarization
+and clean-machine acceptance remain release checks.
+
+Signed builds also run `node scripts/qualify-upgrade.js resources/core
+--require-settings` before signing, with signing credentials removed from the
+runtime child's environment. The current rc28 pin intentionally fails this
+release journey on HTTP 403 settings writes; compose the reviewed Core correction
+before producing a launch candidate. See [Core publication updates](CORE-RELEASE-UPDATES.md).
 
 Then run `node scripts/update-metadata.js release-assets` to generate one combined
 Mac update feed from those verified artifacts. Include it with the matching ZIPs;

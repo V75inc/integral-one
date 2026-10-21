@@ -1,5 +1,10 @@
-name: Signed installer candidate (manual)
+name: Signed installer candidate
 on:
+  push:
+    branches: [main]
+    paths:
+      - distribution.json
+      - vendor/core-runtime/**
   workflow_dispatch:
     inputs:
       version:
@@ -18,10 +23,32 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       matrix: ${{ steps.targets.outputs.matrix }}
+      version: ${{ steps.version.outputs.version }}
     steps:
+      - uses: actions/checkout@v4
+      - name: Require a protected release environment before accessing signing secrets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          gh api "repos/$GITHUB_REPOSITORY/environments/desktop-release" > "$RUNNER_TEMP/release-environment.json"
+          python3 - "$RUNNER_TEMP/release-environment.json" <<'PY'
+          import json, sys
+          environment = json.load(open(sys.argv[1]))
+          assert any(rule.get('type') == 'required_reviewers' and rule.get('reviewers') for rule in environment.get('protection_rules', [])), 'Configure required human reviewers on desktop-release before enabling signing'
+          assert environment.get('deployment_branch_policy'), 'Restrict the desktop-release environment to approved source branches/tags'
+          PY
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
+      - id: version
+        name: Select the exact source version
+        env:
+          REQUESTED_VERSION: ${{ inputs.version || '' }}
+        run: >-
+          node -e "const fs=require('fs'),p=require('./package.json'),d=require('./distribution.json');
+          if(!/^\d+\.\d+\.\d+$/.test(p.version)||d.product_version!==p.version||(process.env.REQUESTED_VERSION&&process.env.REQUESTED_VERSION!==p.version))throw Error('Stable version/source mismatch');
+          fs.appendFileSync(process.env.GITHUB_OUTPUT,'version='+p.version+'\n');"
       - id: targets
         env:
           INCLUDE_WINDOWS: ${{ inputs.include_windows }}
@@ -50,10 +77,10 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - run: python -m pip install uv==0.11.3
+      - run: python -m pip install uv==0.13.4
       - name: Require exact stable version and native architecture
         env:
-          EXPECTED_VERSION: ${{ inputs.version }}
+          EXPECTED_VERSION: ${{ needs.plan.outputs.version }}
           EXPECTED_PLATFORM: ${{ matrix.platform }}
           EXPECTED_ARCH: ${{ matrix.arch }}
         run: >-
@@ -90,7 +117,7 @@ jobs:
             release/integral-one-*.exe
             release/install-manifest-*.json
   assemble:
-    needs: build
+    needs: [plan, build]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -112,7 +139,7 @@ jobs:
           for(const n of ['LICENSE','NOTICE','LICENSING.md','PRIVACY.md','CODE_SIGNING.md'])fs.copyFileSync(n,'release-assets/'+n);"
       - uses: actions/upload-artifact@v4
         with:
-          name: integral-one-${{ inputs.version }}-release-candidate
+          name: integral-one-${{ needs.plan.outputs.version }}-release-candidate
           path: release-assets/
           if-no-files-found: error
           retention-days: 14

@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "registry": "testpypi",
+  "series": "0.1",
+  "allowPrereleases": true,
+  "delivery": "qualified-one-release",
+  "automaticPublication": false
+}

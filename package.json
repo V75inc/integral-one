@@ -15,7 +15,7 @@
     "pack": "npm run build:accounts && npm run build:runtime && npm run verify && electron-builder --dir",
     "build:ui": "node scripts/build-ui.js",
     "build:runtime": "node scripts/bundle-runtime.js",
-    "test": "node --test tests/*.test.js && python3 -m unittest discover -s tests -p 'test_*.py'",
+    "test": "node --test tests/*.test.js && python3 -m unittest discover -s tests",
     "verify": "npm run verify:distribution && npm test",
     "qualify:ui": "npm run build:ui && npm ci --prefix .build/frontend && npm run build --prefix .build/frontend",
     "test:ui": "npm run test:run --prefix .build/frontend -- --maxWorkers=2",
@@ -24,6 +24,7 @@
     "release:manifest": "node scripts/installer-manifest.js",
     "test:host": "npm test --prefix packages/desktop-host",
     "qualify:runtime": "node scripts/qualify-runtime.js",
+    "core:check": "python3 scripts/core_release.py check",
     "qualify:ui:dependencies": "node scripts/qualify-ui-dependencies.js"
   },
   "dependencies": {
@@ -97,6 +98,7 @@
       }
     ],
     "mac": {
+      "sign": "scripts/sign-mac.js",
       "hardenedRuntime": true,
       "entitlements": "desktop/build/entitlements.mac.plist",
       "entitlementsInherit": "desktop/build/entitlements.mac.plist",

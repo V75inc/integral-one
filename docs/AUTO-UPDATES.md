@@ -3,6 +3,10 @@
 Candidate implementation, 21 October 2026. The first release must include and
 qualify the updater before launch. No public update channel is qualified yet.
 
+New Core package publications are followed by the [Core release-preparation
+workflow](CORE-RELEASE-UPDATES.md). It qualifies a complete One update before the
+desktop feed can offer it. The desktop never hot-swaps an unreviewed Core wheel.
+
 ## User controls
 
 **Help → Check for Updates…** checks the public V75inc/integral-one GitHub

@@ -22,7 +22,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - run: python -m pip install uv==0.11.3
+      - run: python -m pip install uv==0.13.4
       - run: npm ci
       - run: npm run verify
       - run: npm run test:host
@@ -32,7 +32,10 @@ jobs:
       - run: npm run build:runtime
       - run: npm run build:accounts
       - run: npm run qualify:runtime
+      - run: node scripts/qualify-upgrade.js resources/core
       - run: npx electron-builder --dir --publish never
+      - if: runner.os == 'macOS'
+        run: node scripts/qualify-mac-signing.js release
       - run: node scripts/inspect-package.js
       - name: Build unsigned Windows development installer
         if: runner.os == 'Windows'

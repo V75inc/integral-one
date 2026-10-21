@@ -25,6 +25,6 @@ execFileSync(process.env.PYTHON || 'python3',[path.join(__dirname,'compose-runti
 const executable = process.platform === 'win32' ? 'uv.exe' : 'uv';
 const uv = process.env.INTEGRAL_UV_BINARY || (process.env.PATH || '').split(path.delimiter).map(folder=>path.join(folder,executable)).find(file=>fs.existsSync(file));
 if (!uv) throw new Error('Install uv, or set INTEGRAL_UV_BINARY to the reviewed platform binary.');
-if (!/^uv 0\.11\.3(?:\s|$)/.test(execFileSync(uv, ['--version'], {encoding:'utf8'}))) throw new Error('Use the reviewed uv 0.11.3 runtime; its license notice is shipped with this distribution.');
+if (!/^uv 0\.13\.4(?:\s|$)/.test(execFileSync(uv, ['--version'], {encoding:'utf8'}))) throw new Error('Use the reviewed uv 0.13.4 runtime; its license notice is shipped with this distribution.');
 require('@integral/desktop-host/bundle-runtime').bundleRuntime({...process.env,INTEGRAL_CORE_WHEEL:output,INTEGRAL_UV_BINARY:uv},{base:path.join(root,'resources/core')});
 require('./collect-notices');

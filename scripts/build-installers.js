@@ -23,6 +23,11 @@ if (signed) {
 }
 if (signed) execFileSync(process.execPath, [npm, 'run', 'qualify:ui:dependencies'], { stdio: 'inherit' });
 for (const name of ['build:accounts', 'build:runtime']) execFileSync(process.execPath, [npm, 'run', name], { stdio: 'inherit' });
+if (signed) {
+  // Runtime qualification must not inherit signing or account-service secrets.
+  const qualificationEnv = Object.fromEntries(Object.entries(process.env).filter(([name]) => !/^(APPLE_|CSC_|MACOS_CSC_|WINDOWS_CSC_|CLERK_SECRET|GH_TOKEN$|GITHUB_TOKEN$)/.test(name)));
+  execFileSync(process.execPath, [path.join(__dirname, 'qualify-upgrade.js'), path.join(root, 'resources/core'), '--require-settings'], { stdio: 'inherit', env: qualificationEnv });
+}
 const builder = require.resolve('electron-builder/cli.js');
 const args = [builder, process.platform === 'darwin' ? '--mac' : '--win', process.platform === 'darwin' ? 'zip' : 'nsis', `--${process.arch}`, '--publish', 'never'];
 if (signed) {

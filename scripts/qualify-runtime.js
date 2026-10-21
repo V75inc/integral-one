@@ -23,8 +23,7 @@ function runtimeDiagnostics(home) {
   }).join('\n');
 }
 
-async function qualifyRuntime() {
-  const resources = path.join(__dirname, '../resources');
+async function qualifyRuntime(resources = path.join(__dirname, '../resources')) {
   // Explicit empty overrides force the integrity-pinned bundled artifacts.
   const command = invocation({resources, command: '', prefix: ''});
   const home = fs.mkdtempSync(path.join(os.tmpdir(), 'integral-one-runtime-'));
@@ -45,8 +44,8 @@ async function qualifyRuntime() {
   }
 }
 
-module.exports = {runtimeDiagnostics};
-if (require.main === module) qualifyRuntime().catch(error => {
+module.exports = {runtimeDiagnostics, qualifyRuntime};
+if (require.main === module) qualifyRuntime(process.argv[2] ? path.resolve(process.argv[2]) : undefined).catch(error => {
   console.error(error.message);
   process.exitCode = 1;
 });

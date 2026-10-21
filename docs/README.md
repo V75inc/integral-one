@@ -30,6 +30,8 @@
 | [SignPath application preparation](SIGNPATH-APPLICATION.md) | Selected free-signing investigation, eligibility gaps and draft application |
 | [SignPath eligibility inquiry](SIGNPATH-ELIGIBILITY-INQUIRY.md) | Prepared questions about signup, the private service boundary and first-release evidence |
 | [Installer release runbook](INSTALLER-RELEASE.md) | Native builds, signing, verified manifests and deliberate publication |
+| [Core publication updates](CORE-RELEASE-UPDATES.md) | Registry monitoring, tested One update PRs, protected installer preparation and delivery to installed apps |
+| [Automatic updates](AUTO-UPDATES.md) | Opt-in checks, separate download/restart approval and native update qualification |
 | [Release gates](RELEASE-GATES.md) | Requirements before a public installer release |
 | [Dependency review](DEPENDENCY-REVIEW.md) | Outstanding advisories and exposure |
 | [Privacy notice](../PRIVACY.md) · [Privacy readiness](PRIVACY-READINESS.md) | Current data flows and decisions still required before production signup |
