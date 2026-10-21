@@ -26,3 +26,16 @@ test("signed candidates cannot silently skip notarization when credentials are a
   ])
     assert.doesNotThrow(() => validateMacNotarization(env));
 });
+
+test('preparation gets public build settings while signing credentials remain confined to the signer', () => {
+  const { releasePreparationEnv } = require('../scripts/signing-config');
+  const original = { PATH: '/tools', INTEGRAL_ACCOUNT_CONFIG: '/public/config.json',
+    INTEGRAL_UV_BINARY: '/tools/uv', APPLE_APP_SPECIFIC_PASSWORD: 'not-a-real-password',
+    APPLE_KEYCHAIN_PROFILE: 'signing-profile', CSC_LINK: 'not-a-real-certificate',
+    CSC_KEY_PASSWORD: 'certificate-password', MACOS_CSC_LINK: 'mac-certificate',
+    WINDOWS_CSC_KEY_PASSWORD: 'windows-password', GH_TOKEN: 'github-token',
+    GITHUB_TOKEN: 'actions-token', CLERK_SECRET_KEY: 'service-secret' };
+  const safe = releasePreparationEnv(original);
+  assert.deepEqual(safe, { PATH: '/tools', INTEGRAL_ACCOUNT_CONFIG: '/public/config.json', INTEGRAL_UV_BINARY: '/tools/uv' });
+  assert.equal(original.CSC_LINK, 'not-a-real-certificate');
+});

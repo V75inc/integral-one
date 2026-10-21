@@ -20,4 +20,8 @@ function validateMacNotarization(env = process.env) {
     );
   }
 }
-module.exports = { validateMacNotarization };
+function releasePreparationEnv(env = process.env) {
+  return Object.fromEntries(Object.entries(env).filter(([name]) =>
+    !/^(APPLE_|CSC_|MACOS_CSC_|WINDOWS_CSC_|CLERK_SECRET|GH_TOKEN$|GITHUB_TOKEN$)/.test(name)));
+}
+module.exports = { validateMacNotarization, releasePreparationEnv };

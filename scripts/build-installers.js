@@ -5,6 +5,7 @@ const { execFileSync } = require('node:child_process');
 const root = path.join(__dirname, '..');
 process.chdir(root);
 const signed = process.argv.includes('--signed');
+const preparationEnv = require('./signing-config').releasePreparationEnv(process.env);
 if (process.argv.slice(2).some(arg => arg !== '--signed')) throw new Error('Usage: npm run build:installers [-- --signed]');
 if (!['darwin', 'win32'].includes(process.platform) || !['arm64', 'x64'].includes(process.arch) || (process.platform === 'win32' && process.arch !== 'x64')) throw new Error('Installer targets are macOS arm64/x64 and Windows x64. Build on the matching native runner.');
 const npm = process.env.npm_execpath;
@@ -22,12 +23,11 @@ if (signed) {
   if (process.platform === 'darwin') require('./signing-config').validateMacNotarization();
   if (process.platform === 'win32' && !/^[A-Fa-f0-9]{40}$/.test(process.env.ONE_WINDOWS_CERT_SHA1 || '')) throw new Error('Set ONE_WINDOWS_CERT_SHA1 to the approved Windows certificate-store thumbprint. Configure the hardware/cloud signing provider first; see docs/WINDOWS-SIGNING.md.');
 }
-if (signed) execFileSync(process.execPath, [npm, 'run', 'qualify:ui:dependencies'], { stdio: 'inherit' });
-for (const name of ['build:accounts', 'build:runtime']) execFileSync(process.execPath, [npm, 'run', name], { stdio: 'inherit' });
+if (signed) execFileSync(process.execPath, [npm, 'run', 'qualify:ui:dependencies'], { stdio: 'inherit', env: preparationEnv });
+for (const name of ['build:accounts', 'build:runtime']) execFileSync(process.execPath, [npm, 'run', name], { stdio: 'inherit', env: preparationEnv });
 if (signed) {
   // Runtime qualification must not inherit signing or account-service secrets.
-  const qualificationEnv = Object.fromEntries(Object.entries(process.env).filter(([name]) => !/^(APPLE_|CSC_|MACOS_CSC_|WINDOWS_CSC_|CLERK_SECRET|GH_TOKEN$|GITHUB_TOKEN$)/.test(name)));
-  execFileSync(process.execPath, [path.join(__dirname, 'qualify-upgrade.js'), path.join(root, 'resources/core'), '--require-settings'], { stdio: 'inherit', env: qualificationEnv });
+  execFileSync(process.execPath, [path.join(__dirname, 'qualify-upgrade.js'), path.join(root, 'resources/core'), '--require-settings'], { stdio: 'inherit', env: preparationEnv });
 }
 const builder = require.resolve('electron-builder/cli.js');
 const args = [builder, process.platform === 'darwin' ? '--mac' : '--win', process.platform === 'darwin' ? 'zip' : 'nsis', `--${process.arch}`, '--publish', 'never'];
@@ -38,5 +38,5 @@ if (signed) {
 }
 if (!signed && process.platform === 'win32') args.push('--config.win.signExecutable=false');
 execFileSync(process.execPath, args, { stdio: 'inherit' });
-execFileSync(process.execPath, [path.join(__dirname, 'inspect-package.js')], { stdio: 'inherit' });
+execFileSync(process.execPath, [path.join(__dirname, 'inspect-package.js')], { stdio: 'inherit', env: preparationEnv });
 console.log(signed ? 'Signed candidate built. Verify it and create the installer manifest before publication.' : 'Development installer built. It cannot pass the public bootstrap signature/release gates.');
