@@ -57,4 +57,22 @@ describe("ToolFallback result/args formatting", () => {
     const pre = container.querySelector(".aui-tool-fallback-result-content");
     expect(pre!.textContent).toBe("plain text");
   });
+
+  it("omits empty argument placeholders from the activity details", () => {
+    const { container } = render(<ToolFallbackArgs argsText="{}" />);
+    expect(container).toBeEmptyDOMElement();
+  });
+});
+
+
+describe("plain-language tool failures", () => {
+  it.each([
+    { error: true, error_code: "invalid_arguments", message: "private-sentinel" },
+    JSON.stringify({ error: true, error_code: "invalid_arguments", message: "private-sentinel" }),
+  ])("shows one readable explanation instead of JSON", (result) => {
+    const { container } = render(<ToolFallbackResult result={result} />);
+    expect(container.textContent).toBe("I couldn't prepare this step correctly.");
+    expect(container.textContent).not.toContain("private-sentinel");
+    expect(container.querySelector("pre")).toBeNull();
+  });
 });

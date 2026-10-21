@@ -1,5 +1,7 @@
 # Clerk integration and qualification
 
+**21 October update:** [Clerk-only setup](CLERK-ONLY-SETUP.md) implements the proposed launch simplification in configuration v2. The service-backed flow below remains the legacy v1 contract. Production qualification is still required.
+
 ## Implementation
 
 - SDK `@clerk/electron` 0.1.1 is pinned. Clerk labels Electron support Beta.

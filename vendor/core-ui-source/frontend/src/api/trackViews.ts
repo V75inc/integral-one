@@ -39,5 +39,8 @@ export const trackViewsApi = {
     apiClient
       .put(`/views/${viewId}`, body)
       .then(r => unwrapResource<SavedView>(r.data, 'view')),
+  removeKanbanColumn: (viewId: string, columnKey: string): Promise<SavedView> =>
+    apiClient.delete(`/views/${encodeURIComponent(viewId)}/kanban-columns/${encodeURIComponent(columnKey)}`)
+      .then(r => unwrapResource<SavedView>(r.data, 'view')),
   delete: (viewId: string) => apiClient.delete(`/views/${viewId}`),
 };

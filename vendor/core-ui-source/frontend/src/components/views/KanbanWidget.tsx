@@ -1184,6 +1184,7 @@ function KanbanWidgetInner({
   onEntryCreate,
   onViewUpdate,
   onKanbanColumnEnumSync,
+  onKanbanColumnRemove,
   isEditor,
   publicPermissions,
   fields,
@@ -1946,7 +1947,9 @@ function KanbanWidgetInner({
       });
       return;
     }
-    const message = `Remove the “${colLabel}” column from this view? This does not delete the status option. If records use it later, the column will appear again.`;
+    const message = onKanbanColumnRemove
+      ? `Remove the “${colLabel}” column and its unused field option from this Track’s boards? Affected boards are updated together. Records and default values are checked before anything changes.`
+      : `Remove the “${colLabel}” column from this view?`;
     const ok = await confirm({
       title: 'Remove column',
       message,
@@ -1955,7 +1958,11 @@ function KanbanWidgetInner({
       variant: 'danger'
     });
     if (!ok) return;
-    persistColumns(columns.filter(c => c.key !== colKey));
+    if (onKanbanColumnRemove) {
+      try { await onKanbanColumnRemove(view.id, colKey); } catch { /* Host displays the actionable error. */ }
+    } else {
+      persistColumns(columns.filter(c => c.key !== colKey));
+    }
   };
 
   const handleRenameColumn = (colKey: string, label: string) => {

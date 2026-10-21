@@ -936,6 +936,15 @@
     overflow-y: auto;
   }
 
+  .taggable-composer-input.taggable-composer-native {
+    color: var(--text);
+    -webkit-text-fill-color: var(--text);
+  }
+  .taggable-composer-input.taggable-composer-native::selection {
+    color: var(--text);
+    -webkit-text-fill-color: var(--text);
+  }
+
   /* Fix text selection appearance. The textarea text is transparent
      (-webkit-text-fill-color), so we give the selection a visible tinted
      background that matches the brand accent. The color stays transparent
@@ -1561,4 +1570,23 @@
    their neutral theme colors in both modes. */
 .home-overview section.home-widget {
   border-top: 3px solid var(--brand-accent);
+}
+
+/* Native session lock keeps every portal inert while the working view remains
+   recognizable through a translucent blur. Inputs stay mounted during renewal. */
+.session-renewal-dialog {
+  width: min(var(--dialog-w-confirm), calc(100vw - 2rem));
+  max-height: calc(100dvh - 2rem);
+  margin: auto;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-card);
+  background: var(--panel);
+  color: var(--text);
+  overflow-y: auto;
+}
+.session-renewal-dialog::backdrop {
+  background: color-mix(in srgb, var(--bg) 30%, transparent);
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
 }

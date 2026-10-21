@@ -1,6 +1,9 @@
 import { getHostSession } from '../host/session';
 import '../hooks/useDeployment';
-import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
+import { loadSessionPolicy } from '../api/sessionPolicy';
+import React, { createContext, useContext, useState, useEffect, useLayoutEffect, useCallback, useMemo, useSyncExternalStore } from 'react';
+import { SessionRenewalDialog } from '../components/system/SessionRenewalDialog';
+import { enableSessionRecovery, finishSessionRecovery, getSessionRecovery, isSessionPaused, subscribeSessionRecovery } from '../api/sessionRecovery';
 import { useQueryClient } from '@tanstack/react-query';
 import { resetThreadSessions } from '../features/ai-chat/threadSessionStore';
 import { authApi } from '../api';
@@ -37,11 +40,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [profileVerified, setProfileVerified] = useState(false);
   const queryClient = useQueryClient();
+  const recovery = useSyncExternalStore(subscribeSessionRecovery, getSessionRecovery);
+
+  // Register before child polling effects can encounter an already-expired
+  // token during a slow sign-in/hydration commit.
+  useLayoutEffect(() => {
+    enableSessionRecovery(user?.id ?? null);
+    return () => { enableSessionRecovery(null); };
+  }, [user?.id]);
 
   useEffect(() => {
     installActivityListeners();
 
     const onLogout = () => {
+      enableSessionRecovery(null);
       setToken(null);
       setUser(null);
       setProfileVerified(false);
@@ -49,12 +61,32 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       // signed-in user doesn't inherit the previous user's
       // workspaces / scope / notifications / etc.
       queryClient.clear();
+      resetThreadSessions();
     };
     window.addEventListener('integral:logout', onLogout);
+    // An explicit sign-out/account change in another tab must also retire
+    // this tab's retained page and invalidate pending renewal responses.
+    const onStorage = (event: StorageEvent) => {
+      if (event.key !== 't75_user') return;
+      if (!event.newValue) {
+        clearTokens();
+        onLogout();
+      } else if (event.oldValue) {
+        try {
+          if (JSON.parse(event.oldValue).id !== JSON.parse(event.newValue).id) {
+            onLogout();
+            window.location.reload();
+          }
+        } catch { /* Corrupt storage is handled by normal auth hydration. */ }
+      }
+    };
+    window.addEventListener('storage', onStorage);
 
     let active = true;
     let cleanupHydration = () => {};
     const begin = async () => {
+      await loadSessionPolicy();
+      if (!active) return;
       const hostSession = getHostSession();
       if (hostSession) {
         try {
@@ -101,14 +133,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const hydrate = () =>
         authApi.me()
           .then(u => {
-            if (!active) return;
+            if (!active || isSessionPaused() || !getAccessToken()) return;
             disarmRetry();
             setUser(u);
             setProfileVerified(true);
             localStorage.setItem('t75_user', JSON.stringify(u));
           })
           .catch((err: unknown) => {
-            if (!active) return;
+            if (!active || isSessionPaused()) return;
             const status = (err as { response?: { status?: number } })?.response?.status;
             if (status === 401) {
               disarmRetry();
@@ -141,6 +173,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return () => {
       active = false;
       window.removeEventListener('integral:logout', onLogout);
+      window.removeEventListener('storage', onStorage);
       cleanupHydration();
     };
     // queryClient from useQueryClient is a stable reference — empty
@@ -211,6 +244,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       /* still clear local session if the network fails */
     } finally {
       clearTokens();
+      enableSessionRecovery(null);
       setToken(null);
       setUser(null);
       setProfileVerified(false);
@@ -249,7 +283,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     [user, token, loading, login, signup, logout, refreshUser],
   );
 
-  return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
+  return <Ctx.Provider value={value}>
+    {children}
+    {recovery && user && <SessionRenewalDialog mode={recovery} user={user}
+      onSignOut={() => { void logout(); }}
+      onResume={(tokens, verifiedUser) => {
+        setTokens(tokens);
+        setToken(tokens.access_token);
+        setUser(verifiedUser);
+        setProfileVerified(true);
+        localStorage.setItem('t75_user', JSON.stringify(verifiedUser));
+        finishSessionRecovery();
+        scheduleProactiveRefresh();
+        // Re-read server state; never resume/replay a failed mutation or chat turn.
+        void queryClient.invalidateQueries();
+      }} />}
+  </Ctx.Provider>;
 }
 
 export function useAuth() {

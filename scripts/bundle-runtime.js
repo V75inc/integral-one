@@ -7,6 +7,7 @@ const root = path.join(__dirname,'..');
 const pins = verifyDistribution(root);
 const baseWheel = path.join(root,pins.core.base_wheel);
 const ui = path.join(root,'.build/frontend/dist');
+require('./verify-ui-styles').verifyUIStyles(ui);
 const buildManifest = JSON.parse(fs.readFileSync(path.join(root,'.build/frontend/distribution-build.json'),'utf8'));
 if (buildManifest.product !== 'integral-one' || buildManifest.core_source_tree_sha256 !== JSON.parse(fs.readFileSync(path.join(root,'vendor/core-ui-source/core-source.json'),'utf8')).source_tree_sha256) throw new Error('UI build came from a different source snapshot.');
 const overlayRoot = path.join(root, 'frontend/host');

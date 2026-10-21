@@ -1,6 +1,6 @@
 import { useDeployment } from '../hooks/useDeployment';
 import type { EntryCreateInput } from '../views/types';
-import { TrackTagFilters, entriesMatchingTags } from '../components/tracks/TrackTagFilters';
+import { entriesMatchingTags } from '../components/tracks/TrackTagFilters';
 /* patch:kanban-hire-intercept */
 import {
   useState,
@@ -833,10 +833,11 @@ export function TrackDetailPage() {
         });
       }
     }
-    return entriesMatchingTags(list, filterTags);
+    return entriesMatchingTags(list, isPagesView ? [] : filterTags);
   }, [
     allEntries,
     filterTags,
+    isPagesView,
     filterType,
     trackSearch,
     semanticMode,
@@ -1157,6 +1158,21 @@ export function TrackDetailPage() {
     },
     [id, queryClient, invalidateTrackMeta, showToast]
   );
+
+  const handleKanbanColumnRemove = useCallback(async (viewId: string, columnKey: string) => {
+    if (!id) return;
+    try {
+      await trackViewsApi.removeKanbanColumn(viewId, columnKey);
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: viewsForTrackQueryKey(id) }),
+        queryClient.invalidateQueries({ queryKey: entryTypesForTrackQueryKey(id) }),
+        queryClient.invalidateQueries({ queryKey: trackAttachedOperationalModelQueryKey(id) }),
+      ]);
+    } catch (error) {
+      showToast(errorMessageFromAxios(error, 'Could not remove this column.'), 'error');
+      throw error;
+    }
+  }, [id, queryClient, showToast]);
 
   /** Append a kanban column key to profile select enums when ``group_by``
    *  targets a schema field (e.g. Pipeline ``stage``). */
@@ -1766,7 +1782,6 @@ export function TrackDetailPage() {
           track.collaborator_effective_total ?? collaboratorList.length
         }
         isOwner={isOwner}
-        canImprove={canViewTrackConfig}
         onOpenCollaborators={() => setCollaboratorsModalOpen(true)}
         onOpenShare={() => setShareModalOpen(true)}
         onOpenEdit={() => setShowEditModal(true)}
@@ -1774,7 +1789,6 @@ export function TrackDetailPage() {
         onDeleteTrack={handleDeleteTrack}
       />
 
-      <TrackTagFilters entries={allEntries} selected={filterTags} onChange={setFilterTags} />
       {dashboardFilters ? (
         <div className="flex items-center justify-between gap-3 px-4 py-2">
           <Text variant="meta" tone="muted" as="p">
@@ -1830,6 +1844,9 @@ export function TrackDetailPage() {
           filterType={filterType}
           setFilterType={setFilterType}
           entryTypeSlugs={entryTypeSlugs}
+          tagFilterEntries={allEntries}
+          filterTags={filterTags}
+          setFilterTags={setFilterTags}
           trackSearch={trackSearch}
           setTrackSearch={setTrackSearch}
           retrievalMode={retrievalMode}
@@ -1857,6 +1874,7 @@ export function TrackDetailPage() {
           onEntryPersist={handleEntryPersist}
           onViewUpdate={handleViewUpdate}
           onKanbanColumnEnumSync={handleKanbanColumnEnumSync}
+          onKanbanColumnRemove={handleKanbanColumnRemove}
           onEntryCreate={handleEntryCreate}
           entryTypes={(entryTypesQuery.data ?? []) as EntryTypeNode[]}
           trackEntryTypeFields={trackEntryTypeFields}

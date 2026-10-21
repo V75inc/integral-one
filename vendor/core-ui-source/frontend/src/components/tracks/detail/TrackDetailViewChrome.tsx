@@ -11,7 +11,6 @@ import {
   ViewTabs,
   type ViewTabOption,
 } from '../../ui';
-import { ImproveThisButton } from '../ImproveThisButton';
 import type { SavedView } from '../../../types';
 
 function railToggleClass(active: boolean): string {
@@ -138,15 +137,7 @@ export function TrackDetailViewChrome({
                       <LayoutTemplate size={13} strokeWidth={LINE_ICON_STROKE} aria-hidden />
                     </Button>
                   ) : null}
-                  {canViewTrackConfig ? (
-                    <ImproveThisButton
-                      target="view"
-                      subjectName={activeView.name}
-                      subjectId={activeView.id}
-                      trackId={trackId}
-                      compact
-                    />
-                  ) : null}
+
                 </div>
                 {configToggle}
                 {activityToggle}

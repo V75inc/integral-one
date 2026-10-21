@@ -18,7 +18,8 @@ const candidates=archives(path.resolve(root,process.argv[2] || 'release'));
 assert.equal(candidates.length,1,'Expected exactly one packaged directory bundle; choose a clean output directory for inspection.');
 // ASAR lists members using the host OS separator; compare one canonical form.
 const archive=candidates[0],resources=path.dirname(archive),members=asar.listPackage(archive).map(member=>member.replaceAll('\\','/'));
-for(const member of ['desktop/main.js','desktop/loading.html','desktop/accounts/ui/integral-logo.svg','desktop/accounts/controller.js','desktop/accounts/preload.js','desktop/accounts/ui/account.js','desktop/accounts/config.runtime.json','distribution.json','node_modules/@integral/desktop-host/lib/host.js'])assert.ok(members.includes('/'+member),`Missing ${member}`);
+for(const member of ['desktop/main.js','desktop/loading.html','desktop/accounts/ui/integral-logo.svg','desktop/accounts/controller.js','desktop/accounts/clerk-setup.js','desktop/accounts/preload.js','desktop/accounts/ui/account.js','desktop/accounts/config.runtime.json','distribution.json','node_modules/@integral/desktop-host/lib/host.js'])assert.ok(members.includes('/'+member),`Missing ${member}`);
+assert.ok(!members.some(n=> /\/(setup-key|activation)\.json$/.test(n)), 'Local account state must never enter the app');
 assert.ok(!members.some(n=>/\.local|GITHUB-SETUP|packaged-local-proof|github-repository|\.env|core-ui-source|cua-driver/.test(n)),'Internal/source-only resources leaked into the app');
 for(const name of ['LICENSE','NOTICE','LICENSING.md','PRIVACY.md','CODE_SIGNING.md'])assert.equal(hash(path.join(resources,name)),hash(path.join(root,name)),`Packaged ${name} differs from source`);
 assert.equal(hash(path.join(resources,'notices/uv/LICENSE-MIT')),hash(path.join(root,'vendor/licenses/uv/LICENSE-MIT')),'Bundled uv license differs from reviewed source');
@@ -32,5 +33,29 @@ for(const [name,key] of [[runtime.coreWheel,runtime.coreWheel],[process.platform
 assert.match(asar.extractFile(archive,path.join('desktop','main.js')).toString(),/Integral \| one/);
 const accountConfig=JSON.parse(asar.extractFile(archive,path.join('desktop','accounts','config.runtime.json')).toString());
 require('../desktop/accounts/config').validateConfig(accountConfig);
+for (const member of ['desktop/updates.js','node_modules/electron-updater/out/main.js']) assert.ok(members.includes('/'+member), `Missing ${member}`);
+for (const file of ['desktop/main.js','desktop/updates.js','desktop/accounts/controller.js','desktop/accounts/clerk-setup.js','desktop/accounts/receipt.js','desktop/accounts/config.js','desktop/accounts/ui/account.js','desktop/accounts/ui/account.css','desktop/accounts/preload.js']) {
+  const packedHash = require('node:crypto').createHash('sha256').update(asar.extractFile(archive, file)).digest('hex');
+  assert.equal(packedHash, hash(path.join(root, file)), `Packaged source differs: ${file}`);
+}
+assert.equal(require('node:crypto').createHash('sha256').update(asar.extractFile(archive, 'node_modules/@integral/desktop-host/lib/host.js')).digest('hex'), hash(path.join(root, 'packages/desktop-host/lib/host.js')), 'Packaged host differs from its maintained source');
+const updateConfigFile = path.join(resources, 'app-update.yml');
+const packagedProduct = JSON.parse(asar.extractFile(archive, 'package.json').toString());
+if (fs.existsSync(updateConfigFile)) {
+  const feed = require('js-yaml').load(fs.readFileSync(updateConfigFile, 'utf8'));
+  assert.equal(feed.provider, 'github');
+  assert.equal(feed.owner, 'V75inc');
+  assert.equal(feed.repo, 'integral-one');
+  assert.ok(!feed.token && !feed.private, 'Updater must use the public release feed without credentials');
+} else assert.ok(!packagedProduct.integralOneUpdates?.enabled, 'Enabled updater needs its packaged public feed configuration');
+const closureFile = path.join(root, '.local/verification/release-readiness/ui-dependency-closure.json');
+if (fs.existsSync(closureFile)) {
+  // Check the packaged wheel, rather than assuming the source dist that was
+  // audited is the same one embedded in the installer.
+  require('node:child_process').execFileSync(process.env.PYTHON || (process.platform === 'win32' ? 'python' : 'python3'), ['-c',
+    'import json,sys,zipfile\nwith zipfile.ZipFile(sys.argv[1]) as z:\n actual=json.loads(z.read("app/web/distribution.json"))["ui_sha256"]\nexpected=json.load(open(sys.argv[2]))["dist_sha256"]\nassert actual == expected, "Packaged UI differs from the audited module closure"',
+    path.join(resources, 'core', runtime.coreWheel), closureFile,
+  ], { stdio: 'inherit' });
+}
 assert.ok(!JSON.stringify(accountConfig).includes('sk_live_') && !JSON.stringify(accountConfig).includes('sk_test_'),'Service secret must not enter the app');
 console.log(JSON.stringify({result:'pass',platform:process.platform,arch:process.arch,asar_sha256:hash(archive),runtime_profile:runtime.deployment_profile,apache_notices:true,internal_files_excluded:true,signing:'not qualified'},null,2));

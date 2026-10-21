@@ -156,6 +156,17 @@ function maybeDispatchEntryRefetch(action: string, entryId?: string): void {
   dispatchEntryRefetch(entryId);
 }
 
+/** Metadata changes must refresh open pickers and saved-view schema too. */
+async function invalidateConfiguration(qc: QueryClient, trackId?: string): Promise<void> {
+  await Promise.all([
+    ...['tags', 'entryTypes', 'views', 'operationalModel', 'operational-models', 'operational-model'].map(
+      root => qc.invalidateQueries({ queryKey: [root] }),
+    ),
+    invalidateTrackEntryLists(qc, trackId),
+    invalidateDashboardData(qc),
+  ]);
+}
+
 /** Invalidate list/detail caches after a ChangeEvent from the events stream. */
 export async function invalidateAfterChangeEvent(
   qc: QueryClient,
@@ -163,6 +174,19 @@ export async function invalidateAfterChangeEvent(
 ): Promise<void> {
   const action = evt.action;
   if (!action) return;
+
+  if (action === 'operational_model.delete') {
+    await Promise.all([
+      qc.invalidateQueries({ queryKey: ['operational-models'] }),
+      qc.invalidateQueries({ queryKey: ['operational-model'], refetchType: 'none' }),
+    ]);
+    return;
+  }
+
+  if (['tag.', 'view.', 'entry_type.', 'operational_model.'].some(prefix => action.startsWith(prefix))) {
+    await invalidateConfiguration(qc, trackIdFromScope(evt.scope));
+    return;
+  }
 
   if (action === 'notification.create') {
     await qc.invalidateQueries({ queryKey: ['notifications'] });
@@ -258,6 +282,21 @@ export async function invalidateAfterAgentWrite(
 ): Promise<void> {
   const { staged, executeResult } = input;
   const kind = staged.kind || String(staged.diff_machine?.op || '');
+
+  if (kind === 'batch') {
+    await Promise.all([
+      invalidateConfiguration(qc), invalidateWorkspaceListCaches(qc),
+      qc.invalidateQueries({ queryKey: ['apps'] }),
+      qc.invalidateQueries({ queryKey: ['tracks'] }),
+      invalidateDashboardCaches(qc),
+    ]);
+    return;
+  }
+  if (['create_tag', 'update_tag', 'merge_tags', 'publish_profile_draft'].includes(kind)
+    || kind.startsWith('modify_operational_model.')) {
+    await invalidateConfiguration(qc, trackIdFromStaged(staged, executeResult));
+    return;
+  }
 
   if (ENTRY_WRITE_KINDS.has(kind)) {
     await Promise.all([

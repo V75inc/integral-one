@@ -16,7 +16,7 @@ import {
   Wrench,
 } from 'lucide-react';
 import { operationalModelsApi, tracksApi, appsApi } from '../api';
-import { Skeleton, LINE_ICON_STROKE } from '../components/ui';
+import { Button, Skeleton, LINE_ICON_STROKE } from '../components/ui';
 import { useToast } from '../context/ToastContext';
 import { useConfirm } from '../context/ConfirmContext';
 import { useSetCrumbs } from '../context/CrumbsContext';
@@ -27,6 +27,8 @@ import {
 } from '../lib/operationalModelManifest';
 import { lucideFromOperationalModelIcon } from '../lib/manifestLucideIcon';
 import { Text } from '../ui';
+import { errorMessageFromAxios } from '../api/helpers';
+import { useQueryClient } from '@tanstack/react-query';
 import { usePublishPageContext } from '../hooks/usePublishPageContext';
 
 function SectionBlock({ section }: { section: InspectTrackSection }) {
@@ -181,6 +183,8 @@ function OperationalModelDetailPage() {
   const [selectedTrackId, setSelectedTrackId] = useState('');
   const [selectedAppId, setSelectedAppId] = useState('');
   const [merging, setMerging] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const queryClient = useQueryClient();
 
   const {
     data: profile,
@@ -220,6 +224,24 @@ function OperationalModelDetailPage() {
         ]
       : [{ label: 'Operational Models', to: '/models' }, { label: 'Loading…' }]
   );
+
+  const handleDelete = async () => {
+    if (!id || !profile?.can_delete || deleting) return;
+    if (!await confirm({
+      title: 'Delete library model',
+      message: `Delete “${profile.name}” from the reusable library? Existing Tracks keep their own configuration and records. New Tracks will no longer offer this model.`,
+      confirmLabel: 'Delete model', variant: 'danger',
+    })) return;
+    setDeleting(true);
+    try {
+      await operationalModelsApi.delete(id);
+      await queryClient.invalidateQueries({ queryKey: ['operational-models'] });
+      showToast('Library model deleted', 'success');
+      navigate('/models');
+    } catch (error) {
+      showToast(errorMessageFromAxios(error, 'Could not delete this library model.'), 'error');
+    } finally { setDeleting(false); }
+  };
 
   const handleMergeTrack = async () => {
     if (!selectedTrackId || !id) return;
@@ -360,6 +382,7 @@ function OperationalModelDetailPage() {
             </span>
           </PageMeta>
         </div>
+        {profile.can_delete && <Button variant="outline" disabled={deleting} onClick={handleDelete}>Delete model</Button>}
       </div>
 
       {inspection.sections.length === 0 ? (

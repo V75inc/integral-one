@@ -3,6 +3,8 @@ import { Text, Surface } from '../../../ui';
 import { createPortal } from 'react-dom';
 import { aiChatApi } from '../../../api/aiChat';
 
+export const CONVERSATION_PREVIEW_DELAY_MS = 700;
+
 /** Compact single-line title; the full name remains available outside the scrolling rail. */
 export function ConversationLabel({ title, threadId, lastActivity, createdAt, messageCount, working = false }: {
   title: string;
@@ -16,19 +18,30 @@ export function ConversationLabel({ title, threadId, lastActivity, createdAt, me
   const labelRef = useRef<HTMLSpanElement>(null);
   const cardRef = useRef<HTMLElement>(null);
   const [position, setPosition] = useState<{ left: number; top: number } | null>(null);
+  const showTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [expandedTitle, setExpandedTitle] = useState<{ key: string; text: string } | null>(null);
   const titleKey = `${threadId || ''}:${title}`;
   const displayTitle = expandedTitle?.key === titleKey ? expandedTitle.text : title;
   const open = position !== null;
   const dismiss = useCallback(() => {
+    if (showTimer.current) clearTimeout(showTimer.current);
+    showTimer.current = null;
     if (hideTimer.current) clearTimeout(hideTimer.current);
+    hideTimer.current = null;
     setPosition(null);
     setExpandedTitle(null);
   }, []);
   const keepOpen = () => { if (hideTimer.current) clearTimeout(hideTimer.current); };
-  const hideSoon = () => { keepOpen(); hideTimer.current = setTimeout(dismiss, 120); };
-  useEffect(() => () => { if (hideTimer.current) clearTimeout(hideTimer.current); }, []);
+  const hideSoon = () => {
+    if (showTimer.current) clearTimeout(showTimer.current);
+    showTimer.current = null;
+    keepOpen(); hideTimer.current = setTimeout(dismiss, 120);
+  };
+  useEffect(() => () => {
+    if (showTimer.current) clearTimeout(showTimer.current);
+    if (hideTimer.current) clearTimeout(hideTimer.current);
+  }, []);
   useEffect(() => {
     // Legacy fallback labels were stored as the first 60 characters plus an
     // ellipsis. Recover their complete text through the authorized thread API
@@ -54,6 +67,13 @@ export function ConversationLabel({ title, threadId, lastActivity, createdAt, me
       top: Math.max(8, Math.min(rect.top, window.innerHeight - 80)),
     });
   }, [tooltipId]);
+  const scheduleReveal = useCallback((element: HTMLElement) => {
+    if (showTimer.current || cardRef.current) return;
+    showTimer.current = setTimeout(() => {
+      showTimer.current = null;
+      if (element.isConnected) reveal(element);
+    }, CONVERSATION_PREVIEW_DELAY_MS);
+  }, [reveal]);
   useLayoutEffect(() => {
     if (!position || !cardRef.current) return;
     const height = cardRef.current.getBoundingClientRect().height;
@@ -64,7 +84,7 @@ export function ConversationLabel({ title, threadId, lastActivity, createdAt, me
     const label = labelRef.current;
     const trigger = label?.closest('button');
     if (!label || !trigger) return;
-    const focus = () => reveal(label);
+    const focus = () => scheduleReveal(label);
     const blur = dismiss;
     const scroll = (e: Event) => {
       if (e.target instanceof Node && cardRef.current?.contains(e.target)) return;
@@ -78,6 +98,8 @@ export function ConversationLabel({ title, threadId, lastActivity, createdAt, me
     window.addEventListener('keydown', key);
     trigger.addEventListener('focus', focus);
     trigger.addEventListener('blur', blur);
+    trigger.addEventListener('pointerdown', blur);
+    trigger.addEventListener('click', blur);
     return () => {
       window.removeEventListener('integral:conversation-title-reveal', otherPreview);
       window.removeEventListener('scroll', scroll, true);
@@ -85,12 +107,16 @@ export function ConversationLabel({ title, threadId, lastActivity, createdAt, me
       window.removeEventListener('keydown', key);
       trigger.removeEventListener('focus', focus);
       trigger.removeEventListener('blur', blur);
+      trigger.removeEventListener('pointerdown', blur);
+      trigger.removeEventListener('click', blur);
+      if (showTimer.current) clearTimeout(showTimer.current);
+      showTimer.current = null;
     };
-  }, [tooltipId, reveal, dismiss]);
+  }, [tooltipId, scheduleReveal, dismiss, titleKey]);
   return (
     <span ref={labelRef} className="min-w-0 flex-1"
-      onMouseEnter={e => { keepOpen(); reveal(e.currentTarget); }} onMouseLeave={e => { if (e.relatedTarget === null) dismiss(); else hideSoon(); }}
-      onFocusCapture={e => reveal(e.currentTarget)} onBlurCapture={dismiss}>
+      onMouseEnter={e => { keepOpen(); scheduleReveal(e.currentTarget); }} onMouseLeave={e => { if (e.relatedTarget === null) dismiss(); else hideSoon(); }}
+      onFocusCapture={e => scheduleReveal(e.currentTarget)} onBlurCapture={dismiss}>
       <span className="block truncate text-[13px] leading-[17px]" aria-describedby={position ? tooltipId : undefined}>{title}</span>
       {lastActivity && <Text as="span" variant="meta" tone="subtle" className="mt-0.5 block pr-7 tabular-nums"><time dateTime={lastActivity} title={new Date(lastActivity).toLocaleString()}>
         {new Date(lastActivity).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}

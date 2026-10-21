@@ -237,26 +237,39 @@ describe("admission refusals are visible, and nothing is appended", () => {
   });
 
   it("says the cap was hit instead of appending an unanswered message", async () => {
-    const { result } = renderHook(() => useAIChatRuntime(mockProvider));
+    const finishers: Array<() => void> = [];
+    const cappedProvider: ChatProvider = {
+      ...mockProvider,
+      streamTurn: async function* () {
+        yield { type: "text-delta", delta: "Working" };
+        await new Promise<void>(resolve => finishers.push(resolve));
+        yield { type: "message-finish" };
+      },
+    };
+    const { result } = renderHook(() => useAIChatRuntime(cappedProvider));
+    try {
 
-    for (let i = 0; i < MAX_CONCURRENT_STREAMS; i++) {
+      for (let i = 0; i < MAX_CONCURRENT_STREAMS; i++) {
+        await act(async () => {
+          result.current.switchToNewThread();
+        });
+        await send(result, `turn ${i}`);
+      }
+      expect(result.current.streamingThreadIds).toHaveLength(MAX_CONCURRENT_STREAMS);
+
       await act(async () => {
         result.current.switchToNewThread();
       });
-      await send(result, `turn ${i}`);
+      await send(result, "one too many");
+
+      expect(result.current.streamError).toBe(
+        `Too many conversations are running (${MAX_CONCURRENT_STREAMS}). Stop one and try again.`,
+      );
+      expect(texts(result)).not.toContain("one too many");
+      expect(result.current.streamingThreadIds).toHaveLength(MAX_CONCURRENT_STREAMS);
+    } finally {
+      await act(async () => { for (const finish of finishers) finish(); });
     }
-    expect(result.current.streamingThreadIds).toHaveLength(MAX_CONCURRENT_STREAMS);
-
-    await act(async () => {
-      result.current.switchToNewThread();
-    });
-    await send(result, "one too many");
-
-    expect(result.current.streamError).toBe(
-      `Too many conversations are running (${MAX_CONCURRENT_STREAMS}). Stop one and try again.`,
-    );
-    expect(texts(result)).not.toContain("one too many");
-    expect(result.current.streamingThreadIds).toHaveLength(MAX_CONCURRENT_STREAMS);
   });
 
   it("treats a turn running on another tab as busy and refuses the send", async () => {

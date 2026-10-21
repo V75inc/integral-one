@@ -7,7 +7,7 @@ on:
         required: true
         type: string
       include_windows:
-        description: Include Windows x64 only after its signing certificate and qualification are ready
+        description: Reserved for Windows x64 after signing, installer and automatic-update qualification; currently blocked
         required: true
         type: boolean
         default: false
@@ -103,6 +103,8 @@ jobs:
           merge-multiple: true
           path: release-assets
       - run: node scripts/installer-manifest.js merge release-assets release-assets/install-manifest.json
+      - run: npm ci --ignore-scripts
+      - run: node scripts/update-metadata.js release-assets
       - name: Include reviewed bootstrap and notices
         run: >-
           node -e "const fs=require('fs');

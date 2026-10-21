@@ -48,7 +48,9 @@ function AccountForm({ returning, onModeChange }) {
     setBusy(true);
     setError("");
     try {
-      await window.integralActivation.register(await getToken());
+      await window.integralActivation.register(
+        await getToken({ skipCache: true }),
+      );
     } catch {
       setError(
         "We couldn’t finish signing in. Check your connection and use the account linked to this computer, then try again.",
@@ -92,6 +94,9 @@ function AccountForm({ returning, onModeChange }) {
       {browserPending && (
         <div className="browser-handoff" role="status">
           <p>Finish signing in in your browser, then return here.</p>
+          <p className="handoff-hint">
+            Once Integral One opens, you can close the browser tab.
+          </p>
           <p className="handoff-hint">
             Already back, or the browser stopped responding?
           </p>
@@ -241,11 +246,34 @@ function App() {
       <details className="privacy-details">
         <summary>Privacy and your account</summary>
         <div className="help-content">
-          <p>V75 Inc. maintains Integral One. Signup uses Clerk and your chosen sign-in provider for your email, profile and account security. The account service records your first One signup to count distinct users, not ongoing activity.</p>
-          <p>A random computer code is sent during setup. Your signed setup record stays here so you can keep working offline. Signing out or deleting an online account does not erase your local workspace; sign-out is not a filesystem lock.</p>
-          <p>Optional SDK telemetry is disabled in this desktop signup view. Authentication providers still process connection and security information. Signup does not subscribe you to marketing.</p>
-          <p>Your files and records stay local. If you choose hosted AI or another network service, the information needed for that request goes to that service. Signing in never uploads your workspace to Business.</p>
-          <p>Privacy or account requests: support@v75inc.com. The full development-preview notice is included as PRIVACY.md with the application and in the repository. Production retention and deletion arrangements must be finalized before launch.</p>
+          <p>
+            V75 Inc. maintains Integral One. Signup uses Clerk and your chosen
+            sign-in provider for your email, profile and account security.
+            Registered-account counts come from the Integral account directory;
+            they do not measure ongoing activity or completed installations.
+          </p>
+          <p>
+            Your setup record stays on this computer so you can keep working
+            offline. Signing out or deleting an online account does not erase
+            your local workspace; sign-out is not a filesystem lock.
+          </p>
+          <p>
+            Optional SDK telemetry is disabled in this desktop signup view.
+            Authentication providers still process connection and security
+            information. Signup does not subscribe you to marketing.
+          </p>
+          <p>
+            Your files and records stay local. If you choose hosted AI or
+            another network service, the information needed for that request
+            goes to that service. Signing in never uploads your workspace to
+            Business.
+          </p>
+          <p>
+            Privacy or account requests: support@v75inc.com. The full
+            development-preview notice is included as PRIVACY.md with the
+            application and in the repository. Production retention and deletion
+            arrangements must be finalized before launch.
+          </p>
         </div>
       </details>
       {error && !context && (
@@ -255,68 +283,71 @@ function App() {
       )}
       {context && (
         <div className="account-help">
-          <details>
-            <summary>Setting up an offline computer?</summary>
-            <div className="help-content">
-              <p>
-                On a connected device, open the signup page and enter this
-                computer’s code. Paste the returned setup code here.
-              </p>
-              <p className="portal-address">
-                {context.portal || "The signup page is not configured yet."}
-              </p>
-              <label htmlFor="computer-code">Computer code</label>
-              <input
-                id="computer-code"
-                readOnly
-                value={context.installationId || ""}
-              />
-              <button
-                className="action secondary"
-                disabled={!context.installationId}
-                onClick={() => window.integralActivation.copyInstallation()}
-              >
-                Copy computer code
-              </button>
-              <label htmlFor="setup-code">Setup code</label>
-              <textarea
-                id="setup-code"
-                value={code}
-                onChange={(event) => setCode(event.target.value)}
-                aria-invalid={Boolean(error)}
-                aria-describedby={error ? "setup-code-error" : undefined}
-              />
-              {error && (
-                <p className="error" role="alert" id="setup-code-error">
-                  {error}
-                </p>
-              )}
-              <button
-                className="action primary"
-                disabled={!code.trim() || importing}
-                onClick={importCode}
-              >
-                {importing ? "Checking code…" : "Continue"}
-              </button>
-            </div>
-          </details>
-          {context.existingData && (!context.returning || context.recoveryNeeded) && (
+          {context.offlineImport && (
             <details>
-              <summary>Open an existing workspace</summary>
+              <summary>Setting up an offline computer?</summary>
               <div className="help-content">
                 <p>
-                  Your existing local data can be opened while account setup is
-                  being completed.
+                  On a connected device, open the signup page and enter this
+                  computer’s code. Paste the returned setup code here.
                 </p>
+                <p className="portal-address">
+                  {context.portal || "The signup page is not configured yet."}
+                </p>
+                <label htmlFor="computer-code">Computer code</label>
+                <input
+                  id="computer-code"
+                  readOnly
+                  value={context.installationId || ""}
+                />
                 <button
                   className="action secondary"
-                  onClick={() => window.integralActivation.recover()}
+                  disabled={!context.installationId}
+                  onClick={() => window.integralActivation.copyInstallation()}
                 >
-                  Open local workspace
+                  Copy computer code
+                </button>
+                <label htmlFor="setup-code">Setup code</label>
+                <textarea
+                  id="setup-code"
+                  value={code}
+                  onChange={(event) => setCode(event.target.value)}
+                  aria-invalid={Boolean(error)}
+                  aria-describedby={error ? "setup-code-error" : undefined}
+                />
+                {error && (
+                  <p className="error" role="alert" id="setup-code-error">
+                    {error}
+                  </p>
+                )}
+                <button
+                  className="action primary"
+                  disabled={!code.trim() || importing}
+                  onClick={importCode}
+                >
+                  {importing ? "Checking code…" : "Continue"}
                 </button>
               </div>
             </details>
           )}
+          {context.existingData &&
+            (!context.returning || context.recoveryNeeded) && (
+              <details>
+                <summary>Open an existing workspace</summary>
+                <div className="help-content">
+                  <p>
+                    Your existing local data can be opened while account setup
+                    is being completed.
+                  </p>
+                  <button
+                    className="action secondary"
+                    onClick={() => window.integralActivation.recover()}
+                  >
+                    Open local workspace
+                  </button>
+                </div>
+              </details>
+            )}
         </div>
       )}
       {context?.environment !== "production" &&

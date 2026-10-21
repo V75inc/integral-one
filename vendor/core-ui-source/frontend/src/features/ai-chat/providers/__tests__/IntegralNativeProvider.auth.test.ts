@@ -10,7 +10,7 @@
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-vi.mock('../../../../api/session', () => ({
+vi.mock('../../../../api/session', () => ({ checkSessionDeadline: vi.fn(), pauseForSessionRenewal: vi.fn(), redirectToLogin: vi.fn(),
   getAccessToken: vi.fn(),
   refreshAccessToken: vi.fn(),
 }));
@@ -22,6 +22,7 @@ vi.mock('../../../../config', () => ({ getApiBaseURL: () => 'http://api.test' })
 
 import { getAccessToken, refreshAccessToken } from '../../../../api/session';
 import { IntegralNativeProvider } from '../IntegralNativeProvider';
+import { enableSessionRecovery, requestSessionRecovery } from '../../../../api/sessionRecovery';
 
 function sseResponse(): Response {
   // Minimal body — these tests only care about the request/auth handshake.
@@ -192,4 +193,20 @@ describe('IntegralNativeProvider.streamTurn auth handling', () => {
     expect(fetchMock).not.toHaveBeenCalled();
     expect((events[0] as { code?: string })?.code).toBe('missing_thread_id');
   });
+});
+
+
+it('never submits a chat turn while renewal is required', async () => {
+  enableSessionRecovery('owner');
+  requestSessionRecovery('renew');
+  const fetchMock = vi.fn();
+  vi.stubGlobal('fetch', fetchMock);
+  try {
+    const events = await drain(IntegralNativeProvider.streamTurn(ctx()));
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(events).toMatchObject([{ code: 'session_renewal_required' }]);
+  } finally {
+    enableSessionRecovery(null);
+    vi.unstubAllGlobals();
+  }
 });

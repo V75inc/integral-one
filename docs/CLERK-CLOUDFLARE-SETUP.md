@@ -1,5 +1,7 @@
 # Clerk and Cloudflare: production setup walkthrough
 
+**21 October update:** [Clerk-only setup](CLERK-ONLY-SETUP.md) implements the proposed launch simplification in configuration v2. The service-backed flow below remains the legacy v1 contract. Production qualification is still required.
+
 **Status:** preparation guide, 18 October 2026. No production DNS change, paid subscription or deployment is completed by this document. We will work through the dashboards together after the repository cleanup.
 
 ## First, keep the scope small

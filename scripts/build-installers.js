@@ -10,6 +10,7 @@ if (!['darwin', 'win32'].includes(process.platform) || !['arm64', 'x64'].include
 const npm = process.env.npm_execpath;
 if (!npm) throw new Error('Run through npm run build:installers.');
 if (signed) {
+  if (process.platform === 'win32') throw new Error('Windows signed release remains blocked until its signing and automatic-update path are qualified. The initial signed release targets macOS.');
   const { version } = require('../package.json');
   const pins = require('../distribution.json');
   if (!/^\d+\.\d+\.\d+$/.test(version) || pins.product_version !== version) throw new Error('Signed public installers require matching stable package/distribution versions.');
@@ -17,16 +18,19 @@ if (signed) {
   const config = validateConfig(JSON.parse(fs.readFileSync(process.env.INTEGRAL_ACCOUNT_CONFIG || path.join(root, 'desktop/accounts/config.json'), 'utf8')));
   if (!config.configured || config.environment !== 'production') throw new Error('Signed public installers require configured production accounts.');
   if (process.env.CSC_IDENTITY_AUTO_DISCOVERY === 'false') throw new Error('Signing discovery must not be disabled for a signed release.');
+  if (process.platform === 'darwin') require('./signing-config').validateMacNotarization();
   if (process.platform === 'win32' && !/^[A-Fa-f0-9]{40}$/.test(process.env.ONE_WINDOWS_CERT_SHA1 || '')) throw new Error('Set ONE_WINDOWS_CERT_SHA1 to the approved Windows certificate-store thumbprint. Configure the hardware/cloud signing provider first; see docs/WINDOWS-SIGNING.md.');
 }
+if (signed) execFileSync(process.execPath, [npm, 'run', 'qualify:ui:dependencies'], { stdio: 'inherit' });
 for (const name of ['build:accounts', 'build:runtime']) execFileSync(process.execPath, [npm, 'run', name], { stdio: 'inherit' });
 const builder = require.resolve('electron-builder/cli.js');
 const args = [builder, process.platform === 'darwin' ? '--mac' : '--win', process.platform === 'darwin' ? 'zip' : 'nsis', `--${process.arch}`, '--publish', 'never'];
 if (signed) {
   args.push('--config.forceCodeSigning=true');
-  if (process.platform === 'darwin') args.push('--config.mac.notarize=true');
+  if (process.platform === 'darwin') args.push('--config.mac.notarize=true', '--config.extraMetadata.integralOneUpdates.enabled=true');
   else args.push(`--config.win.signtoolOptions.certificateSha1=${process.env.ONE_WINDOWS_CERT_SHA1}`);
 }
 if (!signed && process.platform === 'win32') args.push('--config.win.signExecutable=false');
 execFileSync(process.execPath, args, { stdio: 'inherit' });
+execFileSync(process.execPath, [path.join(__dirname, 'inspect-package.js')], { stdio: 'inherit' });
 console.log(signed ? 'Signed candidate built. Verify it and create the installer manifest before publication.' : 'Development installer built. It cannot pass the public bootstrap signature/release gates.');

@@ -307,3 +307,29 @@ describe('dispatchEntryRefetch', () => {
     }
   });
 });
+
+it.each(['tag.create', 'view.update', 'entry_type.update', 'operational_model.publish'])(
+  'refreshes open tag and schema controls after %s', async action => {
+    const qc = new QueryClient();
+    const invalidate = vi.spyOn(qc, 'invalidateQueries');
+    await invalidateAfterChangeEvent(qc, { id:'metadata-event', ts:'2026-01-01T00:00:00Z',
+      actor_kind:'user',actor_id:'user',action,resource_type:'Tag',resource_id:'resource',scope:'track:track'});
+    expect(invalidate).toHaveBeenCalledWith({queryKey:['tags']});
+    expect(invalidate).toHaveBeenCalledWith({queryKey:['views']});
+    expect(invalidate).toHaveBeenCalledWith({queryKey:['entryTypes']});
+  },
+);
+it.each(['create_tag', 'batch'])('refreshes metadata immediately after an approved %s', async kind => {
+  const qc = new QueryClient();
+  const invalidate = vi.spyOn(qc, 'invalidateQueries');
+  await invalidateAfterAgentWrite(qc, {staged:staged({kind})});
+  expect(invalidate).toHaveBeenCalledWith({queryKey:['tags']});
+  expect(invalidate).toHaveBeenCalledWith({queryKey:['operationalModel']});
+});
+it('marks a deleted library detail stale without fetching it again', async () => {
+  const qc = new QueryClient();
+  const invalidate = vi.spyOn(qc, 'invalidateQueries');
+  await invalidateAfterChangeEvent(qc, {id:'delete',ts:'2026-01-01T00:00:00Z',actor_kind:'user',actor_id:'user',action:'operational_model.delete',resource_type:'OperationalModel',resource_id:'model'});
+  expect(invalidate).toHaveBeenCalledWith({queryKey:['operational-model'],refetchType:'none'});
+  expect(invalidate).toHaveBeenCalledWith({queryKey:['operational-models']});
+});

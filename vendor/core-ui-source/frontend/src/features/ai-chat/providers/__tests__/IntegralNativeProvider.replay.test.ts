@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-vi.mock('../../../../api/session', () => ({ getAccessToken: () => 'token', refreshAccessToken: vi.fn() }));
+vi.mock('../../../../api/session', () => ({ checkSessionDeadline: vi.fn(), pauseForSessionRenewal: vi.fn(), redirectToLogin: vi.fn(), getAccessToken: () => 'token', refreshAccessToken: vi.fn() }));
 vi.mock('../../../../api/client', () => ({ getActiveScopeHeader: () => 'ws:workspace' }));
 vi.mock('../../../../api/aiChat', () => ({ aiChatApi: {} }));
 vi.mock('../../../../config', () => ({ getApiBaseURL: () => 'http://api.test' }));

@@ -9,10 +9,12 @@ import {
   getAccessToken,
   getRefreshToken,
   isRefreshInFlight,
-  markActivity,
+  checkSessionDeadline,
   redirectToLogin,
   refreshAccessToken,
+  pauseForSessionRenewal,
 } from './session';
+import { isSessionPaused } from './sessionRecovery';
 import {
   clearApiFailure,
   notifyApiFailure,
@@ -61,10 +63,10 @@ export function getActiveScopeHeader(): string | null {
 }
 
 apiClient.interceptors.request.use(config => {
-  // User-driven API traffic counts as activity — the session refresh
-  // scheduler relies on this to decide whether to keep the session
-  // alive when the next refresh window arrives.
-  markActivity();
+  checkSessionDeadline();
+  if (isSessionPaused()) throw new axios.CanceledError('Session renewal required');
+  // Only real input events count as activity; polling must not keep a
+  // session alive after the user walks away.
   const token = getAccessToken();
   if (token) config.headers.Authorization = `Bearer ${token}`;
   // Inject workspace scope on every outbound call.
@@ -148,6 +150,7 @@ apiClient.interceptors.response.use(
     return r;
   },
   async (err: AxiosError) => {
+    if (axios.isCancel(err) || isSessionPaused()) return Promise.reject(err);
     // A deadline only stops waiting in the browser; it cannot roll back work
     // already accepted by the server. Never replay a timed-out mutation.
     if ((err.code === 'ECONNABORTED' || err.code === 'ETIMEDOUT') &&
@@ -202,10 +205,11 @@ apiClient.interceptors.response.use(
     }
 
     const newAccessToken = await refreshAccessToken();
+    if (isSessionPaused()) return Promise.reject(err);
     if (!newAccessToken) {
-      // refreshAccessToken already cleared tokens + dispatched logout
-      // on 4xx; soft-land on login with an explicit reason.
-      redirectToLogin();
+      // A temporary outage must not destroy a renewable session. An
+      // authoritative rejection already upgraded the prompt to sign-in.
+      if (!isSessionPaused()) pauseForSessionRenewal();
       return Promise.reject(err);
     }
 

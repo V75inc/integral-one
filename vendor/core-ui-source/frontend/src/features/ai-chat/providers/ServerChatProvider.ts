@@ -1,6 +1,7 @@
 import { aiChatApi } from "../../../api/aiChat";
 import { getActiveScopeHeader } from "../../../api/client";
-import { getAccessToken, refreshAccessToken } from "../../../api/session";
+import { checkSessionDeadline, getAccessToken, pauseForSessionRenewal, redirectToLogin, refreshAccessToken } from "../../../api/session";
+import { isSessionPaused } from "../../../api/sessionRecovery";
 import { getApiBaseURL } from "../../../config";
 import { randomUUID } from "../../../utils/randomUUID";
 import type { ChatProvider, NormalizedEvent, TurnContext } from "./types";
@@ -107,6 +108,12 @@ export function createServerChatProvider({
   },
 
   async *streamTurn(ctx: TurnContext): AsyncIterable<NormalizedEvent> {
+    checkSessionDeadline();
+    if (isSessionPaused()) {
+      yield { type: "error", code: "session_renewal_required",
+        message: "Renew your session, then send your message again." };
+      return;
+    }
     if (!ctx.threadId) {
       yield {
         type: "error",
@@ -147,10 +154,8 @@ export function createServerChatProvider({
     //
     // Mirror the interceptor's contract here: try once, and on a 401 exchange
     // the refresh token (single-flight, shared with the interceptor via
-    // api/session) and replay the request exactly once. `refreshAccessToken`
-    // owns the failure semantics — 4xx tears the session down and emits
-    // `integral:logout`, 5xx leaves tokens alone for a later retry — so a null
-    // return here means "genuinely unauthenticated", not "try again".
+    // api/session) and replay the rejected request exactly once. Once the
+    // renewal prompt opens, stop; renewing must never resubmit a chat turn.
     const doFetch = (bearer: string | null): Promise<Response> =>
       fetch(
         resumeWorkItemId
@@ -186,8 +191,17 @@ export function createServerChatProvider({
       response = await doFetch(getAccessToken());
       if (response.status === 401) {
         const refreshed = await refreshAccessToken();
-        if (refreshed) {
+        if (refreshed && !isSessionPaused()) {
           response = await doFetch(refreshed);
+        }
+        if (response.status === 401 && !isSessionPaused()) {
+          if (refreshed) redirectToLogin();
+          else pauseForSessionRenewal();
+        }
+        if (isSessionPaused()) {
+          yield { type: "error", code: "session_renewal_required",
+            message: "Renew your session, then send your message again." };
+          return;
         }
       }
     } catch (err) {
@@ -325,10 +339,25 @@ export function createServerChatProvider({
         }, signal: ctx.abortSignal },
       );
       try {
+        checkSessionDeadline();
+        if (isSessionPaused()) {
+          yield { type: "error", code: "session_renewal_required",
+            message: "Renew your session, then reopen this conversation to check the saved response." };
+          return;
+        }
         response = await fetchReplay(getAccessToken());
         if (response.status === 401) {
           const refreshed = await refreshAccessToken();
-          if (refreshed) response = await fetchReplay(refreshed);
+          if (refreshed && !isSessionPaused()) response = await fetchReplay(refreshed);
+          if (response.status === 401 && !isSessionPaused()) {
+            if (refreshed) redirectToLogin();
+            else pauseForSessionRenewal();
+          }
+          if (isSessionPaused()) {
+            yield { type: "error", code: "session_renewal_required",
+              message: "Renew your session, then reopen this conversation to check the saved response." };
+            return;
+          }
         }
         if (!response.ok) {
           yield { type: "error", code: `chat_reconnect_http_${response.status}`,

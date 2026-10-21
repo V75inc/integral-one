@@ -1,12 +1,8 @@
 "use strict";
 const fs = require("node:fs");
 const path = require("node:path");
-const {
-  loadState,
-  verifyReceipt,
-  saveReceipt,
-  privateFile,
-} = require("./receipt");
+const { loadState, saveReceipt, privateFile } = require("./receipt");
+const { verifyAccount, saveClerkSetup } = require("./clerk-setup");
 const ACCOUNT_ORIGIN = "integral-one://account";
 function isAccountUrl(raw) {
   try {
@@ -82,6 +78,7 @@ function createController({
   config,
   createBridge,
   accountRoot = __dirname,
+  request = fetch,
 }) {
   const { app, BrowserWindow, session, ipcMain, clipboard } = electron;
   let accountSession = null;
@@ -138,11 +135,17 @@ function createController({
     installationId: state.installationId,
     portal: config.activationUrl || null,
     environment: config.environment || "development",
+    offlineImport: Boolean(
+      config.activationUrl && Object.keys(config.publicKeys || {}).length,
+    ),
+    setupMode: config.setupMode || "service",
     existingData,
     stateError,
-    returning: Boolean(state.receipt),
+    returning: Boolean(state.receipt || state.localSetup),
     canContinueOffline: receiptValid,
-    recoveryNeeded: stateError || Boolean(state.receipt && !receiptValid),
+    recoveryNeeded:
+      stateError ||
+      Boolean((state.receipt || state.localSetup) && !receiptValid),
   }));
   handle("integral-one:activation-copy", () => {
     if (stateError) throw new Error("Activation identity needs recovery.");
@@ -160,8 +163,17 @@ function createController({
     if (stateError) throw new Error("Activation identity needs recovery.");
     if (!config.configured)
       throw new Error("Account service is not configured.");
-    const code = await requestReceipt(token, state.installationId, config);
-    saveReceipt(home, state, code, config);
+    if (config.setupMode === "clerk") {
+      await saveClerkSetup(home, state, token, config, request);
+    } else {
+      const code = await requestReceipt(
+        token,
+        state.installationId,
+        config,
+        request,
+      );
+      saveReceipt(home, state, code, config);
+    }
     state = loadState(home);
     complete();
     return true;
@@ -204,12 +216,9 @@ function createController({
       stateError = true;
       state = { installationId: null };
     }
-    if (state.receipt) {
+    if (state.receipt || state.localSetup) {
       try {
-        verifyReceipt(state.receipt, {
-          ...config,
-          installationId: state.installationId,
-        });
+        verifyAccount(home, state, config);
         receiptValid = true;
         if (!forceSignIn && !state.signedOut) return;
       } catch {
@@ -293,14 +302,9 @@ function createController({
     });
   }
   function accountProfile() {
-    if (!state?.receipt) return null;
+    if (!state?.receipt && !state?.localSetup) return null;
     try {
-      return (
-        verifyReceipt(state.receipt, {
-          ...config,
-          installationId: state.installationId,
-        }).profile || null
-      );
+      return verifyAccount(home, state, config).profile || null;
     } catch {
       // Recovery can open local data without trusting a damaged account profile.
       return null;
@@ -320,11 +324,7 @@ function createController({
     return beforeBoot({ userData: app.getPath("userData"), forceSignIn: true });
   }
   function resumeOffline() {
-    if (!state?.receipt) throw new Error("Sign up on this computer first.");
-    verifyReceipt(state.receipt, {
-      ...config,
-      installationId: state.installationId,
-    });
+    verifyAccount(home, state, config);
     writeSignedOut(false);
   }
   function authorizeSession() {

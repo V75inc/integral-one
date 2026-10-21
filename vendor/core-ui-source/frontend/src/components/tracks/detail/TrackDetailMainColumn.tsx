@@ -19,6 +19,9 @@ export interface TrackDetailMainColumnProps {
   filterType: string;
   setFilterType: (v: string) => void;
   entryTypeSlugs: string[];
+  tagFilterEntries?: Entry[];
+  filterTags?: string[];
+  setFilterTags?: (value: string[]) => void;
   trackSearch: string;
   setTrackSearch: (v: string) => void;
   retrievalMode: string;
@@ -49,6 +52,7 @@ export interface TrackDetailMainColumnProps {
   onEntryUpdate: NonNullable<ViewWidgetProps['onEntryUpdate']>;
   onEntryPersist: NonNullable<ViewWidgetProps['onEntryPersist']>;
   onViewUpdate: NonNullable<ViewWidgetProps['onViewUpdate']>;
+  onKanbanColumnRemove?: ViewWidgetProps['onKanbanColumnRemove'];
   onKanbanColumnEnumSync: NonNullable<
     ViewWidgetProps['onKanbanColumnEnumSync']
   >;
@@ -68,6 +72,9 @@ export function TrackDetailMainColumn({
   filterType,
   setFilterType,
   entryTypeSlugs,
+  tagFilterEntries,
+  filterTags,
+  setFilterTags,
   trackSearch,
   setTrackSearch,
   retrievalMode,
@@ -95,6 +102,7 @@ export function TrackDetailMainColumn({
   onEntryPersist,
   onViewUpdate,
   onKanbanColumnEnumSync,
+  onKanbanColumnRemove,
   onEntryCreate,
   entryTypes,
   trackEntryTypeFields,
@@ -124,6 +132,9 @@ export function TrackDetailMainColumn({
                 filterType={filterType}
                 setFilterType={setFilterType}
                 entryTypeSlugs={entryTypeSlugs}
+                tagEntries={tagFilterEntries}
+                selectedTags={filterTags}
+                onTagsChange={setFilterTags}
                 search={trackSearch}
                 setSearch={setTrackSearch}
                 retrievalActive={retrievalMode !== 'graph'}
@@ -192,6 +203,7 @@ export function TrackDetailMainColumn({
             onEntryPersist={onEntryPersist}
             onViewUpdate={onViewUpdate}
             onKanbanColumnEnumSync={onKanbanColumnEnumSync}
+            onKanbanColumnRemove={onKanbanColumnRemove}
             onEntryCreate={onEntryCreate}
             entryTypeSlugs={entryTypeSlugs}
             entryTypes={entryTypes}

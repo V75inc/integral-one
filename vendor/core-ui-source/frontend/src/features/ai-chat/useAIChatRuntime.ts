@@ -1,3 +1,4 @@
+import { friendlyAssistantText, friendlyChatFailure, friendlyToolFailure } from "./components/assistantMessagePresentation";
 import {
   useCallback,
   useEffect,
@@ -114,6 +115,7 @@ type AssistantMessageDraft = {
       name: string;
       args?: unknown;
       result?: unknown;
+      diagnostic?: { code: string; message: string };
       isError?: boolean;
       status: "pending" | "running" | "complete" | "error";
     }
@@ -208,7 +210,7 @@ function draftToMessage(draft: AssistantMessageDraft): ThreadMessageLike {
       toolCallId: callId,
       toolName: call.name,
       args: (call.args ?? {}) as never,
-      result: call.result,
+      result: toolSummaryResult(call),
       isError: call.isError,
     });
   }
@@ -387,6 +389,29 @@ function coalescePersistedReasoning(parts: MutableContent[]): MutableContent[] {
   return out;
 }
 
+export function toolSummaryResult(call: {
+  result?: unknown;
+  diagnostic?: unknown;
+  status?: unknown;
+  isError?: unknown;
+}): unknown {
+  if (call.result !== undefined) return call.result;
+  const diagnostic = call.diagnostic as { code?: unknown; message?: unknown } | undefined;
+  if (diagnostic && typeof diagnostic.message === "string") {
+    return { error: true, error_code: diagnostic.code, message: friendlyToolFailure({ error_code: diagnostic.code }) };
+  }
+  if (call.status === "error" || call.isError === true) {
+    return { error: true, message: "I couldn't finish this step. Check anything already saved before trying again." };
+  }
+  if (call.status === "complete") {
+    // assistant-ui otherwise inherits the parent turn's error when a completed
+    // tool has no retained raw result, blaming every earlier call for one limit.
+    return { message: "This step finished." };
+  }
+  return undefined;
+}
+
+
 /**
  * Normalize persisted message parts so that image and file parts conform to
  * assistant-ui's expected shapes.
@@ -414,12 +439,19 @@ export function normalizePersistedParts(rawParts: MutableContent[]): MutableCont
     // Older durable transcripts saved start/result updates as separate parts.
     // Hydrate one resource per call ID, preserving its position and latest state.
     if (p?.type === "tool-call" && typeof p.toolCallId === "string" && p.toolCallId) {
+      const summaryResult = toolSummaryResult(p);
+      const normalized = { ...part, result: summaryResult } as MutableContent;
       const previous = toolPositions.get(p.toolCallId);
       if (previous !== undefined) {
-        out[previous] = { ...out[previous], ...part } as MutableContent;
+        out[previous] = {
+          ...out[previous], ...normalized,
+          result: p.result ?? (p.diagnostic || p.status === "error"
+            ? summaryResult
+            : (out[previous] as Record<string, unknown>).result ?? summaryResult),
+        } as MutableContent;
       } else {
         toolPositions.set(p.toolCallId, out.length);
-        out.push(part);
+        out.push(normalized);
       }
       continue;
     }
@@ -449,10 +481,7 @@ export function persistedAssistantErrorMessage(
   for (const part of rawParts) {
     const p = part as Record<string, unknown>;
     if (!p || p.type !== "error") continue;
-    if (typeof p.message === "string" && p.message.trim()) {
-      return p.message.trim();
-    }
-    return "The assistant could not complete this step.";
+    return friendlyChatFailure(p.code, p.message);
   }
   return null;
 }
@@ -491,7 +520,11 @@ function persistedToMessage(m: AIChatPersistedMessage): ThreadMessageLike {
   const rawParts = (m.parts ?? []) as MutableContent[];
   const turnError =
     role === "assistant" ? persistedAssistantErrorMessage(rawParts) : null;
-  const normalizedParts = normalizePersistedParts(rawParts);
+  const normalizedParts = normalizePersistedParts(rawParts).map((part) =>
+    role === "assistant" && part.type === "text"
+      ? { ...part, text: friendlyAssistantText(part.text) }
+      : part,
+  );
   const parts = repairCutDesignInvitation(
     coalescePersistedReasoning(normalizedParts),
   );
@@ -533,7 +566,7 @@ function persistedToMessage(m: AIChatPersistedMessage): ThreadMessageLike {
     // rows that only stamped metadata still show MessageError once.
     const metaError =
       typeof pm?.error?.message === "string" && pm.error.message.trim()
-        ? pm.error.message.trim()
+        ? friendlyChatFailure(pm.error.code, pm.error.message)
         : null;
     const errorMessage = turnError ?? metaError;
 
@@ -901,7 +934,7 @@ export function useAIChatRuntime(
   const isRunning =
     activeThreadId != null &&
     (streamingThreadIds.includes(activeThreadId) ||
-      activeThreadId in remoteTurns);
+      Boolean(activeSession?.cancellation) || activeThreadId in remoteTurns);
   const composerReady = selectionReady && (
     !provider.serverPersisted || activeThreadId == null ||
     activeThreadId.startsWith("local-") || isRunning ||
@@ -1308,7 +1341,7 @@ export function useAIChatRuntime(
    */
   const admissionError = useCallback((threadId: string, attachToRemote = false): string | null => {
     const streaming = peekStreamingThreadIds();
-    if (streaming.includes(threadId) || (!attachToRemote && threadId in getRemoteTurnsSnapshot())) {
+    if (peekSessions()[threadId]?.cancellation || streaming.includes(threadId) || (!attachToRemote && threadId in getRemoteTurnsSnapshot())) {
       return THREAD_ALREADY_RESPONDING;
     }
     if (streaming.length >= MAX_CONCURRENT_STREAMS) {
@@ -1508,7 +1541,7 @@ export function useAIChatRuntime(
           ...session,
           streaming: false,
           abortController: null,
-          activityText: null,
+          activityText: session.cancellation === "pending" ? "Stopping…" : null,
           // A busy-thread refusal recorded during this turn is false once the
           // turn ends. Other stream errors survive so a rejected send can
           // still be read after the stream closes.
@@ -1733,24 +1766,37 @@ export function useAIChatRuntime(
 
   const onCancel = useCallback(async () => {
     const threadId = activeThreadId;
-    if (!threadId) return;
+    if (!threadId || peekSessions()[threadId]?.cancellation === "pending") return;
     const controller = peekSessions()[threadId]?.abortController;
-    // Settle the visible draft before the transport unwinds. A follow-up
-    // can otherwise capture the old running row in its priorMessages and
-    // preserve a permanent "Working" indicator in the next turn.
-    updateSession(threadId, (session) => ({
-      ...session,
-      messages: session.messages.map((message) =>
-        message.role === "assistant" && message.status?.type === "running"
-          ? { ...message, status: { type: "incomplete", reason: "cancelled" } }
-          : message,
-      ),
-    }));
-    controller?.abort();
-    if (provider.serverPersisted) {
-      aiChatApi.cancelThread(threadId).catch(() => {});
+    const requestId = nextId("cancel");
+    const remoteTurn = getRemoteTurnsSnapshot()[threadId];
+    updateSession(threadId, { cancellation: "pending", cancellationRequestId: requestId,
+      activityText: "Stopping…", streamError: null });
+    const stillCurrent = () => peekSessions()[threadId]?.cancellationRequestId === requestId;
+    try {
+      if (provider.serverPersisted && !threadId.startsWith("local-")) {
+        await aiChatApi.cancelThread(threadId, peekSessions()[threadId]?.cancellationTarget,
+          target => { if (stillCurrent()) updateSession(threadId, { cancellationTarget: target }); });
+      }
+      if (!stillCurrent()) return;
+      // Aborting only the SSE connection does not cancel durable backend work.
+      controller?.abort();
+      if (remoteTurn && getRemoteTurnsSnapshot()[threadId] === remoteTurn) {
+        markRemoteTurnFinished(threadId, remoteTurn.turnId);
+      }
+      updateSession(threadId, (session) => ({
+        ...session, cancellation: null, cancellationTarget: null, cancellationRequestId: null, activityText: null,
+        messages: session.messages.map(message =>
+          message.role === "assistant" && message.status?.type === "running"
+            ? { ...message, status: { type: "incomplete", reason: "cancelled" } } : message),
+      }));
+      void refreshThreads();
+    } catch (error) {
+      if (!stillCurrent()) return;
+      updateSession(threadId, { cancellation: "failed", activityText: null,
+        streamError: error instanceof Error ? error.message : "I couldn't stop this request. Please try Stop again." });
     }
-  }, [activeThreadId, provider.serverPersisted, updateSession]);
+  }, [activeThreadId, provider.serverPersisted, updateSession, nextId, refreshThreads]);
 
   const switchToNewThread = useCallback(() => {
     // An explicit choice wins over an initial list request still in flight.
@@ -1987,6 +2033,7 @@ function applyEvent(draft: AssistantMessageDraft, ev: NormalizedEvent) {
         name: ev.name,
         args: ev.args ?? existing?.args,
         result: ev.result ?? existing?.result,
+        diagnostic: ev.diagnostic ?? existing?.diagnostic,
         isError: ev.status === "error" || existing?.isError,
         status: ev.status,
       });
@@ -2097,7 +2144,7 @@ function applyEvent(draft: AssistantMessageDraft, ev: NormalizedEvent) {
       draft.status = {
         type: "incomplete",
         reason: "error",
-        error: ev.message,
+        error: friendlyChatFailure(ev.code, ev.message),
       };
       return;
     default: {

@@ -15,6 +15,7 @@ let workspace = null;
 let quitting = false;
 let booting = true;
 let permissions = null;
+let stopping = null;
 app.setName(options.productName || 'Integral');
 // Keep product storage explicit; never rename an existing data home for branding.
 if (options.userDataName && !app.commandLine.hasSwitch('user-data-dir')) {
@@ -101,6 +102,7 @@ async function boot() {
       { type: 'separator' }, { role: 'quit' },
     ] },
     { role: 'editMenu' }, { role: 'viewMenu' }, { role: 'windowMenu' },
+    ...(options.helpMenuItems?.length ? [{ label: 'Help', submenu: options.helpMenuItems }] : []),
   ]));
   // A bundled Core upgrade may remove assets named by a previously cached shell.
   if (runtime) await session.defaultSession.clearCache();
@@ -129,7 +131,28 @@ async function boot() {
   }
   await createWindow();
   booting = false;
+  await options.onReady?.();
   // Microphone consent is requested only by an explicit user action.
+}
+
+async function stopRuntime({ requireExclusive = false } = {}) {
+  if (!runtime?.owned) {
+    if (requireExclusive && runtime && !runtime.stopped)
+      throw new Error('Another process owns this workspace. Stop it before updating Integral.');
+    return;
+  }
+  if (!stopping) {
+    const owned = runtime;
+    const { runCli } = require('./core-runtime');
+    stopping = runCli(owned.cli, ['stop', '--home', owned.home, '--json',
+      '--if-pid', String(owned.pid), '--if-created', String(owned.process_created)])
+      .then(result => {
+        if (result?.state !== 'stopped') throw new Error('Core is still running. Close the workspace before retrying.');
+        owned.owned = false; owned.stopped = true;
+      })
+      .finally(() => { stopping = null; });
+  }
+  return stopping;
 }
 
 if (!app.requestSingleInstanceLock()) app.quit();
@@ -144,13 +167,14 @@ else {
   app.on('before-quit', event => {
     if (!runtime?.owned || quitting) return;
     event.preventDefault(); quitting = true;
-    const { runCli } = require('./core-runtime');
-    void runCli(runtime.cli, ['stop', '--home', runtime.home, '--json',
-      '--if-pid', String(runtime.pid), '--if-created', String(runtime.process_created)])
-      .catch(error => dialog.showErrorBox('Integral shutdown needs attention', error.message))
-      .finally(() => app.quit());
+    void stopRuntime().then(() => app.quit()).catch(error => {
+      quitting = false;
+      dialog.showErrorBox('Integral shutdown needs attention', error.message);
+    });
   });
 }
+
+return { stopRuntime };
 
 }
 module.exports = { runDesktop };

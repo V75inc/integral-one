@@ -1,6 +1,7 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi, beforeEach } from "vitest";
 
+import { aiChatApi } from "../../../api/aiChat";
 import { useAIChatRuntime } from "../useAIChatRuntime";
 // Stream state is module-level now, so it survives between cases unless
 // explicitly cleared — without this, ids collide across tests.
@@ -109,6 +110,55 @@ describe("useAIChatRuntime parallel streams", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     __resetThreadSessionStoreForTests();
+  });
+
+  it("keeps Stop pending and the stream connected until backend acknowledgement", async () => {
+    let acknowledge!: () => void;
+    let signal: AbortSignal | undefined;
+    vi.mocked(aiChatApi.cancelThread).mockImplementationOnce(() => new Promise(resolve => {
+      acknowledge = () => resolve({thread_id: "t1", cancelled: true});
+    }));
+    const provider: ChatProvider = {...mockProvider, serverPersisted: true,
+      streamTurn: async function* (ctx) {
+        signal = ctx.abortSignal;
+        yield {type: "text-delta", delta: "Working"};
+        while (!signal?.aborted) await delay(5);
+      },
+    };
+    const {result} = renderHook(() => useAIChatRuntime(provider, {initialThreadId: "t1"}));
+    await waitFor(() => expect(result.current.composerReady).toBe(true));
+    await act(async () => { await result.current.runtime.thread.append({role:"user",content:[{type:"text",text:"Continue"}]}); });
+    await waitFor(() => expect(result.current.runtime.thread.getState().isRunning).toBe(true));
+    act(() => { void result.current.runtime.thread.cancelRun(); });
+    await waitFor(() => expect(result.current.activityText).toBe("Stopping…"));
+    expect(signal?.aborted).toBe(false);
+    expect(result.current.isRunning).toBe(true);
+    await act(async () => acknowledge());
+    await waitFor(() => expect(signal?.aborted).toBe(true));
+    await waitFor(() => expect(result.current.isRunning).toBe(false));
+  });
+
+  it("shows a failed cancellation and allows Stop to retry without admitting another send", async () => {
+    let signal: AbortSignal | undefined;
+    vi.mocked(aiChatApi.cancelThread).mockRejectedValueOnce(new Error("Service unavailable; try Stop again"));
+    const provider: ChatProvider = {...mockProvider, serverPersisted:true,
+      streamTurn: async function* (ctx) {
+        signal = ctx.abortSignal;
+        yield {type:"text-delta",delta:"Working"};
+        while (!signal?.aborted) await delay(5);
+      },
+    };
+    const {result} = renderHook(() => useAIChatRuntime(provider, {initialThreadId:"t1"}));
+    await waitFor(() => expect(result.current.composerReady).toBe(true));
+    await act(async () => { await result.current.runtime.thread.append({role:"user",content:[{type:"text",text:"Continue"}]}); });
+    await waitFor(() => expect(result.current.runtime.thread.getState().isRunning).toBe(true));
+    await act(async () => { await result.current.runtime.thread.cancelRun(); });
+    expect(result.current.streamError).toContain("Service unavailable");
+    expect(result.current.isRunning).toBe(true);
+    expect(signal?.aborted).toBe(false);
+    await act(async () => { await result.current.runtime.thread.cancelRun(); });
+    await waitFor(() => expect(result.current.isRunning).toBe(false));
+    expect(signal?.aborted).toBe(true);
   });
 
   it("keeps background thread cache warm when switching tabs mid-stream", async () => {

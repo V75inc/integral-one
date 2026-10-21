@@ -40,6 +40,8 @@ function createPart() {
       asset.appleTeamId = signature.stderr.match(/^TeamIdentifier=([A-Z0-9]{10})$/m)?.[1];
       if (run('/usr/libexec/PlistBuddy', ['-c', 'Print :CFBundleIdentifier', `${app}/Contents/Info.plist`]) !== 'ai.integral.desktop' || run('/usr/libexec/PlistBuddy', ['-c', 'Print :CFBundleShortVersionString', `${app}/Contents/Info.plist`]) !== version) throw new Error('Packaged app identity/version mismatch.');
       inspectPackagedAccount(path.join(app, 'Contents/Resources/app.asar'), config);
+      const packaged = JSON.parse(require('@electron/asar').extractFile(path.join(app, 'Contents/Resources/app.asar'), 'package.json').toString());
+      if (packaged.integralOneUpdates?.enabled !== true) throw new Error('Official Mac installers must include the qualified updater.');
     } finally { fs.rmSync(temp, { recursive: true, force: true }); }
   } else if (process.platform === 'win32' && process.arch === 'x64') {
     if (!/^[A-Fa-f0-9]{40}$/.test(process.env.ONE_WINDOWS_CERT_SHA1 || '')) throw new Error('Approved ONE_WINDOWS_CERT_SHA1 is required for the Windows release manifest.');

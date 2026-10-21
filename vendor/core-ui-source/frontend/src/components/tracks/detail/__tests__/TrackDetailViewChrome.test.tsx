@@ -14,12 +14,12 @@ function props(): TrackDetailViewChromeProps {
 }
 
 describe('TrackDetailViewChrome', () => {
-  it('groups layout editing with view improvement, beside the view tabs', () => {
+  it('offers layout editing beside the view tabs without an automatic enhancement action', () => {
     const config = props();
     render(<TrackDetailViewChrome {...config} />);
     const actions = within(screen.getByRole('group', { name: 'View actions' }));
     const edit = actions.getByRole('button', { name: 'Edit view layout' });
-    expect(actions.getByRole('button', { name: 'Enhance this view' })).toBeInTheDocument();
+    expect(actions.queryByRole('button', { name: 'Enhance this view' })).not.toBeInTheDocument();
     expect(edit).toHaveAttribute('title', 'Edit view layout');
     expect(edit).toHaveClass('h-8', 'w-8');
     expect(edit).not.toHaveTextContent('Edit layout');

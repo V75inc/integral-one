@@ -46,6 +46,7 @@ export interface ViewWidgetProps {
   trackDefaultEntryTypeKey?: string;
   /** When kanban ``group_by`` targets a profile select field, append new
    *  column keys to that field's enum before persisting ``kanban_columns``. */
+  onKanbanColumnRemove?: (viewId: string, columnKey: string) => Promise<void>;
   onKanbanColumnEnumSync?: (params: {
     fieldKey: string;
     columnKey: string;

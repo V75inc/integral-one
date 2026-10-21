@@ -22,6 +22,7 @@ export type NormalizedEvent =
       args?: unknown;
       status: "pending" | "running" | "complete" | "error";
       result?: unknown;
+      diagnostic?: { code: string; message: string };
       error?: string;
     }
   | { type: "source"; sourceType: "url" | "graph"; ref: string; title?: string }

@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { Check, Search, Layers, LayoutGrid } from 'lucide-react';
 import { summarizeLibraryManifest } from '../../lib/operationalModelManifest';
 import type { OperationalModelNode } from '../../types';
@@ -212,7 +213,10 @@ export function OperationalModelPicker({
               Library
             </p>
             {filteredLib.map(item => (
-              <PickerRow key={item.value} item={item} />
+              <div key={item.value} className="space-y-1">
+                <PickerRow item={item} />
+                <Link to={`/models/${item.value.slice('library:'.length)}`} className="inline-block px-3 text-xs text-[var(--link)]" aria-label={`Manage ${item.name}`}>Manage model</Link>
+              </div>
             ))}
           </>
         )}

@@ -125,6 +125,10 @@ function saveReceipt(home, state, code, config) {
     installationId: state.installationId,
   });
   const prior = readState(home);
+  if (prior?.localSetup)
+    throw new Error(
+      "Use sign-in with the account linked to this computer. Your local data is unchanged.",
+    );
   if (prior?.receipt) {
     const original = verifyReceipt(prior.receipt, {
       ...config,

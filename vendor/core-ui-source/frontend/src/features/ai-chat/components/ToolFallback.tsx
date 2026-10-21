@@ -1,5 +1,7 @@
 "use client";
 
+import { friendlyToolFailure } from "./assistantMessagePresentation";
+
 // jvchat-faithful per-tool-call card, ported from jvchat's
 // `components/assistant-ui/tool-fallback.tsx` and retokenized to integral CSS
 // vars.
@@ -225,7 +227,7 @@ function ToolFallbackArgs({
 }: React.ComponentProps<"div"> & {
   argsText?: string;
 }) {
-  if (!argsText) return null;
+  if (!argsText || argsText.trim() === "{}") return null;
 
   return (
     <div
@@ -248,6 +250,13 @@ function ToolFallbackResult({
   result?: unknown;
 }) {
   if (result === undefined) return null;
+  let parsed = result;
+  if (typeof result === "string") {
+    try { parsed = JSON.parse(result); } catch { /* Ordinary text result. */ }
+  }
+  if (parsed && typeof parsed === "object" && "error" in parsed && parsed.error) {
+    return <p className="px-4 text-[var(--danger-fg)]">{friendlyToolFailure(parsed)}</p>;
+  }
 
   return (
     <div
@@ -275,17 +284,10 @@ function ToolFallbackError({
 }) {
   if (status?.type !== "incomplete") return null;
 
-  const error = status.error;
-  const errorText = error
-    ? typeof error === "string"
-      ? error
-      : JSON.stringify(error)
-    : null;
-
-  if (!errorText) return null;
-
+  if (!status.error) return null;
   const isCancelled = status.reason === "cancelled";
-  const headerText = isCancelled ? "Cancelled reason:" : "Error:";
+  const errorText = isCancelled ? "You stopped this request." : friendlyToolFailure(status.error);
+  const headerText = isCancelled ? "Stopped" : "This step couldn't be finished";
 
   return (
     <div
@@ -363,11 +365,11 @@ const ToolFallbackImpl: ToolCallMessagePartComponent = (props) => {
       <ToolFallbackTrigger toolName={displayToolName} status={effectiveStatus} />
       <ToolFallbackContent>
         <ToolFallbackError status={effectiveStatus} />
-        <ToolFallbackArgs
+        {effectiveStatus?.type !== "incomplete" && <ToolFallbackArgs
           argsText={resolvedArgsText}
           className={cn(isCancelled && "opacity-60")}
-        />
-        {!isCancelled && <ToolFallbackResult result={result} />}
+        />}
+        {effectiveStatus?.type !== "incomplete" && <ToolFallbackResult result={result} />}
       </ToolFallbackContent>
     </ToolFallbackRoot>
   );

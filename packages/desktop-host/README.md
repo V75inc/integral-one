@@ -19,3 +19,9 @@ installers, branding and signing belong to their distribution repositories.
 The local host and bundler require neutral runtime composition contract v1 as
 well as legacy profile/identity compatibility. Stored owner IDs, data paths and
 session/recovery keys do not change. Remote mode starts no local runtime.
+
+Distributions can supply native `helpMenuItems` and an `onReady` callback.
+`runDesktop` returns `stopRuntime({requireExclusive})` for a reviewed updater.
+It waits for the owned Core process to stop using its PID/creation-time binding,
+deduplicates concurrent stop requests and refuses exclusive update preparation
+when another process owns the workspace. Failed stops do not authorize app exit.

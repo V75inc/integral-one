@@ -159,7 +159,6 @@ export function AIChatThread({ providerLabel, showHeader = true }: AIChatThreadP
           [scrollbar-color:var(--scrollbar-thumb)_transparent]
         "
       >
-        <ImproveThisPrefill />
         {/* `pt-10` (not pt-6): the first bubble sat tight under the header,
             which reads as clipped when the transcript is scrolled to top. */}
         <div className="mx-auto flex w-full max-w-[var(--thread-max-width)] flex-1 flex-col px-4 pt-10">
@@ -204,18 +203,6 @@ export function AIChatThread({ providerLabel, showHeader = true }: AIChatThreadP
 // ---------------------------------------------------------------------------
 // Welcome
 // ---------------------------------------------------------------------------
-
-function ImproveThisPrefill() {
-  const aui = useAui();
-  useEffect(() => {
-    const onImprove = () => {
-      aui.composer().setText("Improve this");
-    };
-    window.addEventListener("integral:improve-this", onImprove);
-    return () => window.removeEventListener("integral:improve-this", onImprove);
-  }, [aui]);
-  return null;
-}
 
 function ThreadWelcome() {
   return (

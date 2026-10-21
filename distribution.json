@@ -1,22 +1,22 @@
 {
   "contract_version": 1,
   "product": "integral-one",
-  "product_version": "0.1.0-dev.0",
+  "product_version": "0.1.0",
   "mode": "local",
   "desktop_host": {
-    "version": "0.1.7-dev.3",
-    "artifact": "vendor/integral-desktop-host-0.1.7-dev.3.tgz",
-    "sha256": "bfb245a84f0e015c70afb26399220dd82e627d9ce58295ec7b0105f3083c120c"
+    "version": "0.1.7-dev.4",
+    "artifact": "vendor/integral-desktop-host-0.1.7-dev.4.tgz",
+    "sha256": "b59ab45c67507e8415adfb5c685411d25332af16f44829c5eae9567e9b33adc3"
   },
   "core": {
-    "version": "0.1.1rc23",
-    "source_commit": "42c9d84f0ce74bd9ae4383114d6dc3d92c0c0c54",
-    "source_state": "Published TestPyPI release v0.1.1rc23; exact-main CI and artifact gates passed",
+    "version": "0.1.1rc28",
+    "source_commit": "5d0f60553764c1350362e35be002a922064fc400",
+    "source_state": "Published TestPyPI release v0.1.1rc28; wheel Python source and licensing match the exact release tag",
     "desktop_contract_version": 1,
-    "wheel_sha256": "0434e2cf0f93e1a0e65142b990a62781ff916be64877936f75de4269c7a94930",
-    "wheel_filename": "integral_core-0.1.1rc23-py3-none-any.whl",
-    "ui_manifest_sha256": "9d47b4fc6e6cf2c299d73e78bc5c54d7bb8b6eecd86664e0af1c3eaa2b8fccb2",
-    "base_wheel": "vendor/core-runtime/integral_core-0.1.1rc23-py3-none-any.whl",
+    "wheel_sha256": "6c9574d97f4e7957ada68d552f8bcdd557e2b29ebfb4df4408405285ab99c3b2",
+    "wheel_filename": "integral_core-0.1.1rc28-py3-none-any.whl",
+    "ui_manifest_sha256": "946ded153434346e9e8646538e7ee0397749af2f2a10a8c76826c3cbc83d0195",
+    "base_wheel": "vendor/core-runtime/integral_core-0.1.1rc28-py3-none-any.whl",
     "runtime_contract_version": 1,
     "runtime_preset": "local"
   },
@@ -47,6 +47,7 @@
     "public_release_blocked_until_qualified": true,
     "provider": "clerk",
     "user_flow": "signup_or_signin_then_automatic_setup_no_activation_action",
-    "metrics": "distinct registered Integral accounts and One registrations; no usage telemetry"
+    "metrics": "Distinct registered Integral accounts from the production Clerk directory; no installation or active-use count",
+    "setup_mode": "clerk"
   }
 }

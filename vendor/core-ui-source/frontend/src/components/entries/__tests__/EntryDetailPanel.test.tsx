@@ -267,3 +267,19 @@ describe('entry edit header control', () => {
     expect(source).toContain('onCancel={() => setIsEditing(false)}');
   });
 });
+
+
+describe('retired Enhance actions', () => {
+  it('removes controls and legacy chat hooks from every owning surface', () => {
+    for (const file of [
+      'src/components/entries/EntryDetail.tsx',
+      'src/components/tracks/detail/TrackDetailHeader.tsx',
+      'src/components/tracks/detail/TrackDetailViewChrome.tsx',
+      'src/features/ai-chat/components/Thread.tsx',
+    ]) {
+      const text = fs.readFileSync(path.resolve(process.cwd(), file), 'utf-8');
+      expect(text).not.toMatch(/ImproveThis|integral:improve-this|Enhance this/);
+    }
+    expect(fs.existsSync(path.resolve(process.cwd(), 'src/components/tracks/ImproveThisButton.tsx'))).toBe(false);
+  });
+});

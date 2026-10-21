@@ -1,8 +1,10 @@
 import { getHostSession } from '../host/session';
 import { useEffect, useSyncExternalStore } from 'react';
 import apiClient from '../api/client';
+import type { SessionPolicy } from '../api/sessionPolicy';
 
 export interface DeploymentCapabilities {
+  session_policy?: SessionPolicy;
   profile: 'server' | 'desktop_single_user';
   identity: 'account' | 'local_owner';
   runtime?: { contract_version: 1; preset: 'local' | 'hosted'; identity: 'installation_owner' | 'accounts'; workspace_kinds: string[] };

@@ -57,3 +57,5 @@ export type { TextareaProps, TextareaSize } from './Textarea';
 export { Select } from './Select';
 export type { SelectProps, SelectSize } from './Select';
 export { AppIcon, APP_ICONS } from './AppIcon';
+
+export { TagChip } from './TagChip';
