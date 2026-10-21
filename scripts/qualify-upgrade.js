@@ -21,7 +21,9 @@ async function qualify(directory, { requireSettings = false } = {}) {
   let cleanupCommand = prior;
   const json = file => JSON.parse(fs.readFileSync(file, "utf8"));
   const hash = bytes => crypto.createHash("sha256").update(bytes).digest("hex");
-  const privateKeys = () => Object.entries(json(path.join(home, "installation.json"))).filter(([key, value]) => /key|token|password|secret/i.test(key) && typeof value === "string");
+  const privateKeys = () => Object.entries(json(path.join(home, "installation.json")))
+    .filter(([key, value]) => /key|token|password|secret/i.test(key) && typeof value === "string")
+    .map(([key, value]) => [key, hash(Buffer.from(value))]);
   async function api(runtime, session, route, method = "GET", body) {
     const response = await fetch(new URL(route, runtime.web_url), { method,
       headers: { Authorization: `Bearer ${session.access_token}`, "Content-Type": "application/json" },
