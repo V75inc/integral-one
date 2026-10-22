@@ -163,3 +163,5 @@ describe('ApprovalsPage empty state', () => {
   });
 
 });
+
+vi.mock('../../../api/designDecisions', () => ({ listDesignDecisions: vi.fn(async () => []), discardDesign: vi.fn() }));

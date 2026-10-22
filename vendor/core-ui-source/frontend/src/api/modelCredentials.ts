@@ -1,5 +1,7 @@
 import api from './client';
 
+export const MODEL_CREDENTIALS_QUERY_KEY = ['model-credentials', 'me'] as const;
+
 export type ModelProvider =
   | 'openai'
   | 'anthropic'

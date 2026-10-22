@@ -3,11 +3,11 @@
  */
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
-import { Check, ExternalLink, Loader2, Package } from 'lucide-react';
+import { Check, ExternalLink } from 'lucide-react';
 import { Modal } from '../ui/Modal';
 import { Button } from '../ui';
-import { AppIcon, Input, Surface, Text, Textarea } from '../../ui';
-import { IncludeSeedDataToggle } from './IncludeSeedDataToggle';
+import { AppIcon, Surface, Text } from '../../ui';
+import { AppManagerLibrary, type SelectedInstallRow } from './AppManagerLibrary';
 import { countManifestSeedEntries } from '../../utils/manifestSeeds';
 import {
   appsApi,
@@ -16,7 +16,6 @@ import {
 } from '../../api/apps';
 import { operationalModelsApi } from '../../api/operationalModels';
 import type { App, OperationalModelNode } from '../../types';
-import { summarizeLibraryManifest } from '../../lib/operationalModelManifest';
 import {
   extractPackageMeta,
   filterAppScopedLibraryPackages,
@@ -33,6 +32,8 @@ import { AppUninstallModal } from './AppUninstallModal';
 import { useAuth } from '../../context/AuthContext';
 import { useConfirm } from '../../context/ConfirmContext';
 import { useScope } from '../../context/ScopeContext';
+import { ImportPackageModal } from '../library/ImportPackageModal';
+import { usePlatformAdmin } from '../../hooks/usePlatformAdmin';
 import { useToast } from '../../context/ToastContext';
 import { isSamePrincipal } from '../../utils';
 import {
@@ -42,15 +43,9 @@ import {
 
 const LINE_STROKE = 1.5;
 
-interface SelectedInstallRow {
-  library_cp_id: string;
-  name: string;
-  description: string;
-  default_name: string;
-  default_description: string;
-}
 
 export interface AppManagerDialogProps {
+  initialDetailId?: string;
   isOpen: boolean;
   onClose: () => void;
   apps: App[];
@@ -74,14 +69,20 @@ type DialogPhase = 'manage' | 'settings' | 'results';
 
 export function AppManagerDialog({
   isOpen,
+  initialDetailId,
   onClose,
   apps,
   onChanged,
   onCreateBlankApp,
 }: AppManagerDialogProps) {
   const { user } = useAuth();
-  const { scope } = useScope();
+  const isPlatformAdmin = usePlatformAdmin();
+  const [importOpen, setImportOpen] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  const { scope, workspaces } = useScope();
   const workspaceId = scope?.workspaceId;
+  const workspaceName = workspaces?.find(workspace => workspace.id === workspaceId)?.name || 'this workspace';
+  const [libraryRevision, setLibraryRevision] = useState(0);
   const confirm = useConfirm();
   const toast = useToast();
   const [profiles, setProfiles] = useState<OperationalModelNode[]>([]);
@@ -126,6 +127,7 @@ export function AppManagerDialog({
     if (!isOpen) return;
     let cancelled = false;
     setLoading(true);
+    setProfiles([]);
     setError(null);
     setDenialAction(null);
     setResults(null);
@@ -158,7 +160,7 @@ export function AppManagerDialog({
     return () => {
       cancelled = true;
     };
-  }, [isOpen, workspaceId]);
+  }, [isOpen, workspaceId, libraryRevision]);
 
   useEffect(() => {
     if (!isOpen || bundleApps.length === 0) {
@@ -259,12 +261,6 @@ export function AppManagerDialog({
     }
     return total;
   }, [profiles, selectedInstall]);
-
-  const applyLabel = submitting
-    ? 'Installing…'
-    : selectedInstallCount === 0
-      ? 'Install selected'
-      : `Install selected (${selectedInstallCount})`;
 
   async function resumeSettingsForApp(app: App): Promise<PendingSettingsInstall | null> {
     const libraryId = app.installed_from_library_id;
@@ -420,17 +416,37 @@ export function AppManagerDialog({
         : 'Manage apps';
 
   const closeDialog = () => {
+    if (submitting) return;
     if (phase === 'results') {
       // Batch acceptance can race the list query's visible state — refresh
       // again when the user returns to the Apps page.
       onChanged?.();
     }
+    setImportOpen(false);
     onClose();
+  };
+
+  const refreshLibrary = async () => {
+    if (!await confirm({
+      title: 'Refresh App library?',
+      message: 'Re-read available package bundles. Installed Apps change only when separately updated.',
+      confirmLabel: 'Refresh', variant: 'default',
+    })) return;
+    setRefreshing(true);
+    try {
+      const result = await operationalModelsApi.rescanPackages();
+      setLibraryRevision(value => value + 1);
+      toast.showToast(result.issues.length ? `Refresh found ${result.issues.length} issue(s)` : 'App library refreshed', result.issues.length ? 'error' : 'success');
+    } catch {
+      toast.showToast('Could not refresh App library', 'error');
+    } finally {
+      setRefreshing(false);
+    }
   };
 
   return (
     <>
-      <Modal open={isOpen} onClose={closeDialog} title={title} width="max-w-dialog-wide">
+      <Modal open={isOpen} onClose={closeDialog} title={title} width="max-w-dialog-wide" tall={phase === 'manage'}>
         {phase === 'settings' && settingsQueue[settingsIndex] ? (
           <AppSettingsFinalizeStep
             pending={settingsQueue[settingsIndex]}
@@ -443,223 +459,41 @@ export function AppManagerDialog({
         ) : phase === 'results' && results ? (
           <ResultsView results={results} onClose={closeDialog} />
         ) : (
-          <>
-            <Modal.Body>
-              <div className="space-y-6" data-testid="app-manager-dialog">
-                <Text variant="body-sm" tone="subtle">
-                  Install available app packages. Uninstall installed apps from
-                  each row — Apply only installs.
-                </Text>
-
-                {error && (
-                  <div
-                    role="alert"
-                    data-testid="app-manager-error"
-                    className="rounded-[var(--radius-card)] border border-[color:var(--danger-fg)]/30 bg-[color:var(--danger-fg)]/10 px-4 py-3 space-y-2"
-                  >
-                    <Text variant="body-sm" tone="danger">
-                      {error}
-                    </Text>
-                    {denialAction?.actionLabel && denialAction.onAction ? (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={denialAction.onAction}
-                        data-testid="app-manager-denial-action"
-                      >
-                        {denialAction.actionLabel}
-                      </Button>
-                    ) : null}
-                  </div>
-                )}
-
-                {loading ? (
-                  <div
-                    className="flex items-center gap-2"
-                    data-testid="app-manager-loading"
-                  >
-                    <Loader2
-                      size={14}
-                      strokeWidth={LINE_STROKE}
-                      className="animate-spin"
-                    />
-                    <Text variant="body-sm" tone="muted">
-                      Loading…
-                    </Text>
-                  </div>
-                ) : (
-                  <>
-                    <section>
-                      <Text
-                        as="h3"
-                        variant="meta"
-                        weight="semibold"
-                        className="mb-2 uppercase tracking-wide"
-                      >
-                        Installed
-                      </Text>
-                      {bundleApps.length === 0 ? (
-                        <Surface
-                          tone="panel-2"
-                          border="subtle"
-                          radius="card"
-                          padding="md"
-                        >
-                          <Text variant="body-sm" tone="muted">
-                            No bundle-backed apps in this workspace.
-                          </Text>
-                        </Surface>
-                      ) : (
-                        <ul className="space-y-2" data-testid="app-manager-installed">
-                          {bundleApps.map(app => {
-                            const pf = preflights.get(app.id);
-                            const blockers = [
-                              ...(pf?.blocking_dependents || []).map(
-                                d => d.app_name || 'Untitled app',
-                              ),
-                              ...(pf?.blocking_references || []).map(
-                                r => r.source_app_name || 'Untitled app',
-                              ),
-                            ];
-                            const blocked =
-                              (pf?.blocking_dependents?.length || 0) > 0 ||
-                              (pf?.blocking_references?.length || 0) > 0;
-                            return (
-                              <InstalledRow
-                                key={app.id}
-                                app={app}
-                                canUninstall={canUninstallApp(app, user)}
-                                uninstallBlocked={blocked}
-                                blockerNames={[...new Set(blockers)]}
-                                onUninstall={() =>
-                                  setUninstallTarget({
-                                    appId: app.id,
-                                    appName: app.name,
-                                  })
-                                }
-                                onCompleteSetup={() => openSettingsForApp(app)}
-                                disabled={submitting}
-                              />
-                            );
-                          })}
-                        </ul>
-                      )}
-                    </section>
-
-                    <section>
-                      <Text
-                        as="h3"
-                        variant="meta"
-                        weight="semibold"
-                        className="mb-2 uppercase tracking-wide"
-                      >
-                        Available
-                      </Text>
-                      {profiles.length === 0 ? (
-                        <Surface
-                          tone="panel-2"
-                          border="subtle"
-                          radius="card"
-                          padding="md"
-                        >
-                          <Text variant="body-sm" tone="muted">
-                            No app packages available.
-                          </Text>
-                        </Surface>
-                      ) : (
-                        <ul
-                          className="space-y-2 max-h-[22rem] overflow-y-auto pr-1"
-                          data-testid="app-manager-available"
-                        >
-                          {profiles.map(profile => {
-                            const { name, description, slug } =
-                              extractPackageMeta(profile);
-                            const installed = isPackageInstalled(profile, apps);
-                            const isSelected = selectedInstall.has(profile.id);
-                            const row = selectedInstall.get(profile.id);
-                            const summary = summarizeLibraryManifest(
-                              profile.manifest,
-                            );
-                            return (
-                              <li
-                                key={profile.id}
-                                data-testid={`app-manager-row-${slug || profile.id}`}
-                              >
-                                <AvailableRow
-                                  name={name}
-                                  description={description}
-                                  slug={slug}
-                                  installed={installed}
-                                  isSelected={isSelected}
-                                  summary={summary}
-                                  row={row}
-                                  disabled={installed || submitting}
-                                  onToggle={() => toggleInstall(profile)}
-                                  onUpdate={patch =>
-                                    updateInstallRow(profile.id, patch)
-                                  }
-                                  canDelete={Boolean(profile.workspace_id)}
-                                  deleting={deletingPackages.has(profile.id)}
-                                  onDelete={() => void deleteTemplate(profile)}
-                                />
-                              </li>
-                            );
-                          })}
-                        </ul>
-                      )}
-                    </section>
-
-                    {selectedInstallCount > 0 && (
-                      <Surface
-                        tone="panel-2"
-                        border="subtle"
-                        radius="card"
-                        padding="md"
-                      >
-                        <IncludeSeedDataToggle
-                          checked={includeSeedData}
-                          onChange={setIncludeSeedData}
-                          seedEntryCount={selectedSeedEntryCount}
-                          disabled={submitting}
-                        />
-                      </Surface>
-                    )}
-                  </>
-                )}
-              </div>
-            </Modal.Body>
-
-            <Modal.Footer align="between">
-              <div className="flex items-center gap-3">
-                <Button variant="ghost" onClick={onClose} disabled={submitting}>
-                  Cancel
-                </Button>
-                {onCreateBlankApp ? (
-                  <button
-                    type="button"
-                    className="text-sm text-[var(--link)] hover:underline disabled:opacity-50"
-                    onClick={onCreateBlankApp}
-                    disabled={submitting}
-                    data-testid="app-manager-blank-app"
-                  >
-                    Create blank app…
-                  </button>
-                ) : null}
-              </div>
-              <Button
-                variant="primary"
-                icon={<Package size={14} strokeWidth={LINE_STROKE} />}
-                onClick={applyChanges}
-                loading={submitting}
-                disabled={submitting || selectedInstallCount === 0}
-                data-testid="app-manager-apply"
-              >
-                {applyLabel}
-              </Button>
-            </Modal.Footer>
-          </>
+          <AppManagerLibrary key={workspaceId}
+            initialDetailId={initialDetailId}
+            libraryActions={<div className="flex flex-wrap gap-2 py-3">
+              {workspaceId && <Button variant="outline" size="sm" disabled={submitting} onClick={() => setImportOpen(true)}>Import package</Button>}
+              {isPlatformAdmin && <Button variant="ghost" size="sm" disabled={submitting || refreshing} onClick={() => void refreshLibrary()}> {refreshing ? 'Refreshing…' : 'Refresh library'}</Button>}
+            </div>}
+            profiles={profiles} apps={apps} installedApps={bundleApps}
+            selected={selectedInstall} loading={loading} submitting={submitting}
+            workspaceName={workspaceName} includeSeedData={includeSeedData}
+            seedEntryCount={selectedSeedEntryCount} onSeedDataChange={setIncludeSeedData}
+            onToggle={toggleInstall} onUpdate={updateInstallRow}
+            onDelete={profile => void deleteTemplate(profile)} deletingPackages={deletingPackages}
+            onInstall={() => void applyChanges()} onClose={closeDialog}
+            onRetry={() => setLibraryRevision(revision => revision + 1)}
+            onCreateBlankApp={onCreateBlankApp}
+            error={error ? <div role="alert" data-testid="app-manager-error" className="space-y-2">
+              <Text variant="body-sm" tone="danger">{error}</Text>
+              {denialAction?.actionLabel && denialAction.onAction && <Button variant="outline" size="sm" onClick={denialAction.onAction} data-testid="app-manager-denial-action">{denialAction.actionLabel}</Button>}
+            </div> : null}
+            renderInstalled={app => {
+              const pf = preflights.get(app.id);
+              const blockers = [
+                ...(pf?.blocking_dependents || []).map(d => d.app_name || 'Untitled app'),
+                ...(pf?.blocking_references || []).map(r => r.source_app_name || 'Untitled app'),
+              ];
+              return <InstalledRow app={app} canUninstall={canUninstallApp(app, user)}
+                uninstallBlocked={Boolean(pf?.blocking_dependents?.length || pf?.blocking_references?.length)}
+                blockerNames={[...new Set(blockers)]}
+                onUninstall={() => setUninstallTarget({ appId: app.id, appName: app.name })}
+                onCompleteSetup={() => void openSettingsForApp(app)} disabled={submitting} />;
+            }}
+          />
         )}
       </Modal>
+      {workspaceId && <ImportPackageModal key={workspaceId} open={isOpen && importOpen} workspaceId={workspaceId} onClose={() => setImportOpen(false)} onSuccess={() => { setImportOpen(false); setLibraryRevision(value => value + 1); }} />}
 
       {uninstallTarget ? (
         <AppUninstallModal
@@ -721,14 +555,9 @@ function InstalledRow({
             </Text>
             {badge ? (
               <StatusBadge
-                label={badge}
+                label={needsSettings ? 'Setup needed' : badge}
                 variant={needsSettings ? 'warning' : 'default'}
               />
-            ) : null}
-            {app.source_operational_model_slug ? (
-              <Text as="span" variant="meta" tone="subtle" className="font-mono">
-                {app.source_operational_model_slug}
-              </Text>
             ) : null}
           </div>
           {app.description ? (
@@ -739,199 +568,28 @@ function InstalledRow({
           <div className="mt-2 flex flex-wrap items-center gap-3">
             <Link
               to={`/apps/${app.id}`}
-              className="inline-flex items-center gap-1 text-xs text-[var(--link)] hover:underline"
+              className="inline-flex min-h-11 items-center gap-1 hover:underline"
             >
-              Open app
+              <Text variant="body-sm">Open App</Text>
               <ExternalLink size={12} strokeWidth={LINE_STROKE} />
             </Link>
             {needsSettings ? (
-              <button
-                type="button"
-                className="text-xs text-[var(--link)] hover:underline"
-                onClick={onCompleteSetup}
-                disabled={disabled}
-              >
-                Complete setup
-              </button>
+              <Button variant="outline" className="min-h-11" onClick={onCompleteSetup} disabled={disabled}>Finish setup</Button>
             ) : null}
             {canUninstall ? (
-              <button
-                type="button"
-                className="text-xs text-[var(--danger-fg)] hover:underline disabled:opacity-50 disabled:no-underline disabled:cursor-not-allowed"
+              <Button variant="ghost" className="min-h-11"
                 onClick={onUninstall}
                 disabled={uninstallDisabled}
                 title={uninstallTitle}
                 data-testid={`app-manager-uninstall-${app.id}`}
               >
-                Uninstall
-              </button>
+                <Text variant="body-sm" tone="danger">Uninstall</Text>
+              </Button>
             ) : null}
           </div>
         </div>
       </div>
     </Surface>
-  );
-}
-
-function AvailableRow({
-  name,
-  description,
-  slug,
-  installed,
-  isSelected,
-  summary,
-  row,
-  disabled,
-  onToggle,
-  onUpdate,
-  canDelete,
-  deleting,
-  onDelete,
-}: {
-  name: string;
-  description: string;
-  slug: string;
-  installed: boolean;
-  isSelected: boolean;
-  summary: ReturnType<typeof summarizeLibraryManifest>;
-  row?: SelectedInstallRow;
-  disabled: boolean;
-  onToggle: () => void;
-  onUpdate: (patch: Partial<SelectedInstallRow>) => void;
-  canDelete: boolean;
-  deleting: boolean;
-  onDelete: () => void;
-}) {
-  const selectedShell = `
-    rounded-[var(--radius-card)] border border-[var(--brand-accent-line)]
-    bg-[var(--brand-accent-soft)]
-  `;
-
-  const header = (
-    <div className="flex items-start gap-2">
-    <button
-      type="button"
-      onClick={onToggle}
-      disabled={disabled}
-      className="min-w-0 flex-1 text-left flex items-start gap-3 px-3 py-2.5 disabled:cursor-not-allowed"
-    >
-      {/* The checkbox stopPropagation()s its own click (so row-level
-          handlers can't double-fire) — wiring a no-op here made the
-          checkbox itself dead while only the row text toggled. */}
-      <Checkbox checked={isSelected} onChange={onToggle} disabled={disabled} />
-      <div className="min-w-0 flex-1">
-        <div className="flex flex-wrap items-center gap-2">
-          <Text as="span" variant="body" weight="medium" truncate>
-            {name}
-          </Text>
-          {installed ? <StatusBadge label="Installed" variant="muted" /> : null}
-          {slug ? (
-            <Text as="span" variant="meta" tone="subtle" className="font-mono">
-              {slug}
-            </Text>
-          ) : null}
-        </div>
-        {description ? (
-          <Text variant="meta" tone="subtle" className="mt-0.5">
-            {description}
-          </Text>
-        ) : null}
-        <Text variant="meta" tone="subtle" className="mt-1">
-          {summary.prescribedTrackCount} tracks · {summary.skillCount} skills ·{' '}
-          {summary.agentCount} agents
-        </Text>
-      </div>
-    </button>
-    {canDelete ? (
-      <button
-        type="button"
-        className="shrink-0 rounded-[var(--radius-control)] px-2 py-1 text-xs text-[var(--danger-fg)] hover:bg-[var(--danger-bg)] disabled:opacity-50"
-        onClick={onDelete}
-        disabled={deleting}
-        aria-label={`Delete ${name} template`}
-      >
-        {deleting ? 'Deleting…' : 'Delete'}
-      </button>
-    ) : null}
-    </div>
-  );
-
-  if (isSelected && row) {
-    return (
-      <div className={`${selectedShell} transition-colors duration-fast`}>
-        {header}
-        <div className="border-t border-[var(--panel-border)] px-3 py-3 space-y-2">
-          <Input
-            value={row.name}
-            onChange={e => onUpdate({ name: e.target.value })}
-            placeholder="App name"
-            aria-label="App name override"
-            size="sm"
-          />
-          <Textarea
-            value={row.description}
-            onChange={e => onUpdate({ description: e.target.value })}
-            placeholder="Description"
-            aria-label="App description override"
-            rows={2}
-            size="sm"
-          />
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <Surface
-      tone="panel-2"
-      border="subtle"
-      radius="card"
-      className={installed ? 'opacity-60' : ''}
-    >
-      {header}
-    </Surface>
-  );
-}
-
-function Checkbox({
-  checked,
-  onChange,
-  disabled,
-}: {
-  checked: boolean;
-  onChange: () => void;
-  disabled?: boolean;
-}) {
-  return (
-    <span
-      role="checkbox"
-      aria-checked={checked}
-      tabIndex={disabled ? -1 : 0}
-      onClick={e => {
-        e.stopPropagation();
-        if (!disabled) onChange();
-      }}
-      onKeyDown={e => {
-        if (disabled) return;
-        if (e.key === ' ' || e.key === 'Enter') {
-          e.preventDefault();
-          onChange();
-        }
-      }}
-      className={`
-        mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center
-        rounded-[3px] border-2 cursor-pointer
-        ${checked
-          ? 'border-[var(--brand-accent)] bg-[var(--brand-accent)]'
-          : 'border-[var(--text-muted)]'
-        }
-        ${disabled ? 'opacity-50 cursor-not-allowed' : ''}
-      `}
-    >
-      {checked ? (
-        <Check size={10} strokeWidth={3} className="text-white" />
-      ) : null}
-    </span>
   );
 }
 

@@ -128,6 +128,15 @@ function renderDialog(
   );
 }
 
+async function showInstalled() {
+  fireEvent.click(screen.getByRole('tab', { name: /Installed/ }));
+}
+
+async function confirmInstall() {
+  fireEvent.click(screen.getByTestId('app-manager-review'));
+  fireEvent.click(await screen.findByTestId('app-manager-apply'));
+}
+
 describe('AppManagerDialog', () => {
   beforeEach(() => {
     mockListProfiles.mockReset();
@@ -177,23 +186,52 @@ describe('AppManagerDialog', () => {
     ).not.toBeInTheDocument();
   });
 
-  it('renders installed and available sections after load', async () => {
+  it('separates installed Apps and the searchable library', async () => {
     renderDialog();
-    await waitFor(() =>
-      expect(screen.getByTestId('app-manager-installed')).toBeInTheDocument(),
-    );
-    const installed = screen.getByTestId('app-manager-installed');
-    expect(installed).toHaveTextContent('Content Factory');
-    expect(
-      await screen.findByTestId('app-manager-row-hr-suite'),
-    ).toBeInTheDocument();
-    expect(screen.getByTestId('app-manager-available')).toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: 'Installed' })).toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: 'Available' })).toBeInTheDocument();
+    expect(await screen.findByTestId('app-manager-available')).toBeInTheDocument();
+    expect(screen.queryByTestId('app-manager-installed')).not.toBeInTheDocument();
+    await showInstalled();
+    expect(await screen.findByTestId('app-manager-installed')).toHaveTextContent('Content Factory');
+    expect(screen.queryByTestId('app-manager-available')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('tab', { name: /Browse library/ }));
+    expect(await screen.findByTestId('app-manager-row-hr-suite')).toBeInTheDocument();
+  });
+
+  it('shows full package details without losing the installation selection', async () => {
+    mockListProfiles.mockResolvedValueOnce([{ ...LIB_AVAILABLE, description: 'Short overview', version: '2.4.0', manifest: {
+      scope: 'app', package: { description: 'Full description with all the details.' },
+      app: { tracks: [{ key: 'employees', name: 'Employees', description: 'Keep employee records together.',
+        entry_types: [{ key: 'person', name: 'Person', fields: [{ key: 'email', name: 'Email address', type: 'email' }] }],
+        taxonomy: { tag_groups: [{ name: 'Status', tags: [{ name: 'Active' }] }] },
+        views: [{ name: 'Directory', view_type: 'table', is_default: true }],
+      }] },
+    } }]);
+    renderDialog();
+    fireEvent.click(await screen.findByRole('button', { name: 'Add HR Suite' }));
+    fireEvent.click(screen.getByRole('button', { name: 'View details for HR Suite' }));
+    expect(screen.getByText('Full description with all the details.')).toBeInTheDocument();
+    expect(screen.getByText('Keep employee records together.')).toBeInTheDocument();
+    expect(screen.getByText(/Version 2.4.0/)).toBeInTheDocument();
+    expect(screen.getByText(/Directory.*table.*default/)).toBeInTheDocument();
+    expect(screen.getByText('Status: Active')).toBeInTheDocument();
+    fireEvent.click(screen.getByText('Person · 1 field'));
+    expect(screen.getByText('Email address · email · email')).toBeInTheDocument();
+    expect(mockBatchInstall).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'Back to library' }));
+    expect(screen.getByRole('button', { name: 'Remove HR Suite' })).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  it('opens a bookmarked package in the canonical manager detail view', async () => {
+    renderDialog({ initialDetailId: 'lib-hr' });
+    expect(await screen.findByTestId('app-package-details')).toHaveTextContent('HR bundle');
+    fireEvent.click(screen.getByRole('button', { name: 'Add to selection' }));
+    expect(screen.getByRole('button', { name: 'Remove from selection' })).toBeInTheDocument();
+    expect(mockBatchInstall).not.toHaveBeenCalled();
   });
 
   it('lets users delete a workspace saved template from Manage Apps', async () => {
     renderDialog();
+    fireEvent.click(await screen.findByRole('button', { name: 'View details for HR Suite' }));
     const remove = await screen.findByRole('button', {
       name: 'Delete HR Suite template',
     });
@@ -215,22 +253,16 @@ describe('AppManagerDialog', () => {
     expect(rowButton).toBeDisabled();
   });
 
-  it('enables install when an available package is selected', async () => {
+  it('requires a separate review before confirming installation', async () => {
     renderDialog();
-    await waitFor(() =>
-      expect(screen.getByTestId('app-manager-apply')).toBeInTheDocument(),
-    );
-    const apply = screen.getByTestId('app-manager-apply');
-    expect(apply).toBeDisabled();
-
-    const hrRow = (
-      await screen.findByTestId('app-manager-row-hr-suite')
-    ).querySelector('button');
-    await act(async () => {
-      fireEvent.click(hrRow!);
-    });
-    await waitFor(() => expect(apply).not.toBeDisabled());
-    expect(apply).toHaveTextContent('Install selected (1)');
+    const review = await screen.findByTestId('app-manager-review');
+    expect(review).toBeDisabled();
+    fireEvent.click(await screen.findByRole('button', { name: 'Add HR Suite' }));
+    expect(review).not.toBeDisabled();
+    expect(mockBatchInstall).not.toHaveBeenCalled();
+    fireEvent.click(review);
+    expect(await screen.findByTestId('app-manager-apply')).toHaveTextContent('Install selected (1)');
+    expect(mockBatchInstall).not.toHaveBeenCalled();
   });
 
   it('Apply installs only — does not call uninstall', async () => {
@@ -249,6 +281,7 @@ describe('AppManagerDialog', () => {
     });
 
     renderDialog({ onChanged });
+    await showInstalled();
     await waitFor(() =>
       expect(screen.getByTestId('app-manager-installed')).toBeInTheDocument(),
     );
@@ -257,6 +290,7 @@ describe('AppManagerDialog', () => {
       screen.getByTestId('app-manager-uninstall-app-installed'),
     ).toBeInTheDocument();
 
+    fireEvent.click(screen.getByRole('tab', { name: /Browse library/ }));
     const hrRow = (
       await screen.findByTestId('app-manager-row-hr-suite')
     ).querySelector('button');
@@ -264,9 +298,7 @@ describe('AppManagerDialog', () => {
       fireEvent.click(hrRow!);
     });
 
-    await act(async () => {
-      fireEvent.click(screen.getByTestId('app-manager-apply'));
-    });
+    await confirmInstall();
 
     await waitFor(() => expect(mockBatchInstall).toHaveBeenCalled());
     expect(mockUninstall).not.toHaveBeenCalled();
@@ -282,6 +314,7 @@ describe('AppManagerDialog', () => {
 
   it('opens uninstall modal from Uninstall control', async () => {
     renderDialog();
+    await showInstalled();
     await waitFor(() =>
       expect(
         screen.getByTestId('app-manager-uninstall-app-installed'),
@@ -307,6 +340,7 @@ describe('AppManagerDialog', () => {
       requires_data_confirmation: false,
     });
     renderDialog();
+    await showInstalled();
     await waitFor(() =>
       expect(
         screen.getByTestId('app-manager-uninstall-app-installed'),
@@ -349,9 +383,7 @@ describe('AppManagerDialog', () => {
     await act(async () => {
       fireEvent.click(hrRow!);
     });
-    await act(async () => {
-      fireEvent.click(screen.getByTestId('app-manager-apply'));
-    });
+    await confirmInstall();
 
     await waitFor(() =>
       expect(screen.getByTestId('app-settings-form')).toBeInTheDocument(),
@@ -369,8 +401,9 @@ describe('AppManagerDialog', () => {
         },
       ],
     });
+    await showInstalled();
     await waitFor(() =>
-      expect(screen.getByText('Needs settings')).toBeInTheDocument(),
+      expect(screen.getByText('Setup needed')).toBeInTheDocument(),
     );
   });
   it('reconciles an unknown install outcome without offering a blind retry', async () => {
@@ -379,10 +412,10 @@ describe('AppManagerDialog', () => {
     renderDialog({ onChanged });
     const row = await screen.findByTestId('app-manager-row-hr-suite');
     await act(async () => { fireEvent.click(row.querySelector('button')!); });
-    fireEvent.click(screen.getByTestId('app-manager-apply'));
+    await confirmInstall();
     expect(await screen.findByText(/installation result is not confirmed/)).toBeInTheDocument();
     expect(onChanged).toHaveBeenCalledTimes(1);
-    expect(screen.getByTestId('app-manager-apply')).toBeDisabled();
+    expect(screen.getByTestId('app-manager-review')).toBeDisabled();
     expect(mockBatchInstall).toHaveBeenCalledTimes(1);
   });
 
@@ -417,7 +450,7 @@ describe('AppManagerDialog', () => {
         "button",
       )!,
     );
-    fireEvent.click(screen.getByTestId("app-manager-apply"));
+    await confirmInstall();
     expect(
       await screen.findByText("HR Suite — Review your app access."),
     ).toBeInTheDocument();
@@ -449,7 +482,7 @@ describe('AppManagerDialog', () => {
         "button",
       )!,
     );
-    fireEvent.click(screen.getByTestId("app-manager-apply"));
+    await confirmInstall();
     expect(
       await screen.findByText("HR Suite — Unsupported configuration"),
     ).toBeInTheDocument();
@@ -477,7 +510,7 @@ describe('AppManagerDialog', () => {
         "button",
       )!,
     );
-    fireEvent.click(screen.getByTestId("app-manager-apply"));
+    await confirmInstall();
     expect(
       await screen.findByText(
         /Resolve the required app installation or update/,
@@ -487,4 +520,110 @@ describe('AppManagerDialog', () => {
     expect(screen.getByText(/Resolve the required app installation or update/).tagName).toBe('P');
     expect(mockBatchInstall).toHaveBeenCalledTimes(1);
   });
+  it('keeps selections and custom details through search, tabs and review', async () => {
+    renderDialog();
+    fireEvent.click(await screen.findByRole('button', { name: 'Add HR Suite' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Customize details' }));
+    fireEvent.change(screen.getByLabelText('App name for HR Suite'), { target: { value: 'Our People' } });
+    fireEvent.change(screen.getByLabelText('App description for HR Suite'), { target: { value: 'Internal team operations' } });
+    fireEvent.change(screen.getByRole('textbox', { name: 'Search Apps' }), { target: { value: 'not-in-the-library' } });
+    expect(screen.getByText('No Apps match your search.')).toBeInTheDocument();
+    expect(screen.getByRole('complementary', { name: 'Installation selection' })).toHaveTextContent('Our People');
+    await showInstalled();
+    fireEvent.click(screen.getByRole('button', { name: 'Clear search' }));
+    fireEvent.click(screen.getByRole('tab', { name: /Browse library/ }));
+    expect(screen.getByRole('button', { name: 'Remove HR Suite' })).toHaveAttribute('aria-pressed', 'true');
+    fireEvent.click(screen.getByTestId('include-seed-data-toggle-checkbox'));
+    mockBatchInstall.mockResolvedValue({ installed: [], skipped: [], failed: [] });
+    fireEvent.click(screen.getByTestId('app-manager-review'));
+    expect(screen.getByRole('complementary', { name: 'Installation selection' })).toHaveTextContent('Internal team operations');
+    expect(mockBatchInstall).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByTestId('app-manager-apply'));
+    await waitFor(() => expect(mockBatchInstall).toHaveBeenCalledWith(
+      [{ library_cp_id: 'lib-hr', name: 'Our People', description: 'Internal team operations' }],
+      { include_seed_data: false },
+    ));
+  });
+
+  it('does not submit or dismiss when returning from review to selection', async () => {
+    const onClose = vi.fn();
+    renderDialog({ onClose });
+    fireEvent.click(await screen.findByRole('button', { name: 'Add HR Suite' }));
+    fireEvent.click(screen.getByTestId('app-manager-review'));
+    fireEvent.click(screen.getByRole('button', { name: 'Back to selection' }));
+    expect(screen.getByTestId('app-manager-review')).not.toBeDisabled();
+    expect(screen.queryByTestId('app-manager-apply')).not.toBeInTheDocument();
+    expect(mockBatchInstall).not.toHaveBeenCalled();
+    expect(onClose).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'Remove HR Suite from selection' }));
+    expect(screen.getByTestId('app-manager-review')).toBeDisabled();
+  });
+
+  it('preserves the selection in the mobile review view and returns to the catalog', async () => {
+    renderDialog();
+    fireEvent.click(await screen.findByRole('button', { name: 'Add HR Suite' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Review (1)' }));
+    expect(screen.getByRole('button', { name: 'Back to library' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Back to library' }));
+    expect(screen.getByRole('button', { name: 'Remove HR Suite' })).toHaveAttribute('aria-pressed', 'true');
+    expect(mockBatchInstall).not.toHaveBeenCalled();
+  });
+
+  it('requires a nonempty installation name', async () => {
+    renderDialog();
+    fireEvent.click(await screen.findByRole('button', { name: 'Add HR Suite' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Customize details' }));
+    fireEvent.change(screen.getByLabelText('App name for HR Suite'), { target: { value: '  ' } });
+    expect(screen.getByTestId('app-manager-review')).toBeDisabled();
+  });
+
+  it('hides uninstall from nonowners and keeps setup recovery visible', async () => {
+    renderDialog({ apps: [{ ...INSTALLED_APP, owner_user_id: 'another-user', lifecycle_state: 'awaiting_settings' }] });
+    await showInstalled();
+    expect(await screen.findByRole('button', { name: 'Finish setup' })).toBeInTheDocument();
+    expect(screen.queryByTestId('app-manager-uninstall-app-installed')).not.toBeInTheDocument();
+  });
+
+  it('retries a failed library load without installing anything', async () => {
+    mockListProfiles.mockRejectedValueOnce(new Error('Library unavailable'));
+    renderDialog();
+    expect(await screen.findByRole('alert')).toHaveTextContent('Library unavailable');
+    fireEvent.click(screen.getByRole('button', { name: 'Retry library' }));
+    expect(await screen.findByRole('button', { name: 'Add HR Suite' })).toBeInTheDocument();
+    expect(mockBatchInstall).not.toHaveBeenCalled();
+  });
+
+  it('makes Create your own app a prominent, separate action', async () => {
+    const onCreateBlankApp = vi.fn();
+    renderDialog({ onCreateBlankApp });
+    const create = await screen.findByRole('button', { name: 'Create your own app' });
+    expect(create).toHaveAttribute('data-variant', 'secondary');
+    fireEvent.click(create);
+    expect(onCreateBlankApp).toHaveBeenCalledTimes(1);
+    expect(mockBatchInstall).not.toHaveBeenCalled();
+  });
+
+  it('keeps keyboard focus on navigation when leaving mobile review', async () => {
+    renderDialog();
+    fireEvent.click(await screen.findByRole('button', { name: 'Add HR Suite' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Review (1)' }));
+    fireEvent.click(screen.getByTestId('app-manager-review'));
+    const back = screen.getByRole('button', { name: 'Back to library' });
+    back.focus();
+    fireEvent.click(back);
+    expect(screen.getByRole('button', { name: 'Review (1)' })).toHaveFocus();
+  });
+
+  it('switches library tabs with the keyboard without dropping the selection', async () => {
+    renderDialog();
+    fireEvent.click(await screen.findByRole('button', { name: 'Add HR Suite' }));
+    const browse = screen.getByRole('tab', { name: /Browse library/ });
+    browse.focus();
+    fireEvent.keyDown(browse, { key: 'ArrowRight' });
+    expect(screen.getByRole('tab', { name: /Installed/ })).toHaveAttribute('aria-selected', 'true');
+    fireEvent.keyDown(screen.getByRole('tab', { name: /Installed/ }), { key: 'Home' });
+    expect(screen.getByRole('button', { name: 'Remove HR Suite' })).toHaveAttribute('aria-pressed', 'true');
+    expect(mockBatchInstall).not.toHaveBeenCalled();
+  });
+
 });

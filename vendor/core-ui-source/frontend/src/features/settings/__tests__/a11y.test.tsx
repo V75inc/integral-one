@@ -118,9 +118,6 @@ vi.mock('../../../components/library/ImportPackageModal', () => ({
   ImportPackageModal: () => null,
 }));
 
-vi.mock('../../../components/library/LibraryPackageDetailModal', () => ({
-  LibraryPackageDetailModal: () => null,
-}));
 
 vi.mock('../../../api/retrievalConfig', () => ({
   retrievalConfigApi: {
@@ -255,14 +252,6 @@ describe('a11y — Settings sections (AGENTIVE_ENABLED=true)', () => {
   it('AgentsSection has no critical or serious a11y violations', async () => {
     const { AgentsSection } = await import('../sections/AgentsSection');
     const { container } = renderWithProviders(<AgentsSection />);
-    // axe.run rule overrides applied here — 'color-contrast': { enabled: false } (W5).
-    const blocking = await scanForBlockingViolations(container);
-    expect(blocking).toEqual([]);
-  });
-
-  it('LibrarySection has no critical or serious a11y violations', async () => {
-    const { LibrarySection } = await import('../sections/LibrarySection');
-    const { container } = renderWithProviders(<LibrarySection />);
     // axe.run rule overrides applied here — 'color-contrast': { enabled: false } (W5).
     const blocking = await scanForBlockingViolations(container);
     expect(blocking).toEqual([]);

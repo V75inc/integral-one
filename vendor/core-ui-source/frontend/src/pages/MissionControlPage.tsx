@@ -4,6 +4,7 @@ import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { ArrowUpRight } from 'lucide-react';
 import { missionControlApi } from '../api';
+import { MODEL_CREDENTIALS_QUERY_KEY, modelCredentialsApi } from '../api/modelCredentials';
 import { isOwnedPersonalWorkspace } from '../api/workspaces';
 import { formatRelativeTime, resolveIdentityColor } from '../utils';
 import { useNotifications } from '../hooks/useNotifications';
@@ -93,13 +94,7 @@ export function MissionControlPage() {
     <PageSection.Separator />
     <PageSection className="mt-8">
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1.8fr)_minmax(280px,1fr)]">
-        {singleUser ? <Surface as="section" border="subtle" padding="lg" className="home-widget min-w-0">
-          <Text as="h2" variant="heading-sm" weight="semibold">Start with an App</Text>
-          <Text as="p" variant="body-sm" tone="muted" className="mt-3">Choose an App from your local library or build one for the way you work. AI setup is optional.</Text>
-          <HomeLink to="/apps">Browse and install Apps</HomeLink>
-          <HomeLink to="/settings#ai-models">Set up a local model or bring an API key</HomeLink>
-          <Text as="p" variant="meta" tone="subtle" className="mt-3">Background tasks run while Integral is open.</Text>
-        </Surface> : <Surface as="section" aria-labelledby="home-ai-heading" border="subtle" padding="lg" className="home-widget home-widget--ai min-w-0">
+        {singleUser ? <SingleUserHomeStart workspaceId={activeWorkspace?.id ?? null} principalId={auth?.user?.id ?? null} /> : <Surface as="section" aria-labelledby="home-ai-heading" border="subtle" padding="lg" className="home-widget home-widget--ai min-w-0">
           <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
             <Text as="h2" id="home-ai-heading" variant="heading-sm" weight="semibold" className="flex items-center gap-2">
               <LogoMark size="sm" /> Integral AI
@@ -173,4 +168,32 @@ function HomeLink({ to, children }: { to: string; children: React.ReactNode }) {
 }
 function HomeSkeleton() {
   return <div aria-label="Loading recent work" aria-busy="true" className="space-y-4"><Skeleton className="h-14 w-full" /><Skeleton className="h-14 w-full" /></div>;
+}
+
+
+function SingleUserHomeStart({ workspaceId, principalId }: {
+  workspaceId: string | null;
+  principalId: string | null;
+}) {
+  const credential = useQuery({
+    queryKey: MODEL_CREDENTIALS_QUERY_KEY,
+    queryFn: () => modelCredentialsApi.get(),
+    enabled: Boolean(principalId),
+  });
+  const configured = credential.data?.is_active === true;
+  return <Surface as="section" border="subtle" padding="lg" className="home-widget min-w-0">
+    <Text as="h2" variant="heading-sm" weight="semibold">{configured ? 'Integral AI' : 'Start with an App'}</Text>
+    {configured ? <>
+      <Text as="p" variant="body-sm" tone="muted" className="my-3">Your AI model is configured. Ask Integral to help you organize your work.</Text>
+      <HomeChatComposer workspaceId={workspaceId} principalId={principalId} />
+    </> : <Text as="p" variant="body-sm" tone="muted" className="mt-3">Choose an App from your local library or build one for the way you work. AI setup is optional.</Text>}
+    <HomeLink to="/apps">Browse and install Apps</HomeLink>
+    {credential.isPending ? <div role="status"><Text as="p" variant="body-sm" tone="muted">Checking AI setup…</Text></div>
+      : credential.isError ? <div role="status">
+        <Text as="p" variant="body-sm" tone="muted">Could not check AI settings.</Text>
+        <Button variant="outline" onClick={() => void credential.refetch()} loading={credential.isFetching}>Retry AI settings</Button>
+      </div> : null}
+    <HomeLink to="/settings#ai-models">{configured || credential.isPending || credential.isError ? 'Manage AI settings' : 'Set up a local model or bring an API key'}</HomeLink>
+    <Text as="p" variant="meta" tone="subtle" className="mt-3">Background tasks run while Integral is open.</Text>
+  </Surface>;
 }

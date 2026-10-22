@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { act, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { AppsPage } from './AppsPage';
@@ -22,7 +22,7 @@ vi.mock('../components/apps/AppModal', () => ({
 }));
 
 vi.mock('../components/apps/AppManagerDialog', () => ({
-  AppManagerDialog: () => null,
+  AppManagerDialog: ({ isOpen, initialDetailId, onClose }: { isOpen: boolean; initialDetailId?: string; onClose(): void }) => isOpen ? <div data-testid="canonical-app-library">{initialDetailId}<button onClick={onClose}>Close App library</button></div> : null,
 }));
 
 vi.mock('../components/sidebar/PinButton', () => ({
@@ -56,13 +56,13 @@ vi.mock('../context/ToastContext', () => ({
   useToast: () => ({ showToast: vi.fn() }),
 }));
 
-function renderPage() {
+function renderPage(url = '/') {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
   return render(
     <QueryClientProvider client={queryClient}>
-      <MemoryRouter>
+      <MemoryRouter initialEntries={[url]}>
         <AppsPage />
       </MemoryRouter>
     </QueryClientProvider>,
@@ -79,6 +79,16 @@ describe('AppsPage creation rights gating', () => {
         your_role: 'member',
       },
     });
+  });
+
+  it('opens the canonical catalog from a deep link and clears it on close', async () => {
+    mockUseWorkspaceCreationRights.mockReturnValue({ canCreateApps: true });
+    renderPage('/apps?manage=1&package=lib-hr');
+    expect(screen.getByTestId('canonical-app-library')).toHaveTextContent('lib-hr');
+    fireEvent.click(screen.getByRole('button', { name: 'Close App library' }));
+    expect(screen.queryByTestId('canonical-app-library')).not.toBeInTheDocument();
+    fireEvent.click(await screen.findByRole('button', { name: /manage apps/i }));
+    expect(screen.getByTestId('canonical-app-library')).not.toHaveTextContent('lib-hr');
   });
 
   it('hides Manage apps when the caller cannot create apps', async () => {

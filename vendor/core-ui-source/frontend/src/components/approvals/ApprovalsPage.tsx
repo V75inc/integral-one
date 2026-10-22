@@ -25,7 +25,7 @@ export function ApprovalsPage() {
   const ownership = useOwnershipProposals();
   const ownershipCount = ownershipRowsForStatus(ownership.data ?? [], statusFilter).length;
   const staged = useStagedApprovals();
-  const stagedCount = staged.rows.length;
+  const stagedCount = staged.count;
   const [loadedStatus, setLoadedStatus] = useState<StatusFilter | null>(null);
   const requestRevision = useRef(0);
 

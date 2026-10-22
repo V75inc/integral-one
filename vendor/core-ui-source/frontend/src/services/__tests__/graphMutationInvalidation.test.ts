@@ -26,7 +26,7 @@ function staged(partial: Partial<StagedChange>): StagedChange {
 }
 
 describe('invalidateAfterChangeEvent', () => {
-  it('refreshes entry comments and related lists when a comment is created', async () => {
+  it.each(['comment.create', 'comment.update', 'comment.delete'])('refreshes entry comments and related lists after %s', async action => {
     const qc = new QueryClient();
     const invalidateSpy = vi.spyOn(qc, 'invalidateQueries');
     const handler = vi.fn();
@@ -37,7 +37,7 @@ describe('invalidateAfterChangeEvent', () => {
         ts: '2026-01-01T00:00:00Z',
         actor_kind: 'user',
         actor_id: 'user-a',
-        action: 'comment.create',
+        action,
         resource_type: 'Comment',
         resource_id: 'n.Comment.1',
         scope: 'track:n.Track.abc',

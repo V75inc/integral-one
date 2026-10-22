@@ -249,7 +249,7 @@ export function AppModal({ open, onClose, onSaved, editApp, mode }: AppModalProp
       <FormDialog
         open={open}
         onClose={onClose}
-        title="Create blank app"
+        title="Create your own app"
         onSubmit={handleSubmit}
         submitLabel="Create"
         submitLoading={saving}

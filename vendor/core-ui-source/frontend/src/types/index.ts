@@ -570,6 +570,7 @@ export interface Reaction {
 }
 
 export interface Comment {
+  reactions?: Reaction[];
   id: string;
   text: string;
   author_id: string;

@@ -132,3 +132,40 @@ describe('StagedChatApprovals status language', () => {
     expect(screen.getByRole('button', { name: 'Review staged change' })).toBeInTheDocument();
   });
 });
+
+vi.mock('../../../api/designDecisions', () => ({ listDesignDecisions: vi.fn(async () => []), discardDesign: vi.fn() }));
+
+import { listDesignDecisions } from '../../../api/designDecisions';
+
+const savedDesign = {
+  thread_id: 'n.ChatThread.design-a', workspace_id: 'ws-a', thread_title: 'CRM setup',
+  summary: 'Customer relationship App', design_id: 'design-a', blueprint_revision: 3,
+  proposed_at: '2026-10-20T12:00:00Z', approved: false, partial_build: false,
+};
+
+describe('saved design recovery', () => {
+  it('discovers a native marker without a staged token and links its exact conversation', async () => {
+    vi.mocked(listPendingStagedChanges).mockResolvedValueOnce([]);
+    vi.mocked(listDesignDecisions).mockResolvedValueOnce([savedDesign]);
+    render(<ConfirmProvider><MemoryRouter><StagedChatApprovals /></MemoryRouter></ConfirmProvider>);
+    expect(await screen.findByText('Customer relationship App')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Open design conversation' })).toHaveAttribute('href', '/agent?thread=n.ChatThread.design-a');
+    expect(screen.getByText(/Awaiting design confirmation/)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Authorize/ })).not.toBeInTheDocument();
+  });
+
+  it('keeps a confirmed design recoverable without implying the build completed', async () => {
+    vi.mocked(listDesignDecisions).mockResolvedValueOnce([{ ...savedDesign, approved: true }]);
+    render(<ConfirmProvider><MemoryRouter><StagedChatApprovals /></MemoryRouter></ConfirmProvider>);
+    expect(await screen.findByText(/Design confirmed · build not completed/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Discard design' })).toBeInTheDocument();
+  });
+
+  it('shows partial builds for reconciliation without offering discard', async () => {
+    vi.mocked(listDesignDecisions).mockResolvedValueOnce([{ ...savedDesign, partial_build: true }]);
+    render(<ConfirmProvider><MemoryRouter><StagedChatApprovals /></MemoryRouter></ConfirmProvider>);
+    expect(await screen.findByText(/Build needs reconciliation/)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Discard design' })).not.toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Open design conversation' })).toBeInTheDocument();
+  });
+});

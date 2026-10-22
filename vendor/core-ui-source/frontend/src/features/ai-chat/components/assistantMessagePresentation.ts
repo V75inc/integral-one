@@ -98,6 +98,9 @@ export function modelSetupMessage(code: unknown): string {
 export function friendlyChatFailure(code: unknown, message: unknown): string {
   if (isModelSetupFailure(code)) return modelSetupMessage(code);
   if (code === "work.cancelled") return "You stopped this request.";
+  if (code === "image_input_unsupported") return "Attach a PNG, JPEG, WebP, or GIF image, then try again.";
+  if (code === "image_input_invalid") return "This image couldn't be read. Please attach an undamaged image under 5 MB and try again.";
+  if (code === "image_input_limit") return "Send up to four images per message. Remove the extra images and try again.";
   if (code === "work.deadline_exceeded") {
     return "This request took too long to finish. Check anything already saved, then ask me to continue.";
   }

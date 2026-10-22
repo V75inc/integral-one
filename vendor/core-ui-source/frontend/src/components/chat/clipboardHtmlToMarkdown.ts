@@ -38,8 +38,21 @@ function render(node: Node, orderedIndex = 1): string {
   // repeat the entire subtree at every nested list level.
   if (tag === 'UL' || tag === 'OL') {
     let index = Number(node.getAttribute('start')) || 1;
-    const items = Array.from(node.children).filter(child => child.tagName === 'LI');
-    return `\n${items.map(item => render(item, index++)).join('')}\n`;
+    let lastIndent = tag === 'OL' ? `${index}. `.length : 2;
+    const parts = Array.from(node.childNodes).map(child => {
+      if (child instanceof HTMLElement && child.tagName === 'LI') {
+        const explicit = Number(child.getAttribute('value'));
+        if (child.hasAttribute('value') && Number.isFinite(explicit)) index = explicit;
+        lastIndent = tag === 'OL' ? `${index}. `.length : 2;
+        return render(child, index++);
+      }
+      const content = render(child).trim();
+      if (!content) return '';
+      // Document clipboards may place a child list beside its parent LI.
+      // Retain all readable children, nesting sibling lists under that item.
+      return `${content.split('\n').map(line => ' '.repeat(lastIndent) + line).join('\n')}\n`;
+    });
+    return `\n${parts.join('')}\n`;
   }
   if (tag === 'PRE' || tag === 'CODE') {
     const text = node.textContent ?? '';

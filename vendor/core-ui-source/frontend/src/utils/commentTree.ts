@@ -19,7 +19,12 @@ function commentTime(c: Comment): number {
  * Build a comment forest: roots are top-level comments or orphans (missing parent in set).
  * Direct replies are sorted oldest-first under each parent.
  */
-export function buildCommentForest(flat: Comment[]): CommentThreadNode[] {
+export function mergeComments(...collections: Comment[][]): Comment[] {
+  return [...new Map(collections.flat().map(comment => [comment.id, comment])).values()];
+}
+
+export function buildCommentForest(input: Comment[]): CommentThreadNode[] {
+  const flat = mergeComments(input);
   const byId = new Map(flat.map(c => [c.id, c]));
   const childrenByParent = new Map<string, Comment[]>();
 

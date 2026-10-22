@@ -1,6 +1,6 @@
 import { useState, useEffect, useLayoutEffect, useCallback, useMemo, useRef } from 'react';
 import { usePhantomClickGuard } from '../hooks/usePhantomClickGuard';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { Layers, Package, GripVertical } from 'lucide-react';
 import {
   DndContext,
@@ -82,7 +82,10 @@ export function AppsPage() {
       app_names: apps.map((a) => a.name).filter(Boolean).slice(0, 25),
     },
   });
+  const [searchParams, setSearchParams] = useSearchParams();
   const [managerModal, setManagerModal] = useState(false);
+  const managerRequested = searchParams.get('manage') === '1';
+  const closeManager = () => { setManagerModal(false); if (managerRequested) { const next = new URLSearchParams(searchParams); next.delete('manage'); next.delete('package'); setSearchParams(next, { replace: true }); } };
   const [blankAppModal, setBlankAppModal] = useState(false);
   const [search, setSearch] = useState('');
   // Optimistic create can race an in-flight/change-event list that still
@@ -289,12 +292,13 @@ export function AppsPage() {
         )}
 
       <AppManagerDialog
-        isOpen={managerModal}
-        onClose={() => setManagerModal(false)}
+        isOpen={managerModal || managerRequested}
+        initialDetailId={searchParams.get('package') || undefined}
+        onClose={closeManager}
         apps={apps}
         onChanged={load}
         onCreateBlankApp={() => {
-          setManagerModal(false);
+          closeManager();
           setBlankAppModal(true);
         }}
       />

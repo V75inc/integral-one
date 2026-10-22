@@ -20,6 +20,8 @@ import { render, screen, cleanup } from '@testing-library/react';
 import { CommentThread } from '../CommentThread';
 import type { Comment, User } from '../../../types';
 
+vi.mock('../ReactionControl', () => ({ ReactionControl: () => null }));
+
 afterEach(cleanup);
 
 const ME: User = {

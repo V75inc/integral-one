@@ -23,3 +23,9 @@ it("explains stopped and interrupted requests without internal worker details", 
   expect(friendlyChatFailure("work.deadline_exceeded", "private timeout")).toContain("ask me to continue");
   expect(friendlyChatFailure("internal_error", "Please try again.")).toBe("Please try again.");
 });
+
+it('gives actionable image limits and reattachment guidance without inventing an enable switch', () => {
+  expect(friendlyChatFailure('image_input_unsupported', 'private')).toContain('PNG');
+  expect(friendlyChatFailure('image_input_invalid', 'private')).toContain('attach');
+  expect(friendlyChatFailure('image_input_limit', 'private')).toContain('four');
+});

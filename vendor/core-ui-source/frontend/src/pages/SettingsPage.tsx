@@ -4,7 +4,6 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import {
   AlertOctagon,
   Bell,
-  BookOpen,
   Bot,
   Cable,
   ChevronDown,
@@ -51,11 +50,6 @@ const ConflictsSection = React.lazy(() =>
 const AgentsSection = React.lazy(() =>
   import('../features/settings/sections/AgentsSection').then(m => ({
     default: m.AgentsSection,
-  })),
-);
-const LibrarySection = React.lazy(() =>
-  import('../features/settings/sections/LibrarySection').then(m => ({
-    default: m.LibrarySection,
   })),
 );
 const RetrievalConfigSection = React.lazy(() =>
@@ -181,12 +175,6 @@ const SECTIONS: Section[] = [
     render: () => <ConnectorsSection />,
   },
   {
-    id: 'library',
-    label: 'Operational Models',
-    icon: BookOpen,
-    render: () => <LibrarySection />,
-  },
-  {
     id: 'agents',
     label: 'Connected agents',
     icon: Bot,
@@ -238,7 +226,7 @@ const SECTIONS: Section[] = [
 const GROUPS = [
   { label: 'Your account', ids: ['profile', 'appearance', 'notifications', 'voice-input'] },
   { label: 'AI & connections', ids: ['ai-models', 'agents', 'skills', 'connectors'] },
-  { label: 'Workspace', ids: ['retrieval', 'library', 'sharing'] },
+  { label: 'Workspace', ids: ['retrieval', 'sharing'] },
   { label: 'Governance', ids: ['policies', 'conflicts', 'audit-log'] },
   { label: 'Help', ids: ['help'] },
 ];
