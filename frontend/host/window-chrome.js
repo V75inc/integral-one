@@ -81,7 +81,6 @@ function shellCss() {
     .one-window-titlebar button:focus-visible { background: var(--nav-active-bg); }
     .one-window-titlebar button:focus-visible { outline: 2px solid var(--focus-ring-color); outline-offset: -2px; }
     .one-window-titlebar__drag { flex: 1 1 auto; align-self: stretch; min-width: 12px; -webkit-app-region: drag; }
-    .one-window-titlebar__toggle.is-collapsed svg { transform: rotate(180deg); }
     .system-bar-sidebar button[aria-label="Collapse sidebar"],
     .system-bar-sidebar button[aria-label="Expand sidebar"] { display: none !important; }
     .system-bar-layout { padding-top: ${OFFSET} !important; }
@@ -103,7 +102,7 @@ function shellCss() {
   `;
 }
 
-function chevron(document) {
+function sidebarIcon(document) {
   const svg = document.createElementNS?.('http://www.w3.org/2000/svg', 'svg') || document.createElement('span');
   if (svg.setAttribute) {
     svg.setAttribute('viewBox', '0 0 16 16');
@@ -111,22 +110,32 @@ function chevron(document) {
     svg.setAttribute('height', '14');
     svg.setAttribute('aria-hidden', 'true');
   }
-  if (document.createElementNS && svg.appendChild) {
-    const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-    path.setAttribute('d', 'M10 3 5 8l5 5');
-    path.setAttribute('fill', 'none');
-    path.setAttribute('stroke', 'currentColor');
-    path.setAttribute('stroke-width', '1.5');
-    svg.appendChild(path);
-  }
+  if (!document.createElementNS || !svg.appendChild) return svg;
+  const panel = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+  panel.setAttribute('x', '1.5');
+  panel.setAttribute('y', '2.5');
+  panel.setAttribute('width', '13');
+  panel.setAttribute('height', '11');
+  panel.setAttribute('rx', '1.5');
+  panel.setAttribute('fill', 'none');
+  panel.setAttribute('stroke', 'currentColor');
+  panel.setAttribute('stroke-width', '1.5');
+  const rail = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+  rail.setAttribute('d', 'M6 2.5v11');
+  rail.setAttribute('fill', 'none');
+  rail.setAttribute('stroke', 'currentColor');
+  rail.setAttribute('stroke-width', '1.5');
+  svg.appendChild(panel);
+  svg.appendChild(rail);
   return svg;
 }
 
 function syncToggle(document, toggle) {
   const rail = document.querySelector(RAIL_TOGGLE);
   const label = rail?.getAttribute('aria-label') || 'Collapse sidebar';
-  toggle.setAttribute('aria-label', label);
-  toggle.classList.toggle('is-collapsed', label === 'Expand sidebar');
+  if (toggle.getAttribute('aria-label') !== label) toggle.setAttribute('aria-label', label);
+  const collapsed = label === 'Expand sidebar';
+  if (toggle.classList.contains('is-collapsed') !== collapsed) toggle.classList.toggle('is-collapsed', collapsed);
 }
 
 function mountWindowChrome(document, chrome, storage) {
@@ -142,7 +151,7 @@ function mountWindowChrome(document, chrome, storage) {
   const toggle = document.createElement('button');
   toggle.type = 'button';
   toggle.className = 'one-window-titlebar__toggle';
-  toggle.appendChild(chevron(document));
+  toggle.appendChild(sidebarIcon(document));
   toggle.addEventListener('click', () => document.querySelector(RAIL_TOGGLE)?.click());
   bar.appendChild(toggle);
   syncToggle(document, toggle);

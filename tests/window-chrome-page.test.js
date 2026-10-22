@@ -77,13 +77,46 @@ test('the row lists the host menus and toggles the existing rail button', () => 
   bar.children[0].click();
   assert.equal(clicks, 1);
   assert.equal(bar.children[0]['aria-label'], 'Expand sidebar');
+  const icon = bar.children[0].children[0];
+  assert.equal(icon.children.some(part => part.d === 'M10 3 5 8l5 5'), false);
+  assert.equal(icon.children.some(part => part.d === 'M6 2.5v11'), true);
   bar.children[1].click();
   assert.deepEqual(popup, [{ id: 'file', x: 8, y: 32 }]);
   assert.equal(theme, 'light');
   assert.equal(document.documentElement.style['--window-titlebar-h'], '32px');
 });
 
-function fakeDocument(rail) {
+test('the toggle label does not keep notifying itself', () => {
+  const observers = [];
+  let writes = 0;
+  const previous = globalThis.MutationObserver;
+  globalThis.MutationObserver = class {
+    constructor(callback) { observers.push(callback); }
+    observe() {}
+    disconnect() {}
+  };
+  try {
+    const document = fakeDocument({ getAttribute: () => 'Collapse sidebar', click() {} }, () => {
+      writes += 1;
+      if (writes > 3) throw new Error('aria-label observer loop');
+      for (const callback of observers) callback([{ target: { style: {} }, addedNodes: [] }]);
+    });
+    chrome.mountWindowChrome(document, {
+      height: 32,
+      menus: [],
+      popupMenu() {},
+      setCaptionTheme() {},
+    }, { getItem: () => 'dark' });
+    assert.equal(writes, 1);
+    for (const callback of observers) callback([{ target: { style: {} }, addedNodes: [] }]);
+    assert.equal(writes, 1);
+  } finally {
+    if (previous) globalThis.MutationObserver = previous;
+    else delete globalThis.MutationObserver;
+  }
+});
+
+function fakeDocument(rail, onLabel) {
   const created = [];
   const make = tag => {
     const listeners = {};
@@ -94,7 +127,10 @@ function fakeDocument(rail) {
       textContent: '',
       style: {},
       children: [],
-      setAttribute(name, value) { node[name] = value; },
+      setAttribute(name, value) {
+        node[name] = value;
+        if (name === 'aria-label') onLabel?.();
+      },
       getAttribute(name) { return node[name]; },
       appendChild(child) {
         this.children.push(child);
@@ -104,7 +140,10 @@ function fakeDocument(rail) {
       addEventListener(type, fn) { (listeners[type] ||= []).push(fn); },
       click() { for (const fn of listeners.click || []) fn(); },
       getBoundingClientRect() { return { left: 8, bottom: 32 }; },
-      classList: { toggle(name, on) { node.className = on ? name : ''; } },
+      classList: {
+        contains(name) { return node.className.split(/\s+/).includes(name); },
+        toggle(name, on) { node.className = on ? name : ''; },
+      },
     };
     created.push(node);
     return node;
@@ -119,5 +158,6 @@ function fakeDocument(rail) {
     getElementById: id => created.find(node => node.id === id) || null,
     querySelector: selector => selector.includes('sidebar') ? rail : null,
     createElement: make,
+    createElementNS: (_namespace, tag) => make(tag),
   };
 }

@@ -4,7 +4,7 @@ Follows [windows title bar idea](ideas/windows-title-bar.md). One capability: th
 
 ## Objective
 
-On Windows, Integral One’s main window has one theme-matched row. The page draws a sidebar toggle, the File / Edit / View / Window / Help labels, and the drag area. Windows keeps drawing minimize, maximize, and close. Those labels open the menus the app already installs. The native menu stays installed and hidden until Alt, so keyboard shortcuts are not written a second time. The toggle uses the sidebar collapse the page already has and narrows the left rail to the existing 60px icon strip. The desktop chevron inside the rail is removed so that toggle is the only collapse control.
+On Windows, Integral One’s main window has one theme-matched row. The page draws a sidebar toggle, the File / Edit / View / Window / Help labels, and the drag area. Windows keeps drawing minimize, maximize, and close. Those labels open the menus the app already installs. The native menu stays installed and hidden until Alt, so keyboard shortcuts are not written a second time. The toggle uses the sidebar collapse the page already has and narrows the left rail to the existing 60px icon strip. Its icon is a sidebar panel, so it does not read as a back button. The desktop chevron inside the rail is removed so that toggle is the only collapse control.
 
 The user is a person running Integral One on Windows. Success is that the main window’s top row matches the light or dark canvas, the existing menu commands and shortcuts still run, and the rail can be collapsed and expanded without a second control.
 
@@ -147,7 +147,7 @@ The host overlay draws the row only when `window.integralDesktop.windowChrome` i
 
 Left to right:
 
-1. One icon button, the existing chevron. It clicks the sidebar’s `Collapse sidebar` or `Expand sidebar` button, which is the toggle `Layout` already owns. The title-bar button uses that same accessible name and stays available while the rail is collapsed.
+1. One icon button, drawn as a sidebar panel. It clicks the sidebar’s `Collapse sidebar` or `Expand sidebar` button, which is the toggle `Layout` already owns. The title-bar button uses that same accessible name and stays available while the rail is collapsed.
 2. One button per `windowChrome.menus` entry. Click, Enter, and Space call `popupMenu` with that id and the button’s bottom-left in window coordinates. Each button is `aria-haspopup="menu"`. The button does not run File, Edit, View, Window, or Help commands itself.
 3. The remaining width is a drag region (`-webkit-app-region: drag`) with no text. Double-click on that region still maximizes and restores, which is the overlay drag region’s normal behavior. Buttons are `no-drag`.
 
