@@ -8,7 +8,7 @@ On Windows, Integral One’s main window has one theme-matched row. The page dra
 
 The user is a person running Integral One on Windows. Success is that the main window’s top row matches the light or dark canvas, the existing menu commands and shortcuts still run, and the rail can be collapsed and expanded without a second control.
 
-Mac stays on the system menu bar, including the chevron in the rail. The Integral Account window and the startup splash keep the window options they have today.
+Mac stays on the system menu bar, including the chevron in the rail. On Windows, the Integral Account window and the startup splash hide the menu bar and recolor the caption to their dark background. They do not draw the main window’s menu row.
 
 ### Resolved decisions
 
@@ -38,7 +38,7 @@ These close the two open questions in the idea.
 ## Tech Stack
 
 - Electron 44.9.0, already the app’s runtime. Window options used: `titleBarStyle`, `titleBarOverlay`, `setTitleBarOverlay`, `setBackgroundColor`, `autoHideMenuBar`, and `Menu` popup.
-- The neutral host in `packages/desktop-host` (`@integral/desktop-host`, packed as `0.1.7-dev.5`). One turns the feature on from `desktop/main.js`.
+- The neutral host in `packages/desktop-host` (`@integral/desktop-host`, packed as `0.1.7-dev.6`). One turns the feature on from `desktop/main.js`.
 - Core UI, composed from the pinned `vendor/core-ui-source` snapshot plus `frontend/host/`. The row is an overlay on `register.tsx`. `Layout` and `Sidebar` stay in the pinned snapshot.
 - Existing theme tokens in Core `index.css`. No new color system and no new npm dependency.
 - Windows only for the new chrome. The host ignores the option on every other platform.
@@ -87,7 +87,7 @@ Do not run `npm run build:installers`, a signed package, or a release workflow f
 | `frontend/host/register.tsx` | Host slot that mounts the row. Replaces Core’s empty stub at composition. |
 | `vendor/` | Not edited. |
 
-The desktop host is consumed as `vendor/integral-desktop-host-0.1.7-dev.5.tgz`. Implementation packs a reviewed local tarball and updates this repo’s pin and lockfile. It does not rename the app id `ai.integral.desktop` or the `Integral` user-data directory.
+The desktop host is consumed as `vendor/integral-desktop-host-0.1.7-dev.6.tgz`. Implementation packs a reviewed local tarball and updates this repo’s pin and lockfile. It does not rename the app id `ai.integral.desktop` or the `Integral` user-data directory.
 
 ## Code Style
 
@@ -168,15 +168,15 @@ When `windowChrome` is absent, both chevrons stay. That is Mac, a normal browser
 ### What stays put
 
 - Mac main window: no `titleBarStyle: 'hidden'`, no `titleBarOverlay`, no `autoHideMenuBar` change, no `windowChrome`, system menu bar and in-rail chevrons unchanged.
-- Account window in `desktop/accounts/controller.js`: title `Integral Account`, background `#171717`, default frame, its own preload and partition.
-- Splash `BrowserWindow` inside `runDesktop`: size, title, and background come from `loadingScreen` as they do now (`#171717` for One). It does not use the caption overlay.
+- Account window in `desktop/accounts/controller.js`: title `Integral Account`, background `#171717`, its own preload and partition. On Windows it hides the menu bar and recolors the caption to that same background. Mac keeps the default frame.
+- Splash `BrowserWindow` inside `runDesktop`: size, title, and background come from `loadingScreen` as they do now (`#171717` for One). On Windows, when the title bar is enabled, it hides the menu bar and recolors the caption to that background. It does not draw the menu row.
 - File commands, including Set Up AI Model, microphone access, the installation folder, quit, and the Help update items, remain the existing menu click handlers.
 
 ## Testing Strategy
 
 Host tests use the current `node:test` fixtures in `packages/desktop-host/scripts/host.test.js`. They construct a fake `BrowserWindow` and assert options. They do not open Electron.
 
-- With `windowsTitleBar: true` and `process.platform === 'win32'`, the main window has the hidden title bar, the dark overlay (`#1a1a1a` / `#ededed` / height 32), background `#1a1a1a`, and `autoHideMenuBar: true`. The splash window does not.
+- With `windowsTitleBar: true` and `process.platform === 'win32'`, the main window has the hidden title bar, the dark overlay (`#1a1a1a` / `#ededed` / height 32), background `#1a1a1a`, and `autoHideMenuBar: true`. The splash hides its menu bar and uses a caption overlay in its own background color.
 - `setCaptionTheme('light')` from a trusted sender applies `#fafafa` / `#0b0b0c` and background `#fafafa`. `'dark'` switches back. Any other theme, a bad coordinate, or an unknown menu id does nothing.
 - `popupMenu('file', x, y)` pops that item’s existing submenu. The handler does not accept a menu template.
 - An untrusted sender is rejected.
@@ -195,7 +195,7 @@ Manual check on Windows, in a task-owned profile, after `npm start`:
 - Dark startup has no white frame. Light and dark each show one continuous bar, with caption symbols in the ink color above.
 - Each label opens the same menu Alt would open. Check for Updates and a role command such as Reload still run. A shortcut such as copy or paste still runs while the native menu is hidden. Alt shows the native menu.
 - The toggle narrows the rail to the icon strip and expands it again. No chevron remains in the rail. Opening and closing the assistant dock still collapses and restores the rail.
-- The account window and the splash still use their own frames and the splash’s current dark background.
+- The account window and the splash hide the Windows menu bar and use a dark caption. The splash background stays `#171717`.
 - The row does not contain the text `Integral | one`. The taskbar does.
 
 No coverage threshold is added. The new host cases and the Core row cases above are the required tests.
@@ -214,7 +214,7 @@ No coverage threshold is added. The new host cases and the Core row cases above 
 - Choosing a label runs the existing submenu. Hidden-menu shortcuts still run. Alt still opens the installed menu.
 - The toggle switches the rail between 264px and 60px. With the Windows bar active, the desktop chevrons are gone and the collapsed rail can still be expanded. Assistant-dock collapse and restore still follow `SidebarDockSync`.
 - The main window’s first background is `#1a1a1a`. A saved light theme updates the overlay and the window background to `#fafafa`.
-- Mac does not gain this bar or lose its rail chevrons. The account window and the splash keep their current window options.
+- Mac does not gain this bar or lose its rail chevrons. On Windows, the account window and the splash hide the menu bar and match their dark background.
 - `npm run test:host` covers the Windows, Mac, theme, and untrusted-sender cases. `npm test` covers the page row.
 
 ## Open Questions

@@ -7,7 +7,7 @@ const { validateWorkspace } = require('./origins');
 // Electron security baseline: https://www.electronjs.org/docs/latest/tutorial/security
 const { createPermissions } = require('./permissions');
 const { createThemeIcons } = require('./theme-icons');
-const { captionOverlay, popupRequest, chromeMenus, chromeArgument, mainWindowChrome } = require('./window-chrome');
+const { captionOverlay, popupRequest, chromeMenus, chromeArgument, mainWindowChrome, startupFrame } = require('./window-chrome');
 function runDesktop(options = {}) {
 const themeIcons = createThemeIcons({ app, nativeTheme, nativeImage, BrowserWindow, iconRoot: options.iconRoot });
 let window = null;
@@ -89,8 +89,11 @@ async function boot() {
     const resources = app.isPackaged ? process.resourcesPath : options.resources;
     const home = flag('home') || process.env.INTEGRAL_HOME || path.join(app.getPath('userData'), 'core');
     const splash = options.loadingScreen || {};
+    const splashBackground = splash.backgroundColor || '#ffffff';
     const progress = new BrowserWindow({ width: splash.width || 560, height: splash.height || 220, resizable: false,
-      title: splash.title || 'Starting Integral', backgroundColor: splash.backgroundColor || '#ffffff', icon: themeIcons.current(), webPreferences: { sandbox: true, nodeIntegration: false, contextIsolation: true } });
+      title: splash.title || 'Starting Integral', backgroundColor: splashBackground, icon: themeIcons.current(),
+      ...(options.windowsTitleBar === true && process.platform === 'win32' ? startupFrame(splashBackground) : {}),
+      webPreferences: { sandbox: true, nodeIntegration: false, contextIsolation: true } });
     await progress.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(splash.html ||
       '<html><body style="font:16px system-ui;padding:30px"><h2>Starting Integral</h2><p>Preparing your private workspace. The first launch downloads its runtime; later launches reuse it.</p></body></html>'
     ));

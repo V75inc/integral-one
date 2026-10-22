@@ -53,6 +53,16 @@ function mainWindowChrome(enabled) {
   };
 }
 
+function startupFrame(backgroundColor) {
+  const color = backgroundColor || '#171717';
+  const light = color.toLowerCase() === '#ffffff' || color.toLowerCase() === '#fff' || color.toLowerCase() === '#fafafa';
+  return {
+    titleBarStyle: 'hidden',
+    titleBarOverlay: { color, symbolColor: light ? '#0b0b0c' : '#ededed', height: TITLEBAR_HEIGHT },
+    autoHideMenuBar: true,
+  };
+}
+
 module.exports = {
   TITLEBAR_HEIGHT,
   captionOverlay,
@@ -61,4 +71,5 @@ module.exports = {
   chromeArgument,
   readChromeArgument,
   mainWindowChrome,
+  startupFrame,
 };

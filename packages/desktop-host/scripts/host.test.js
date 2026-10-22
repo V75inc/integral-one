@@ -62,7 +62,7 @@ test('remote host starts no local runtime and exposes no local preload or sessio
   assert.equal(event.blocked,true);
 });
 
-async function localFixture({owned = true, stop = async () => ({state:'stopped'}), platform = 'darwin', windowsTitleBar = false} = {}) {
+async function localFixture({owned = true, stop = async () => ({state:'stopped'}), platform = 'darwin', windowsTitleBar = false, loadingScreen} = {}) {
   const app = new EventEmitter(), stops = [], menus = [], windows = [], handlers = {};
   let boot, quit = 0, ready = 0, builtMenu = null;
   Object.assign(app, {setName(){}, commandLine:{hasSwitch:()=>true}, getPath:()=>'/task/one',
@@ -106,7 +106,7 @@ async function localFixture({owned = true, stop = async () => ({state:'stopped'}
       return require(id.startsWith('./')?path.join(__dirname,'../lib',id):id);
     },
   });
-  const control = module.exports.runDesktop({mode:'local',windowsTitleBar,helpMenuItems:[{label:'Check for Updates…'}],onReady:()=>{ready++;}});
+  const control = module.exports.runDesktop({mode:'local',windowsTitleBar,loadingScreen,helpMenuItems:[{label:'Check for Updates…'}],onReady:()=>{ready++;}});
   await boot();
   return {control,app,runtime,stops,menus,windows,handlers,ready,quit:()=>quit};
 }
@@ -145,11 +145,13 @@ function trustedEvent(win) {
 }
 
 test('Windows title bar recolors the native caption and pops the installed menu', async () => {
-  const f = await localFixture({ platform: 'win32', windowsTitleBar: true });
+  const f = await localFixture({ platform: 'win32', windowsTitleBar: true, loadingScreen: { backgroundColor: '#171717', title: 'Integral | one' } });
   const splash = f.windows[0];
   const main = f.windows[1];
-  assert.equal(splash.options.titleBarStyle, undefined);
-  assert.equal(splash.options.backgroundColor, '#ffffff');
+  assert.equal(splash.options.titleBarStyle, 'hidden');
+  assert.equal(splash.options.autoHideMenuBar, true);
+  assert.equal(splash.options.backgroundColor, '#171717');
+  assert.deepEqual(splash.options.titleBarOverlay, { color: '#171717', symbolColor: '#ededed', height: 32 });
   assert.equal(main.options.titleBarStyle, 'hidden');
   assert.equal(main.options.autoHideMenuBar, true);
   assert.equal(main.options.backgroundColor, '#1a1a1a');
@@ -173,10 +175,12 @@ test('Windows title bar recolors the native caption and pops the installed menu'
 
 test('Mac and a framed Windows window keep the system title bar', async () => {
   const mac = await localFixture({ platform: 'darwin', windowsTitleBar: true });
+  assert.equal(mac.windows[0].options.titleBarStyle, undefined);
   assert.equal(mac.windows.at(-1).options.titleBarStyle, undefined);
   assert.equal(mac.windows.at(-1).options.backgroundColor, '#ffffff');
   assert.equal(mac.handlers['integral:window-chrome-popup'], undefined);
   const framed = await localFixture({ platform: 'win32' });
+  assert.equal(framed.windows[0].options.titleBarStyle, undefined);
   assert.equal(framed.windows.at(-1).options.titleBarStyle, undefined);
   assert.equal(framed.windows.at(-1).options.autoHideMenuBar, undefined);
   assert.equal(framed.handlers['integral:window-chrome-theme'], undefined);
