@@ -5,6 +5,11 @@ const { execFileSync } = require('node:child_process');
 const root = path.join(__dirname, '..');
 process.chdir(root);
 const signed = process.argv.includes('--signed');
+// The checked-in config.json stays unconfigured. Installer builds use the
+// public production account file unless a build already chose another one.
+if (!process.env.INTEGRAL_ACCOUNT_CONFIG) {
+  process.env.INTEGRAL_ACCOUNT_CONFIG = path.join(root, 'desktop/accounts/config.production.json');
+}
 const preparationEnv = require('./signing-config').releasePreparationEnv(process.env);
 if (process.argv.slice(2).some(arg => arg !== '--signed')) throw new Error('Usage: npm run build:installers [-- --signed]');
 if (!['darwin', 'win32'].includes(process.platform) || !['arm64', 'x64'].includes(process.arch) || (process.platform === 'win32' && process.arch !== 'x64')) throw new Error('Installer targets are macOS arm64/x64 and Windows x64. Build on the matching native runner.');
