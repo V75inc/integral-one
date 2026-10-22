@@ -1,6 +1,6 @@
 import React from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import '@testing-library/jest-dom/vitest';
 import { MemoryRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -10,6 +10,13 @@ vi.mock('../../context/AuthContext', () => ({ useAuthOptional: () => ({ user: { 
 const mockOwnershipInbox = vi.fn(async () => ({ complete: true, proposals: [] }));
 vi.mock('../../api/accessControl', () => ({ ownershipConsentApi: { inbox: () => mockOwnershipInbox() } }));
 
+const mockDeployment = vi.hoisted(() => ({ singleUser: false }));
+vi.mock('../../hooks/useDeployment', () => ({ useDeployment: () => mockDeployment }));
+const mockCredentialGet = vi.hoisted(() => vi.fn());
+vi.mock('../../api/modelCredentials', async importOriginal => ({
+  ...await importOriginal<typeof import('../../api/modelCredentials')>(),
+  modelCredentialsApi: { get: mockCredentialGet },
+}));
 const mockGetSnapshot = vi.fn();
 const mockScopeState = { workspaceId: 'ws-1', accessible: true };
 const mockSetScope = vi.fn();
@@ -117,6 +124,8 @@ function renderPage() {
 describe('<MissionControlPage /> Home', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockDeployment.singleUser = false;
+    mockCredentialGet.mockReset().mockResolvedValue(null);
     mockScopeState.workspaceId = 'ws-1';
     mockScopeState.accessible = true;
     mockGetSnapshot.mockReset();
@@ -190,5 +199,65 @@ describe('<MissionControlPage /> Home', () => {
     expect(screen.getByTestId('home-composer')).toHaveAttribute('data-workspace', 'ws-2');
     expect(screen.queryByText(/Actions stay in/)).not.toBeInTheDocument();
     expect(mockSetScope).not.toHaveBeenCalled();
+  });
+});
+
+
+describe('single-user Home AI setup', () => {
+  beforeEach(() => {
+    mockScopeState.workspaceId = 'ws-1';
+    mockScopeState.accessible = true;
+    mockDeployment.singleUser = true;
+    mockCredentialGet.mockReset().mockResolvedValue(null);
+    mockGetSnapshot.mockResolvedValue({ apps: [], tracks: [], preview_entries: [] });
+  });
+
+  it('offers optional setup when no configuration is saved', async () => {
+    renderPage();
+    expect(await screen.findByRole('link', { name: 'Set up a local model or bring an API key' })).toBeVisible();
+    expect(screen.queryByTestId('home-composer')).not.toBeInTheDocument();
+  });
+
+  it.each(['ollama', 'ollama_local'])('shows chat for an active %s configuration, including keyless local models', async provider => {
+    mockCredentialGet.mockResolvedValue({ provider, model: 'configured-model', is_active: true });
+    renderPage();
+    expect(await screen.findByTestId('home-composer')).toHaveAttribute('data-workspace', 'ws-1');
+    expect(screen.getByRole('link', { name: 'Manage AI settings' })).toHaveAttribute('href', '/settings#ai-models');
+    expect(screen.queryByText('Set up a local model or bring an API key')).not.toBeInTheDocument();
+    expect(screen.queryByText(/AI setup is optional/)).not.toBeInTheDocument();
+  });
+
+  it('reacts immediately to the same cache updates used by settings save and removal', async () => {
+    const { queryClient } = renderPage();
+    await screen.findByRole('link', { name: 'Set up a local model or bring an API key' });
+    await act(async () => {
+      queryClient.setQueryData(['model-credentials', 'me'], { provider: 'ollama', model: 'configured-model', is_active: true });
+    });
+    expect(await screen.findByTestId('home-composer')).toBeVisible();
+    await act(async () => { queryClient.setQueryData(['model-credentials', 'me'], null); });
+    expect(await screen.findByRole('link', { name: 'Set up a local model or bring an API key' })).toBeVisible();
+    expect(screen.queryByTestId('home-composer')).not.toBeInTheDocument();
+  });
+
+  it('does not treat a disabled configuration as active', async () => {
+    mockCredentialGet.mockResolvedValue({ provider: 'ollama', model: 'configured-model', is_active: false });
+    renderPage();
+    expect(await screen.findByRole('link', { name: 'Set up a local model or bring an API key' })).toBeVisible();
+    expect(screen.queryByTestId('home-composer')).not.toBeInTheDocument();
+  });
+
+  it('does not misreport missing setup when the state is loading or unavailable', async () => {
+    let reject!: (reason: Error) => void;
+    mockCredentialGet.mockImplementation(() => new Promise((_resolve, fail) => { reject = fail; }));
+    renderPage();
+    expect(await screen.findByText('Checking AI setup…')).toBeVisible();
+    expect(screen.queryByText('Set up a local model or bring an API key')).not.toBeInTheDocument();
+    await act(async () => { reject(new Error('offline')); });
+    expect(await screen.findByText('Could not check AI settings.')).toBeVisible();
+    expect(screen.queryByText('Set up a local model or bring an API key')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Retry AI settings' })).toBeVisible();
+    mockCredentialGet.mockResolvedValue({ provider: 'ollama', model: 'configured-model', is_active: true });
+    fireEvent.click(screen.getByRole('button', { name: 'Retry AI settings' }));
+    expect(await screen.findByTestId('home-composer')).toBeVisible();
   });
 });

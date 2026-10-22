@@ -1,3 +1,5 @@
+import { EntryInlineImageGallery } from './AttachmentGallery';
+import { mergeComments } from '../../utils/commentTree';
 import { PostToFeedDialog } from './PostToFeedDialog';
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -81,7 +83,7 @@ import {
   shouldClearTaskSprintLink,
 } from './sprintTaskSync';
 import { ActivityPanel } from '../activity/ActivityPanel';
-import { firstImageAttachmentFromAttachments, CARD_PREVIEW_ATTACHMENT_FIELD } from '../../utils/entryMedia';
+import { CARD_PREVIEW_ATTACHMENT_FIELD } from '../../utils/entryMedia';
 import { sortFieldsByOrder } from '../../utils/entryMetaFields';
 import { TagChip } from '../../ui';
 import type {
@@ -266,8 +268,13 @@ export function EntryDetail({
     setDialogContext,
     clearDialogContext,
   ]);
-  const [attachments, setAttachments] = useState<Attachment[]>([]);
+  const [attachments, setAttachments] = useState<Attachment[]>(initialEntry.attachments || []);
   const [comments, setComments] = useState<Comment[]>([]);
+  const commentEntryId = useRef(entry.id);
+  commentEntryId.current = entry.id;
+  const commentRevision = useRef(0);
+  const commentSubmitting = useRef(false);
+  const replySubmitting = useRef(false);
   const [commentText, setCommentText] = useState('');
   const [loadingComments, setLoadingComments] = useState(true);
   // Backend-computed (`can_moderate` on the comments read): may this caller
@@ -1013,20 +1020,15 @@ export function EntryDetail({
     let requestId = 0;
     const loadComments = () => {
       const currentRequestId = ++requestId;
+      const revision = commentRevision.current;
       setLoadingComments(true);
       entriesApi
         .getCommentsWithMeta(entry.id)
         .then(({ comments: nextComments, canModerate }) => {
           if (cancelled || currentRequestId !== requestId) return;
-          setComments(nextComments);
+          if (revision !== commentRevision.current) { loadComments(); return; }
+          setComments(mergeComments(nextComments));
           setCanModerateComments(canModerate);
-          setEntry(prev => {
-            const n = nextComments.length;
-            if (prev.comment_count === n) return prev;
-            const nextEntry = { ...prev, comment_count: n };
-            onUpdateRef.current?.(nextEntry);
-            return nextEntry;
-          });
         })
         .catch(() => {
           if (cancelled || currentRequestId !== requestId) return;
@@ -1131,35 +1133,38 @@ export function EntryDetail({
     }
   };
 
-  const bumpCommentCount = (next: Comment[]) => {
-    const nextCount = next.length;
-    setEntry(prev => {
-      const nextEntry = { ...prev, comment_count: nextCount };
-      onUpdateRef.current?.(nextEntry);
-      return nextEntry;
-    });
-  };
+  useEffect(() => {
+    if (loadingComments) return;
+    const nextCount = comments.length;
+    setEntry(prev => prev.comment_count === nextCount ? prev : { ...prev, comment_count: nextCount });
+    onUpdateRef.current?.({ ...entry, comment_count: nextCount });
+  }, [comments, loadingComments]);
 
   const submitComment = async () => {
-    if (!commentText.trim()) return;
+    if (!commentText.trim() || commentSubmitting.current) return;
+    commentSubmitting.current = true;
+    commentRevision.current++;
+    const requestEntry = entry.id;
     setSubmittingComment(true);
     try {
       const c = await entriesApi.addComment(entry.id, commentText.trim());
-      setComments(p => {
-        const next = [...p, c];
-        bumpCommentCount(next);
-        return next;
-      });
+      if (requestEntry !== commentEntryId.current) return;
+      commentRevision.current++;
+      setComments(p => mergeComments(p, [c]));
       setCommentText('');
     } catch {
       showToast('Failed to post comment', 'error');
     } finally {
+      commentSubmitting.current = false;
       setSubmittingComment(false);
     }
   };
 
   const submitReply = async () => {
-    if (!replyingToId || !replyText.trim()) return;
+    if (!replyingToId || !replyText.trim() || replySubmitting.current) return;
+    replySubmitting.current = true;
+    commentRevision.current++;
+    const requestEntry = entry.id;
     setSubmittingReply(true);
     try {
       const c = await entriesApi.addComment(
@@ -1167,16 +1172,15 @@ export function EntryDetail({
         replyText.trim(),
         replyingToId
       );
-      setComments(p => {
-        const next = [...p, c];
-        bumpCommentCount(next);
-        return next;
-      });
+      if (requestEntry !== commentEntryId.current) return;
+      commentRevision.current++;
+      setComments(p => mergeComments(p, [c]));
       setReplyText('');
       setReplyingToId(null);
     } catch {
       showToast('Failed to post reply', 'error');
     } finally {
+      replySubmitting.current = false;
       setSubmittingReply(false);
     }
   };
@@ -1196,11 +1200,8 @@ export function EntryDetail({
     if (!ok) return;
     try {
       await commentsApi.delete(id);
-      setComments(p => {
-        const next = p.filter(c => c.id !== id);
-        bumpCommentCount(next);
-        return next;
-      });
+      commentRevision.current++;
+      setComments(p => p.filter(c => c.id !== id));
       if (replyingToId === id) {
         setReplyingToId(null);
         setReplyText('');
@@ -1213,6 +1214,7 @@ export function EntryDetail({
   const saveEditComment = async (id: string) => {
     try {
       const updated = await commentsApi.update(id, editCommentText);
+      commentRevision.current++;
       setComments(p =>
         p.map(c =>
           c.id === id ? { ...c, text: updated.text || editCommentText } : c
@@ -1239,11 +1241,8 @@ export function EntryDetail({
   };
 
   const handleReactionsChange = (next: Reaction[]) => {
-    setEntry(e => {
-      const merged = { ...e, reactions: next };
-      onUpdateRef.current?.(merged);
-      return merged;
-    });
+    setEntry(e => ({ ...e, reactions: next }));
+    onUpdateRef.current?.({ ...entry, reactions: next });
   };
 
   const rawLp = entry.custom_fields?._link_preview;
@@ -1253,15 +1252,8 @@ export function EntryDetail({
     typeof (rawLp as { url?: unknown }).url === 'string'
       ? (rawLp as StoredLinkPreview)
       : null;
-  /* The entry's cover: the explicit `_card_preview_attachment_id` when set,
-     otherwise the first image — the same resolution the entry's card uses
-     elsewhere. Now consumed only to badge the matching row, so the panel
-     reports which attachment represents the entry rather than showing a
-     second copy of it. */
-  const heroImage = firstImageAttachmentFromAttachments(
-    attachmentsForDisplay,
-    entry.custom_fields
-  );
+  const preferredImageId = typeof entry.custom_fields?.[CARD_PREVIEW_ATTACHMENT_FIELD] === 'string'
+    ? entry.custom_fields[CARD_PREVIEW_ATTACHMENT_FIELD] as string : undefined;
 
   const metaRow = (
     <div className="flex flex-wrap items-center gap-x-[14px] gap-y-1.5 text-xs text-[var(--text-subtle)] pb-4 mb-1">
@@ -1573,12 +1565,7 @@ export function EntryDetail({
                   attachments={attachmentsForDisplay}
                   canDelete={canEdit}
                   canSetCardPreview={canEdit}
-                  cardPreviewAttachmentId={
-                    typeof entry.custom_fields?.[CARD_PREVIEW_ATTACHMENT_FIELD] ===
-                    'string'
-                      ? entry.custom_fields[CARD_PREVIEW_ATTACHMENT_FIELD]
-                      : heroImage?.attachmentId ?? null
-                  }
+                  cardPreviewAttachmentId={preferredImageId ?? null}
                   onSetCardPreview={async attachmentId => {
                     const updated = await entriesApi.update(entry.id, {
                       custom_fields: {
@@ -1912,6 +1899,11 @@ export function EntryDetail({
                   <MarkdownContent>{entry.body}</MarkdownContent>
                 </div>
               ) : null}
+              {attachmentsForDisplay.length > 0 && (
+                <div className="mt-4">
+                  <EntryInlineImageGallery attachments={attachmentsForDisplay} primaryId={preferredImageId} />
+                </div>
+              )}
               {storedLinkPreview &&
               (storedLinkPreview.title ||
                 storedLinkPreview.description ||
@@ -1955,6 +1947,7 @@ export function EntryDetail({
               ) : null}
               {primaryRelatedViewsNode}
               <EntrySocialActions
+                canReact={canComment}
                 entryId={entry.id}
                 trackId={entry.track_id}
                 reactions={entry.reactions || []}

@@ -30,3 +30,13 @@ it('honors document clipboard style resets on semantic wrapper elements', () => 
   expect(clipboardHtmlToMarkdown('<i style="font-style:normal">Ordinary</i>'))
     .toBe('Ordinary');
 });
+
+it('preserves document sibling lists and unexpected readable list children in order', () => {
+  expect(clipboardHtmlToMarkdown('<ol><li>Parent</li><ul><li>Nested text</li></ul><li>Next</li></ol>'))
+    .toBe('1. Parent\n   - Nested text\n2. Next');
+  const result = clipboardHtmlToMarkdown('<ol><li>First</li><div>Do not lose this</div><li value="7">Last</li></ol>');
+  expect(result).toContain('Do not lose this');
+  expect(result).toContain('7. Last');
+  expect(result.indexOf('Do not lose this')).toBeGreaterThan(result.indexOf('First'));
+  expect(result.indexOf('Do not lose this')).toBeLessThan(result.indexOf('Last'));
+});

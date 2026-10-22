@@ -1,3 +1,5 @@
+import { AttachmentGallery, orderGalleryAttachments } from './AttachmentGallery';
+import { ReactionControl } from './ReactionControl';
 import { useState, useEffect, useMemo, useRef, useCallback, memo } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -13,15 +15,14 @@ import {
   FileAudio,
   FileText,
   MessageSquare,
-  Share2,
-  ThumbsUp
+  Share2
 } from 'lucide-react';
 import { EntryMetaFields } from './EntryMetaFields';
 import { TagChip } from '../../ui';
 import { ProvenanceBadge } from './ProvenanceBadge';
 import { isSamePrincipal, formatStackedDateTime, entryTypeColor } from '../../utils';
-import { useCanEditEntry } from '../../utils/entryEditRights';
-import { firstImageAttachmentFromAttachments } from '../../utils/entryMedia';
+import { fetchTrackWithCollaborators, resolveTrackPermissions, useCanEditEntry } from '../../utils/entryEditRights';
+import { attachmentImageDisplayUrl, CARD_PREVIEW_ATTACHMENT_FIELD, firstImageAttachmentFromAttachments } from '../../utils/entryMedia';
 import {
   formatAttachmentSize,
   getAttachmentKind
@@ -39,7 +40,6 @@ import {
 import { appPath } from '../../utils/resourcePaths';
 import { useAuth } from '../../context/AuthContext';
 import { useScope } from '../../context/ScopeContext';
-import { publicSharingApi } from '../../api/sharing';
 import { useConfirm } from '../../context/ConfirmContext';
 import { useToast } from '../../context/ToastContext';
 import { AuthedImage, Avatar, KebabMenu, type KebabMenuItem, LINE_ICON_STROKE, MarkdownContent, Pill } from '../ui';
@@ -125,44 +125,13 @@ function EntryCardInner({
 
   const [reactions, setReactions] = useState(entry.reactions || []);
   useEffect(() => { setReactions(entry.reactions || []); }, [entry.reactions]);
-  const totalLikes = reactions.reduce((acc, r) => acc + r.count, 0);
-  const quickLikeActive = !!reactions.find(r => r.emoji === '👍')?.user_reacted;
-
-  const canReact = publicMode
-    ? (publicPermissions?.create_comments ?? false)
-    : true;
-
-  const handleLike = async () => {
-    if (publicMode && (!canReact || !publicToken)) return;
-    const existing = reactions.find(r => r.emoji === '👍');
-    try {
-      if (existing?.user_reacted) {
-        if (publicMode && publicToken) {
-          await publicSharingApi.removePublicReaction(publicToken, entry.id, '👍');
-        } else {
-          await entriesApi.removeReaction(entry.id, '👍');
-        }
-        setReactions(prev =>
-          prev.map(r => r.emoji === '👍' ? { ...r, count: r.count - 1, user_reacted: false } : r).filter(r => r.count > 0)
-        );
-      } else {
-        if (publicMode && publicToken) {
-          await publicSharingApi.addPublicReaction(publicToken, entry.id, '👍');
-        } else {
-          await entriesApi.addReaction(entry.id, '👍');
-        }
-        if (existing) {
-          setReactions(prev =>
-            prev.map(r => r.emoji === '👍' ? { ...r, count: r.count + 1, user_reacted: true } : r)
-          );
-        } else {
-          setReactions(prev => [...prev, { emoji: '👍', count: 1, user_reacted: true }]);
-        }
-      }
-    } catch {
-      showToast('Failed to update reaction', 'error');
-    }
-  };
+  const { data: reactionTrack } = useQuery({
+    queryKey: ['track', entry.track_id || '', 'edit-rights'],
+    queryFn: () => fetchTrackWithCollaborators(entry.track_id),
+    enabled: !publicMode && !track && Boolean(entry.track_id),
+    staleTime: 60_000,
+  });
+  const canReact = publicMode ? (publicPermissions?.create_comments ?? false) : resolveTrackPermissions(user, track || reactionTrack).canComment;
 
   const primaryContentRef = useRef<HTMLDivElement>(null);
   const [isOverflowing, setIsOverflowing] = useState(false);
@@ -256,8 +225,10 @@ function EntryCardInner({
       ? (rawLp as StoredLinkPreview)
       : null;
 
+  const preferredImageId = typeof entry.custom_fields?.[CARD_PREVIEW_ATTACHMENT_FIELD] === 'string'
+    ? entry.custom_fields[CARD_PREVIEW_ATTACHMENT_FIELD] as string : undefined;
   const heroImage = firstImageAttachmentFromAttachments(
-    entry.attachments,
+    orderGalleryAttachments(entry.attachments || []),
     entry.custom_fields
   );
   const heroImageUrl = heroImage?.url ?? null;
@@ -272,14 +243,14 @@ function EntryCardInner({
   const fileAttachments = useMemo(
     () =>
       entry.attachments?.filter(
-        att => att.source_type === 'file' && att.id !== heroImage?.attachmentId,
+        att => att.source_type === 'file' && !attachmentImageDisplayUrl(att),
       ) ?? [],
     [entry.attachments, heroImage?.attachmentId],
   );
 
   const visibleFileAttachments = useMemo(
-    () => fileAttachments.filter(att => att.scan_status !== 'blocked'),
-    [fileAttachments]
+    () => orderGalleryAttachments((entry.attachments || []).filter(att => att.source_type === 'file' && att.scan_status !== 'blocked'), preferredImageId),
+    [entry.attachments, preferredImageId]
   );
   const openAttachment = useMemo(
     () =>
@@ -534,13 +505,13 @@ function EntryCardInner({
                 </div>
               </a>
             ) : null}
-            {showAttachmentHero && heroImageUrl ? (
-              <AuthedImage
-                src={heroImageUrl}
-                alt="Entry preview"
-                className="w-full max-h-64 rounded-[var(--radius-card)] border border-[var(--panel-border)] object-cover"
-              />
+            {!(entry.attachments || []).some(att => attachmentImageDisplayUrl(att)) && showAttachmentHero && heroImageUrl ? (
+              <AuthedImage src={heroImageUrl} alt="Entry preview" className="block mx-auto h-auto w-auto max-h-64 max-w-full object-contain" />
             ) : null}
+            <AttachmentGallery attachments={entry.attachments || []} primaryId={preferredImageId} onOpen={att => {
+              if (att.source_type === 'url' && att.external_url) window.open(att.external_url, '_blank', 'noopener,noreferrer');
+              else void handleOpenFileAttachment(att);
+            }} />
             {fileAttachments.length > 0 ? (
               <div className="flex flex-wrap gap-2">
                 {fileAttachments.map(att => (
@@ -702,22 +673,8 @@ function EntryCardInner({
               Human-source renders are intentionally subtle (low chrome). */}
           <ProvenanceBadge entry={entry} />
           {!hideComments && (
-            <button
-              type="button"
-              onClick={!canReact ? undefined : (e => { e.stopPropagation(); void handleLike(); })}
-              disabled={!canReact}
-              className={`inline-flex items-center gap-1 transition-colors duration-fast ${
-                !canReact ? 'cursor-default' : ''
-              } ${
-                quickLikeActive
-                  ? 'text-[var(--brand-accent)]'
-                  : 'hover:text-[var(--text)] text-[var(--text-subtle)]'
-              }`}
-              aria-label={quickLikeActive ? 'Remove like' : 'Like'}
-            >
-              <ThumbsUp size={13} strokeWidth={LINE_ICON_STROKE} aria-hidden />
-              <span className="tabular-nums">{totalLikes}</span>
-            </button>
+            <ReactionControl targetId={entry.id} reactions={reactions} onChange={setReactions}
+              disabled={!canReact || (publicMode && !publicToken)} publicToken={publicToken} />
           )}
           {!publicMode && (
             <button

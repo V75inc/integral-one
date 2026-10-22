@@ -1,3 +1,5 @@
+import { mergeComments } from '../utils/commentTree';
+import { COMMENT_REFETCH_EVENT } from '../services/graphMutationInvalidation';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { commentsApi, entriesApi } from '../api';
 import { publicSharingApi } from '../api/sharing';
@@ -28,6 +30,13 @@ export function useEntryComments({
   onCountRef.current = onCommentCountChange;
 
   const [comments, setComments] = useState<Comment[]>([]);
+  const scope = `${entryId}:${publicToken || ""}`;
+  const currentScope = useRef({ key: scope });
+  if (currentScope.current.key !== scope) currentScope.current = { key: scope };
+  const revision = useRef(0);
+  const hasLoaded = useRef(false);
+  const posting = useRef(false);
+  const replying = useRef(false);
   const [commentText, setCommentText] = useState('');
   const [loadingComments, setLoadingComments] = useState(true);
   const [submittingComment, setSubmittingComment] = useState(false);
@@ -41,69 +50,78 @@ export function useEntryComments({
   // nothing, and the public read has no such flag to report.
   const [canModerate, setCanModerate] = useState(false);
 
-  const bumpCommentCount = useCallback((next: Comment[]) => {
-    onCountRef.current?.(next.length);
-  }, []);
+  useEffect(() => { if (enabled && !loadingComments && hasLoaded.current) onCountRef.current?.(comments.length); }, [comments, loadingComments, enabled]);
 
   useEffect(() => {
-    if (!enabled) {
-      setLoadingComments(false);
-      return;
-    }
     let cancelled = false;
-    setLoadingComments(true);
-
-    const fetchPromise: Promise<{ comments: Comment[]; canModerate: boolean }> =
-      publicToken
-        ? publicSharingApi
-            .getPublicComments(publicToken, entryId)
+    let requestId = 0;
+    hasLoaded.current = false;
+    setComments([]);
+    setCommentText('');
+    setReplyText('');
+    setReplyingToId(null);
+    setEditingCommentId(null);
+    setEditCommentText('');
+    posting.current = false;
+    replying.current = false;
+    setSubmittingComment(false);
+    setSubmittingReply(false);
+    setCanModerate(false);
+    if (!enabled) { setLoadingComments(false); return; }
+    const load = () => {
+      const id = ++requestId;
+      const started = revision.current;
+      setLoadingComments(true);
+      const promise = publicToken
+        ? publicSharingApi.getPublicComments(publicToken, entryId)
             .then(res => ({ comments: res.comments || [], canModerate: false }))
         : entriesApi.getCommentsWithMeta(entryId);
-
-    fetchPromise
-      .then(({ comments: nextComments, canModerate: nextCanModerate }) => {
-        if (cancelled) return;
-        setComments(nextComments);
-        setCanModerate(nextCanModerate);
-        bumpCommentCount(nextComments);
-      })
-      .catch(() => {
-        if (cancelled) return;
-        setComments([]);
-        // Fail closed: a failed read must not leave a stale moderation
-        // affordance on screen from a previous entry.
-        setCanModerate(false);
-      })
-      .finally(() => {
-        if (!cancelled) setLoadingComments(false);
-      });
-    return () => {
-      cancelled = true;
+      promise.then(result => {
+        if (cancelled || id !== requestId) return;
+        if (started !== revision.current) { load(); return; }
+        hasLoaded.current = true;
+        setComments(mergeComments(result.comments));
+        setCanModerate(result.canModerate);
+      }).catch(() => { if (!cancelled && id === requestId) setCanModerate(false); })
+        .finally(() => { if (!cancelled && id === requestId) setLoadingComments(false); });
     };
-  }, [entryId, bumpCommentCount, enabled, publicToken]);
+    const refetch = (event: Event) => {
+      if ((event as CustomEvent<{ entryId?: string }>).detail?.entryId === entryId) load();
+    };
+    load();
+    window.addEventListener(COMMENT_REFETCH_EVENT, refetch);
+    return () => { cancelled = true; window.removeEventListener(COMMENT_REFETCH_EVENT, refetch); };
+  }, [entryId, enabled, publicToken]);
 
   const submitComment = useCallback(async () => {
-    if (!commentText.trim()) return;
+    if (!commentText.trim() || posting.current) return;
+    posting.current = true;
+    revision.current++;
+    const requestScope = currentScope.current;
     setSubmittingComment(true);
     try {
       const c = publicToken
         ? (await publicSharingApi.createPublicComment(publicToken, entryId, commentText.trim())).comment
         : await entriesApi.addComment(entryId, commentText.trim());
-      setComments(p => {
-        const next = [...p, c];
-        bumpCommentCount(next);
-        return next;
-      });
+      if (requestScope !== currentScope.current) return;
+      revision.current++;
+      setComments(p => mergeComments(p, [c]));
       setCommentText('');
     } catch {
       showToast('Failed to post comment', 'error');
     } finally {
-      setSubmittingComment(false);
+      if (requestScope === currentScope.current) {
+        posting.current = false;
+        setSubmittingComment(false);
+      }
     }
-  }, [commentText, entryId, bumpCommentCount, showToast, publicToken]);
+  }, [commentText, entryId, showToast, publicToken, scope]);
 
   const submitReply = useCallback(async () => {
-    if (!replyingToId || !replyText.trim()) return;
+    if (!replyingToId || !replyText.trim() || replying.current) return;
+    replying.current = true;
+    revision.current++;
+    const requestScope = currentScope.current;
     setSubmittingReply(true);
     try {
       const c = await entriesApi.addComment(
@@ -111,22 +129,24 @@ export function useEntryComments({
         replyText.trim(),
         replyingToId
       );
-      setComments(p => {
-        const next = [...p, c];
-        bumpCommentCount(next);
-        return next;
-      });
+      if (requestScope !== currentScope.current) return;
+      revision.current++;
+      setComments(p => mergeComments(p, [c]));
       setReplyingToId(null);
       setReplyText('');
     } catch {
       showToast('Failed to post reply', 'error');
     } finally {
-      setSubmittingReply(false);
+      if (requestScope === currentScope.current) {
+        replying.current = false;
+        setSubmittingReply(false);
+      }
     }
-  }, [entryId, replyingToId, replyText, bumpCommentCount, showToast]);
+  }, [entryId, replyingToId, replyText, showToast, scope]);
 
   const deleteComment = useCallback(
     async (id: string) => {
+      const requestScope = currentScope.current;
       const target = comments.find(c => c.id === id);
       const raw = target?.text?.trim() || '';
       const excerpt =
@@ -138,25 +158,26 @@ export function useEntryComments({
         cancelLabel: 'Keep',
         variant: 'danger',
       });
-      if (!ok) return;
+      if (!ok || requestScope !== currentScope.current) return;
       try {
         await commentsApi.delete(id);
-        setComments(p => {
-          const next = p.filter(c => c.id !== id);
-          bumpCommentCount(next);
-          return next;
-        });
+        if (requestScope !== currentScope.current) return;
+        revision.current++;
+        setComments(p => p.filter(c => c.id !== id));
       } catch {
         showToast('Failed to delete comment', 'error');
       }
     },
-    [comments, confirm, bumpCommentCount, showToast]
+    [comments, confirm, showToast]
   );
 
   const saveEditComment = useCallback(
     async (id: string) => {
+      const requestScope = currentScope.current;
       try {
         const updated = await commentsApi.update(id, editCommentText);
+        if (requestScope !== currentScope.current) return;
+        revision.current++;
         setComments(p =>
           p.map(c =>
             c.id === id ? { ...c, text: updated.text || editCommentText } : c

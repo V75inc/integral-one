@@ -77,3 +77,5 @@ describe('global Inbox proposal review', () => {
     expect(screen.queryByText('No pending approvals')).not.toBeInTheDocument();
   });
 });
+
+vi.mock('../../../api/designDecisions', () => ({ listDesignDecisions: vi.fn(async () => []), discardDesign: vi.fn() }));

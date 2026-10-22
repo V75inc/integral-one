@@ -8,6 +8,7 @@ import { ExternalLink, Sparkles, Trash2 } from 'lucide-react';
 import {
   AGENT_KEY_MODE_LABELS,
   isSpeechProvider,
+  MODEL_CREDENTIALS_QUERY_KEY,
   MODEL_SLOT_HINTS,
   MODEL_SLOT_LABELS,
   modelCredentialsApi,
@@ -33,7 +34,6 @@ import { useAgentiveCapability } from '../hooks/useAgentiveCapability';
 import { Input, Select, Stack, Surface, Text } from '../../../ui';
 import { SettingsSection, StatusPill } from '../components/Field';
 
-const QUERY_KEY = ['model-credentials', 'me'] as const;
 const CUSTOM_MODEL_VALUE = '__custom__';
 
 const PROVIDER_OPTIONS: { value: ModelProvider; label: string }[] = (
@@ -424,7 +424,7 @@ export function ModelCredentialsSection() {
   const [speech, setSpeech] = useState<SpeechSlotState>(freshSpeechSlot);
 
   const credQuery = useQuery<ModelCredential | null>({
-    queryKey: QUERY_KEY,
+    queryKey: MODEL_CREDENTIALS_QUERY_KEY,
     queryFn: () => modelCredentialsApi.get(),
   });
 
@@ -498,7 +498,7 @@ export function ModelCredentialsSection() {
     onSuccess: cred => {
       setApiKey('');
       setSpeech(prev => ({ ...prev, apiKey: '' }));
-      qc.setQueryData(QUERY_KEY, cred);
+      qc.setQueryData(MODEL_CREDENTIALS_QUERY_KEY, cred);
       qc.invalidateQueries({ queryKey: ['agentive', 'status'] });
       toast.showToast('Models and keys saved', 'success');
     },
@@ -540,7 +540,7 @@ export function ModelCredentialsSection() {
   const deleteMut = useMutation({
     mutationFn: () => modelCredentialsApi.revoke(),
     onSuccess: () => {
-      qc.setQueryData(QUERY_KEY, null);
+      qc.setQueryData(MODEL_CREDENTIALS_QUERY_KEY, null);
       qc.invalidateQueries({ queryKey: ['agentive', 'status'] });
       toast.showToast('Models and keys removed', 'success');
     },

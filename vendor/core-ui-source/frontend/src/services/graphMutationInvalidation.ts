@@ -197,8 +197,8 @@ export async function invalidateAfterChangeEvent(
     return;
   }
 
-  if (action === 'comment.create') {
-    const after = asRecord(evt.after);
+  if (action.startsWith('comment.')) {
+    const after = asRecord(evt.after) || asRecord(evt.before);
     const entryId = typeof after?._entry_id === 'string'
       ? after._entry_id
       : undefined;

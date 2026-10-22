@@ -1,0 +1,73 @@
+import { act, cleanup, renderHook, waitFor } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { useEntryComments } from '../useEntryComments';
+import { COMMENT_REFETCH_EVENT } from '../../services/graphMutationInvalidation';
+import type { Comment } from '../../types';
+const mocks = vi.hoisted(() => ({ get: vi.fn(), add: vi.fn(), count: vi.fn(), update: vi.fn(), remove: vi.fn(), confirm: vi.fn() }));
+vi.mock('../../api', () => ({ entriesApi: { getCommentsWithMeta: mocks.get, addComment: mocks.add }, commentsApi: { update: mocks.update, delete: mocks.remove } }));
+vi.mock('../../context/AuthContext', () => ({ useAuth: () => ({ user: { id: 'me' } }) }));
+vi.mock('../../context/ConfirmContext', () => ({ useConfirm: () => mocks.confirm }));
+vi.mock('../../context/ToastContext', () => ({ useToast: () => ({ showToast: vi.fn() }) }));
+const comment = (id: string): Comment => ({ id, text: id, author_id: 'me', entry_id: 'e', created_at: '2026-10-21' });
+function deferred<T>() { let resolve!: (v: T) => void; const promise = new Promise<T>(r => { resolve = r; }); return { promise, resolve }; }
+const read = (comments: Comment[]) => ({ comments, canModerate: false });
+beforeEach(() => { vi.clearAllMocks(); mocks.get.mockResolvedValue(read([])); mocks.confirm.mockResolvedValue(true); });
+afterEach(cleanup);
+describe('comment request/event reconciliation', () => {
+  it('merges event-before-response by ID and blocks same-tick double submit', async () => {
+    const posted = deferred<Comment>(); mocks.add.mockReturnValue(posted.promise);
+    const { result } = renderHook(() => useEntryComments({ entryId: 'e', onCommentCountChange: mocks.count }));
+    await waitFor(() => expect(result.current.loadingComments).toBe(false));
+    act(() => result.current.setCommentText('hello'));
+    let request!: Promise<void>;
+    act(() => { request = result.current.submitComment(); void result.current.submitComment(); });
+    mocks.get.mockResolvedValue(read([comment('one')]));
+    act(() => window.dispatchEvent(new CustomEvent(COMMENT_REFETCH_EVENT, { detail: { entryId: 'e' } })));
+    await waitFor(() => expect(result.current.comments).toHaveLength(1));
+    await act(async () => { posted.resolve(comment('one')); await request; });
+    expect(mocks.add).toHaveBeenCalledTimes(1);
+    expect(result.current.comments).toHaveLength(1);
+    expect(mocks.count).toHaveBeenLastCalledWith(1);
+  });
+  it('refetches a snapshot started before the HTTP response instead of erasing a new comment', async () => {
+    const stale = deferred<ReturnType<typeof read>>(); const posted = deferred<Comment>();
+    mocks.add.mockReturnValue(posted.promise);
+    const { result } = renderHook(() => useEntryComments({ entryId: 'e' }));
+    await waitFor(() => expect(result.current.loadingComments).toBe(false));
+    act(() => result.current.setCommentText('hello'));
+    let request!: Promise<void>; act(() => { request = result.current.submitComment(); });
+    mocks.get.mockReturnValueOnce(stale.promise).mockResolvedValue(read([comment('one'), comment('other')]));
+    act(() => window.dispatchEvent(new CustomEvent(COMMENT_REFETCH_EVENT, { detail: { entryId: 'e' } })));
+    await act(async () => { posted.resolve(comment('one')); await request; });
+    await act(async () => { stale.resolve(read([])); });
+    await waitFor(() => expect(result.current.comments.map(c => c.id)).toEqual(['one', 'other']));
+  });
+  it.each(['edit', 'delete'])('ignores a delayed %s result after switching scope and resets drafts', async operation => {
+    const pending = deferred<Comment>();
+    mocks.update.mockReturnValue(pending.promise); mocks.remove.mockReturnValue(pending.promise);
+    mocks.get.mockResolvedValue(read([comment('one')]));
+    const { result, rerender } = renderHook(({ id }) => useEntryComments({ entryId: id }), { initialProps: { id: 'e' } });
+    await waitFor(() => expect(result.current.comments).toHaveLength(1));
+    act(() => { result.current.setEditingCommentId('one'); result.current.setEditCommentText('old draft'); result.current.setReplyText('old reply'); });
+    let request!: Promise<void>;
+    await act(async () => { request = operation === 'edit' ? result.current.saveEditComment('one') : result.current.deleteComment('one'); });
+    mocks.get.mockResolvedValue(read([{ ...comment('one'), text: 'new scope' }]));
+    rerender({ id: 'another' });
+    await waitFor(() => expect(result.current.comments[0]?.text).toBe('new scope'));
+    await act(async () => { pending.resolve({ ...comment('one'), text: 'old edit' }); await request; });
+    expect(result.current.comments[0].text).toBe('new scope');
+    expect(result.current.replyText).toBe('');
+    expect(result.current.editCommentText).toBe('');
+    expect(result.current.editingCommentId).toBeNull();
+  });
+  it('ignores a comment response after switching entries', async () => {
+    const posted = deferred<Comment>(); mocks.add.mockReturnValue(posted.promise);
+    const { result, rerender } = renderHook(({ id }) => useEntryComments({ entryId: id }), { initialProps: { id: 'e' } });
+    await waitFor(() => expect(result.current.loadingComments).toBe(false));
+    act(() => result.current.setCommentText('hello'));
+    let request!: Promise<void>; act(() => { request = result.current.submitComment(); });
+    rerender({ id: 'another' });
+    await act(async () => { posted.resolve(comment('one')); await request; });
+    expect(result.current.comments).toEqual([]);
+  });
+});

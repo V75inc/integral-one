@@ -3,6 +3,7 @@ import {
   unwrapResource,
   toArr,
   normalizeEntry,
+  normalizeReactions,
   ensureEntryTypeId,
   hydrateEntryTagsForList,
   unwrapApiDataEnvelope,
@@ -133,10 +134,12 @@ export const entriesApi = {
   delete: (id: string) => apiClient.delete(`/entries/${id}`),
   addReaction: (id: string, emoji: string) =>
     apiClient.post(`/entries/${id}/reactions`, { emoji }).then(r => r.data),
+  selectReaction: (id: string, emoji: string) =>
+    apiClient.put(`/entries/${id}/reactions`, { emoji }).then(r => r.data),
   removeReaction: (id: string, emoji: string) =>
     apiClient.delete(
       `/entries/${id}/reactions/${encodeURIComponent(emoji)}`
-    ),
+    ).then(r => r.data),
   /**
    * The rows plus `can_moderate`, the backend's answer to "may this caller
    * delete comments they did not write". Read that flag rather than deriving
@@ -148,7 +151,7 @@ export const entriesApi = {
    */
   getCommentsWithMeta: (id: string) =>
     apiClient.get(`/entries/${id}/comments`).then(r => ({
-      comments: toArr(r.data) as Comment[],
+      comments: (toArr(r.data) as Comment[]).map(c => ({ ...c, reactions: normalizeReactions(c.reactions, cachedPrincipalId()) })),
       canModerate: Boolean(
         (r.data as { can_moderate?: boolean } | undefined)?.can_moderate
       ),

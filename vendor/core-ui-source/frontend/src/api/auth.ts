@@ -40,7 +40,9 @@ export const authApi = {
     apiClient.get('/auth/me').then(async r => {
       const user = normalizeUserMe(r.data);
       const profile = await getHostSession()?.profile?.();
-      return profile ? {...user, email: profile.email, display_name: user.display_name && user.display_name !== 'Owner' ? user.display_name : profile.name || profile.email} : user;
+      // The local profile is also chat's identity source. A host account name
+      // must not mask an unsaved local name and disable Profile's Save action.
+      return profile ? { ...user, email: profile.email } : user;
     }),
   /** Blacklists the current JWT on the server (requires Bearer token). */
   logout: () => apiClient.post('/auth/logout').then(r => r.data),

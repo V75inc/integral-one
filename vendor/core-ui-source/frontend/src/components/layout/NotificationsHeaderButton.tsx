@@ -67,7 +67,7 @@ export function NotificationsHeaderButton() {
     }
   }, [open, refetch, refetchApprovals]);
 
-  const approvalsCount = approvals.length + stagedApprovals.rows.length;
+  const approvalsCount = approvals.length + stagedApprovals.count;
   const totalCount = unreadCount + approvalsCount;
   const badge =
     totalCount > 0 ? (totalCount > 99 ? '99+' : String(totalCount)) : null;
@@ -270,9 +270,9 @@ function ApprovalsBody({
   return (
     <>
       <div className="flex flex-wrap items-center justify-between gap-2 shrink-0">
-        {rows.length + staged.rows.length > 0 ? (
+        {rows.length + staged.count > 0 ? (
           <p className="text-xs text-[var(--text-muted)]">
-            {rows.length + staged.rows.length} pending
+            {rows.length + staged.count} pending
           </p>
         ) : (
           <span className="text-xs text-[var(--text-muted)]">
@@ -294,7 +294,7 @@ function ApprovalsBody({
           error={error}
           onRetry={onRefetch}
           onDecide={onRefetch}
-          hideEmptyState={staged.rows.length > 0 || !staged.loaded || staged.refreshFailed}
+          hideEmptyState={staged.count > 0 || !staged.loaded || staged.refreshFailed}
           compact
         />
         <StagedApprovalsList {...staged} />

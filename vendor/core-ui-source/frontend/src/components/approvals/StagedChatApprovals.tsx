@@ -1,5 +1,8 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Eye, X } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { discardDesign, listDesignDecisions, type DesignDecision } from '../../api/designDecisions';
+import { useScopeOptional } from '../../context/ScopeContext';
 import { LINE_ICON_STROKE } from '../ui';
 import { Text } from '../../ui';
 import { formatRelativeTime } from '../../utils';
@@ -22,13 +25,19 @@ import type { StagedChange } from '../../features/ai-chat/staging/types';
  */
 /** Bounded proposal collection shared by the full page and global Inbox. */
 export function useStagedApprovals() {
+  const workspaceId = useScopeOptional()?.scope?.workspaceId;
+  const requestRevision = useRef(0);
+  const [designs, setDesigns] = useState<DesignDecision[]>([]);
   const [rows, setRows] = useState<StagedChange[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [refreshFailed, setRefreshFailed] = useState(false);
 
   const refetch = useCallback(async () => {
+    const revision = ++requestRevision.current;
     try {
-      const pending = await listPendingStagedChanges();
+      const [pending, savedDesigns] = await Promise.all([listPendingStagedChanges(), listDesignDecisions()]);
+      if (revision !== requestRevision.current) return;
+      setDesigns(savedDesigns);
       // design_proposal is confirmed in chat, not via Approvals Approve —
       // showing it here collapsed design confirm into a bless dialog.
       setRows(
@@ -38,14 +47,18 @@ export function useStagedApprovals() {
       );
       setRefreshFailed(false);
     } catch {
+      if (revision !== requestRevision.current) return;
       // Preserve known proposals; a failed refresh is not an "all clear".
       setRefreshFailed(true);
     } finally {
-      setLoaded(true);
+      if (revision === requestRevision.current) setLoaded(true);
     }
-  }, []);
+  }, [workspaceId]);
 
   useEffect(() => {
+    setRows([]);
+    setDesigns([]);
+    setLoaded(false);
     void refetch();
     // External MCP proposals have no local chat event. Refresh boundedly and
     // on the events shared by chat/Inbox so this page does not require reload.
@@ -55,6 +68,7 @@ export function useStagedApprovals() {
     window.addEventListener('integral:staging-created', refresh);
     window.addEventListener('integral:staging-state-changed', refresh);
     return () => {
+      ++requestRevision.current;
       window.clearInterval(interval);
       window.removeEventListener('focus', refresh);
       window.removeEventListener('integral:staging-created', refresh);
@@ -62,7 +76,7 @@ export function useStagedApprovals() {
     };
   }, [refetch]);
 
-  return { rows, loaded, refreshFailed, refetch };
+  return { rows, designs, count: rows.length + designs.length, loaded, refreshFailed, refetch };
 }
 
 export function StagedChatApprovals({
@@ -72,15 +86,15 @@ export function StagedChatApprovals({
 }) {
   const collection = useStagedApprovals();
   useEffect(() => {
-    if (collection.loaded) onCountChange?.(collection.rows.length);
-  }, [collection.loaded, collection.rows.length, onCountChange]);
+    if (collection.loaded) onCountChange?.(collection.count);
+  }, [collection.loaded, collection.count, onCountChange]);
   return <StagedApprovalsList {...collection} />;
 }
 
 export function StagedApprovalsList({
-  rows, loaded, refreshFailed, refetch,
+  rows, designs, loaded, refreshFailed, refetch,
 }: ReturnType<typeof useStagedApprovals>) {
-  if (!loaded || (rows.length === 0 && !refreshFailed)) return null;
+  if (!loaded || (rows.length === 0 && designs.length === 0 && !refreshFailed)) return null;
 
   return (
     <section aria-label="Proposed changes" className="mt-8">
@@ -99,6 +113,9 @@ export function StagedApprovalsList({
         </div>
       )}
       <div className="space-y-2">
+        {designs.map(design => (
+          <DesignDecisionRow key={`${design.thread_id}:${design.proposed_at}`} design={design} onDecide={refetch} />
+        ))}
         {rows.map(sc => (
           <StagedChangeRow key={sc.token} staged={sc} onDecide={refetch} />
         ))}
@@ -205,4 +222,41 @@ function StagedChangeRow({
       />
     </div>
   );
+}
+
+
+function DesignDecisionRow({ design, onDecide }: { design: DesignDecision; onDecide(): void }) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const confirm = useConfirm();
+  const discard = async () => {
+    if (!await confirm({
+      title: 'Discard saved design?',
+      message: `Discard “${design.summary}” revision ${design.blueprint_revision}? This retires the saved proposal. Existing records are preserved.`,
+      confirmLabel: 'Discard design', variant: 'danger',
+    })) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await discardDesign(design);
+      window.dispatchEvent(new Event('integral:staging-state-changed'));
+      onDecide();
+    } catch (err) {
+      const response = (err as { response?: { data?: { message?: string; detail?: string } } }).response?.data;
+      setError(response?.message || response?.detail || 'Could not discard this design. Open its conversation to review current work.');
+    } finally { setBusy(false); }
+  };
+  return <div className="rounded-lg border border-[var(--panel-border)] bg-[var(--nav-active-bg)] p-4">
+    <Text as="p" variant="body-sm" weight="medium" className="block">{design.summary}</Text>
+    <Text as="p" variant="meta" tone="muted" className="mt-1 block">
+      {design.partial_build ? 'Build needs reconciliation' : design.approved ? 'Design confirmed · build not completed' : 'Awaiting design confirmation'}
+      {' · '}Revision {design.blueprint_revision}
+    </Text>
+    <Text as="p" variant="body-sm" tone="muted" className="mt-1 block">Review or resume in {design.thread_title || 'the original conversation'}. Confirming a design does not execute its changes.</Text>
+    <div className="mt-2 flex items-center gap-4">
+      <Link to={`/agent?thread=${encodeURIComponent(design.thread_id)}`} className="min-h-11 inline-flex items-center text-[var(--link)] hover:underline">Open design conversation</Link>
+      {!design.partial_build && <button type="button" disabled={busy} onClick={() => void discard()} className="min-h-11 text-[var(--danger-fg)] hover:underline disabled:opacity-50">Discard design</button>}
+    </div>
+    {error && <div role="alert"><Text as="p" variant="body-sm" tone="danger" className="mt-2 block">{error}</Text></div>}
+  </div>;
 }

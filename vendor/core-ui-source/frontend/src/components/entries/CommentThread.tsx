@@ -1,7 +1,10 @@
-import { X, Send, Trash2, Edit2, Check } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { ReactionControl } from './ReactionControl';
+import { normalizeReactions } from '../../api/helpers';
+import { CommentComposer } from './comments/CommentComposer';
+import { X, Trash2, Edit2, Check } from 'lucide-react';
 import { Avatar } from '../ui/Avatar';
 import { LINE_ICON_STROKE } from '../ui';
-import { MentionableTextarea } from '../mentions/MentionableTextarea';
 import { CommentThreadRowView } from './CommentThreadRowView';
 import { isSamePrincipal, buildCommentForest } from '../../utils';
 import type { CommentThreadNode } from '../../utils/commentTree';
@@ -61,6 +64,8 @@ function CommentBranch({
   depth: number;
 } & Omit<CommentThreadProps, 'comments'>) {
   const c = node.comment;
+  const [reactions, setReactions] = useState(() => normalizeReactions(c.reactions, user?.user_id || user?.id));
+  useEffect(() => { setReactions(normalizeReactions(c.reactions, user?.user_id || user?.id)); }, [c.reactions, user?.user_id, user?.id]);
   // A comment posted through a public share link carries the sentinel
   // author id and no author export, so the generic fallback labelled it
   // "Member" — presenting an anonymous visitor as somebody with workspace
@@ -135,48 +140,22 @@ function CommentBranch({
             text={c.text}
             depth={depth}
             footer={
-              canComment ? (
               <>
-                <button
+                {user && <ReactionControl target="comment" targetId={c.id} reactions={reactions} onChange={setReactions} disabled={!canComment} />}
+                {canComment && <button
                   type="button"
                   onClick={() =>
                     replyingToId === c.id ? onCancelReply() : onStartReply(c.id)
                   }
-                  className="text-xs font-semibold text-[var(--text-muted)] hover:text-[var(--text)]"
+                  className="ml-3 text-xs font-semibold text-[var(--text-muted)] hover:text-[var(--text)]"
                 >
                   {replyingToId === c.id ? 'Cancel' : 'Reply'}
-                </button>
-                {replyingToId === c.id && (
-                  <div className="mt-2 flex items-center gap-2 rounded-[var(--radius-input)] bg-[var(--panel)] border border-[var(--panel-border)] pl-3 pr-1.5 py-1 transition-colors duration-fast hover:border-[var(--text-subtle)] focus-within:border-[var(--text-muted)]">
-                    <div className="flex-1 min-w-0">
-                      <MentionableTextarea
-                        value={replyText}
-                        onChange={onReplyTextChange}
-                        onKeyDown={e => {
-                          if (e.key === 'Enter' && !e.shiftKey) {
-                            e.preventDefault();
-                            onSubmitReply();
-                          }
-                        }}
-                        placeholder="Write a reply… (use @ to mention)"
-                        rows={1}
-                        className="w-full min-w-0 py-1.5 text-sm text-[var(--text)] bg-transparent resize-none focus:outline-none placeholder:text-[var(--text-subtle)]"
-                        trackId={trackId}
-                      />
-                    </div>
-                    <button
-                      type="button"
-                      onClick={onSubmitReply}
-                      disabled={submittingReply || !replyText.trim()}
-                      aria-label="Send reply"
-                      className="shrink-0 inline-flex items-center justify-center w-8 h-8 rounded-md text-[var(--text-subtle)] hover:text-[var(--text)] hover:bg-[var(--panel-2)] disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-[var(--text-subtle)] transition-colors duration-fast"
-                    >
-                      <Send size={14} strokeWidth={LINE_ICON_STROKE} />
-                    </button>
-                  </div>
+                </button>}
+                {canComment && replyingToId === c.id && (
+                  <CommentComposer value={replyText} onChange={onReplyTextChange} onSubmit={onSubmitReply}
+                    submitting={submittingReply} trackId={trackId} placeholder="Write a reply…" />
                 )}
               </>
-              ) : null
             }
           />
         )}

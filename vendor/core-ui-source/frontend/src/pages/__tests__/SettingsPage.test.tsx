@@ -22,7 +22,12 @@ describe('Settings navigation', () => {
     expect(screen.getByText('Your account')).toBeInTheDocument();
     expect(screen.getByText('AI & connections')).toBeInTheDocument();
     expect(screen.getByText('Governance')).toBeInTheDocument();
-    expect(within(screen.getByRole('navigation', { name: 'Settings sections' })).getAllByRole('button').map(b => b.textContent)).toEqual(['Profile', 'Appearance', 'Notifications', 'Voice input', 'AI Models', 'Connected agents', 'AI Skills', 'Connectors', 'Search', 'Operational Models', 'Sharing', 'Policies', 'Conflicts', 'Audit log', 'Help & about']);
+    expect(within(screen.getByRole('navigation', { name: 'Settings sections' })).getAllByRole('button').map(b => b.textContent)).toEqual(['Profile', 'Appearance', 'Notifications', 'Voice input', 'AI Models', 'Connected agents', 'AI Skills', 'Connectors', 'Search', 'Sharing', 'Policies', 'Conflicts', 'Audit log', 'Help & about']);
+  });
+  it('does not expose Operational Models through an old Settings link', async () => {
+    show('/settings#library');
+    expect(await screen.findByRole('heading', { name: 'Profile details' })).toBeInTheDocument();
+    expect(screen.queryByText('Operational Models')).not.toBeInTheDocument();
   });
   it.each(['about', 'get-started'])('preserves the old #%s help link', async hash => {
     show(`/settings#${hash}`);
