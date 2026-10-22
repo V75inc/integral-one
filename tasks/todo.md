@@ -10,14 +10,14 @@ Plan: `tasks/plan.md`
 
 **Acceptance criteria:**
 
-- [ ] `node -v` prints a v24 release
-- [ ] `PYTHON` is `C:\Program Files\Python312\python.exe` and prints a 3.12 version
-- [ ] `INTEGRAL_UV_BINARY` is `C:\v75\integral-one\.local\uv-0.13.4\uv.exe` and prints `uv 0.13.4`
-- [ ] `INTEGRAL_ACCOUNT_CONFIG`, `ONE_WINDOWS_CERT_SHA1`, `CSC_LINK`, and `CSC_KEY_PASSWORD` are unset in that session
+- [x] `node -v` prints a v24 release
+- [x] `PYTHON` is `C:\Program Files\Python312\python.exe` and prints a 3.12 version
+- [x] `INTEGRAL_UV_BINARY` is `C:\v75\integral-one\.local\uv-0.13.4\uv.exe` and prints `uv 0.13.4`
+- [x] `INTEGRAL_ACCOUNT_CONFIG`, `ONE_WINDOWS_CERT_SHA1`, `CSC_LINK`, and `CSC_KEY_PASSWORD` are unset in that session
 
 **Verification:**
 
-- [ ] Manual check: the four version and environment results above are recorded in the session output
+- [x] Manual check: the four version and environment results above are recorded in the session output
 - [ ] Build succeeds: not this task
 - [ ] Tests pass: not this task
 
@@ -33,14 +33,14 @@ Plan: `tasks/plan.md`
 
 **Acceptance criteria:**
 
-- [ ] `npm run setup` exits 0
-- [ ] The log says setup is complete
-- [ ] The unconfigured account file remains `configured: false`
+- [x] `npm run setup` exits 0
+- [x] The log says setup is complete
+- [x] The unconfigured account file remains `configured: false`
 
 **Verification:**
 
-- [ ] Build succeeds: `npm run setup`
-- [ ] Manual check: closing setup text and no change to `desktop/accounts/config.json`
+- [x] Build succeeds: `npm run setup`
+- [x] Manual check: closing setup text and no change to `desktop/accounts/config.json`
 - [ ] Tests pass: not this task unless setup itself runs them
 
 **Dependencies:** Task 1
@@ -55,14 +55,14 @@ Plan: `tasks/plan.md`
 
 **Acceptance criteria:**
 
-- [ ] The command exits 0
-- [ ] The log includes `Development installer built. It cannot pass the public bootstrap signature/release gates.`
-- [ ] `release\integral-one-0.1.2-win-x64.exe` exists
+- [x] The command exits 0
+- [x] The log includes `Development installer built. It cannot pass the public bootstrap signature/release gates.`
+- [x] `release\integral-one-0.1.2-win-x64.exe` exists
 
 **Verification:**
 
-- [ ] Build succeeds: `npm run build:installers`
-- [ ] Manual check: the exe path and the closing log line
+- [x] Build succeeds: `npm run build:installers`
+- [x] Manual check: the exe path and the closing log line
 - [ ] Tests pass: package inspection runs inside `build:installers`
 
 **Dependencies:** Task 2
@@ -73,10 +73,10 @@ Plan: `tasks/plan.md`
 
 ## Checkpoint: After Tasks 1-3
 
-- [ ] The unsigned exe exists at `release\integral-one-0.1.2-win-x64.exe`
-- [ ] The build was not `--signed`
-- [ ] The host profile was not used as an install target
-- [ ] Stop for the human to copy the exe into the Windows VM or sandbox
+- [x] The unsigned exe exists at `release\integral-one-0.1.2-win-x64.exe`
+- [x] The build was not `--signed`
+- [x] The host profile was not used as an install target
+- [x] Stop for the human to copy the exe into the Windows VM or sandbox
 
 ## Task 4: Install and reinstall in the guest
 
@@ -109,8 +109,8 @@ Plan: `tasks/plan.md`
 **Acceptance criteria:**
 
 - [ ] The note names version `0.1.2`, the exe path, and the VM or sandbox product
-- [ ] Signup, runtime download, offline restart, Authenticode, and public release are recorded as not tested
-- [ ] `install.ps1`, `desktop/accounts/config.json`, and `include_windows` are unchanged
+- [x] Signup, runtime download, offline restart, Authenticode, and public release are recorded as not tested
+- [x] `install.ps1`, `desktop/accounts/config.json`, and `include_windows` are unchanged
 
 **Verification:**
 

@@ -35,16 +35,16 @@ Nothing in this graph can run in parallel. The evidence note is last because it 
 
 ### Phase 1: Host build
 
-- [ ] Task 1: Confirm the host toolchain session
-- [ ] Task 2: Run `npm run setup`
-- [ ] Task 3: Run `npm run build:installers`
+- [x] Task 1: Confirm the host toolchain session
+- [x] Task 2: Run `npm run setup`
+- [x] Task 3: Run `npm run build:installers`
 
 ### Checkpoint: Installer artifact
 
-- [ ] `release\integral-one-0.1.2-win-x64.exe` exists
-- [ ] The build log says the development installer cannot pass the public bootstrap gates
-- [ ] Host `%APPDATA%\Integral` was not created or modified by the build
-- [ ] Human takes the exe into the VM or sandbox before any install
+- [x] `release\integral-one-0.1.2-win-x64.exe` exists
+- [x] The build log says the development installer cannot pass the public bootstrap gates
+- [x] Host `%APPDATA%\Integral` was not created or modified by the build
+- [x] Human takes the exe into the VM or sandbox before any install
 
 ### Phase 2: Guest rehearsal
 
@@ -54,7 +54,7 @@ Nothing in this graph can run in parallel. The evidence note is last because it 
 ### Checkpoint: Complete
 
 - [ ] Evidence note matches the spec success criteria
-- [ ] `include_windows` is off, `install.ps1` and `desktop/accounts/config.json` are unchanged, and no release was published
+- [x] `include_windows` is off, `install.ps1` and `desktop/accounts/config.json` are unchanged, and no release was published
 
 ## Risks and Mitigations
 
