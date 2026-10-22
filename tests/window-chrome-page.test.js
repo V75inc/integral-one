@@ -18,6 +18,38 @@ test('shell offset keeps the system bar variable and adds the title row', () => 
   assert.match(style.height, /--system-bar-h/);
   chrome.patchChromeOffset(style);
   assert.equal(style.top, 'calc(var(--window-titlebar-h, 0px) + var(--system-bar-h, 0px))');
+  const css = chrome.shellCss();
+  assert.match(css, /100dvh - var\(--window-titlebar-h, 0px\) - var\(--system-bar-h, 0px\)/);
+  assert.match(css, /90dvh - var\(--window-titlebar-h, 0px\) - var\(--system-bar-h, 0px\)/);
+  assert.match(css, /@media \(min-width: 640px\)/);
+});
+
+test('an inserted subtree offsets descendants that only mention the system bar', () => {
+  const nested = { style: { minHeight: 'calc(100vh - var(--system-bar-h, 0px))' } };
+  const inserted = { style: {}, querySelectorAll: () => [nested] };
+  const observers = [];
+  const previous = globalThis.MutationObserver;
+  globalThis.MutationObserver = class {
+    constructor(callback) { observers.push(callback); }
+    observe() {}
+    disconnect() {}
+  };
+  try {
+    const document = fakeDocument({ getAttribute: () => 'Collapse sidebar', click() {} });
+    chrome.mountWindowChrome(document, {
+      height: 32,
+      menus: [],
+      popupMenu() {},
+      setCaptionTheme() {},
+    }, { getItem: () => 'dark' });
+    const record = [{ addedNodes: [inserted], target: { style: {} } }];
+    for (const callback of observers) callback(record);
+    assert.match(nested.style.minHeight, /--window-titlebar-h/);
+    assert.match(nested.style.minHeight, /--system-bar-h/);
+  } finally {
+    if (previous) globalThis.MutationObserver = previous;
+    else delete globalThis.MutationObserver;
+  }
 });
 
 test('the row lists the host menus and toggles the existing rail button', () => {

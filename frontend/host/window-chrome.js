@@ -26,6 +26,23 @@ function patchChromeOffset(style) {
   }
 }
 
+// React commits a connected subtree as one record. The styled shell nodes are
+// descendants of that added node, so patching only the root leaves them short.
+function patchElement(node) {
+  if (!node) return;
+  if (node.style) patchChromeOffset(node.style);
+  if (typeof node.querySelectorAll !== 'function') return;
+  for (const child of node.querySelectorAll('[style]')) patchChromeOffset(child.style);
+}
+
+function utilitySelector(className) {
+  return '.' + className.replace(/[^a-zA-Z0-9_-]/g, character => `\\${character}`);
+}
+
+function offsetDeclaration(className, property, basis) {
+  return `${utilitySelector(className)} { ${property}: calc(${basis} - var(--window-titlebar-h, 0px) - var(--system-bar-h, 0px)) !important; }`;
+}
+
 function shellCss() {
   return `
     .one-window-titlebar {
@@ -75,6 +92,14 @@ function shellCss() {
     .system-bar-animated { top: var(--window-titlebar-h, 0px) !important; }
     .system-bar-layout .min-h-screen { min-height: calc(100vh - var(--window-titlebar-h, 0px) - var(--system-bar-h, 0px)) !important; }
     .system-bar-layout .h-screen { height: calc(100vh - var(--window-titlebar-h, 0px) - var(--system-bar-h, 0px)) !important; }
+    ${offsetDeclaration('h-[calc(100dvh-var(--system-bar-h,0px))]', 'height', '100dvh')}
+    ${offsetDeclaration('max-h-[calc(95dvh-var(--system-bar-h,0px))]', 'max-height', '95dvh')}
+    @media (min-width: 640px) {
+      ${offsetDeclaration('sm:min-h-[calc(85dvh-var(--system-bar-h,0px))]', 'min-height', '85dvh')}
+      ${offsetDeclaration('sm:min-h-[calc(80dvh-var(--system-bar-h,0px))]', 'min-height', '80dvh')}
+      ${offsetDeclaration('sm:max-h-[calc(95dvh-var(--system-bar-h,0px))]', 'max-height', '95dvh')}
+      ${offsetDeclaration('sm:max-h-[calc(90dvh-var(--system-bar-h,0px))]', 'max-height', '90dvh')}
+    }
   `;
 }
 
@@ -146,13 +171,11 @@ function mountWindowChrome(document, chrome, storage) {
       syncToggle(document, toggle);
       for (const record of records) {
         if (record.target?.style) patchChromeOffset(record.target.style);
-        for (const node of record.addedNodes || []) if (node?.style) patchChromeOffset(node.style);
+        for (const node of record.addedNodes || []) patchElement(node);
       }
     }).observe(document.body, { subtree: true, childList: true, attributes: true, attributeFilter: ['aria-label', 'style'] });
   }
-  if (typeof document.querySelectorAll === 'function') {
-    for (const node of document.querySelectorAll('[style]')) patchChromeOffset(node.style);
-  }
+  patchElement(document.documentElement);
 }
 
-module.exports = { RAIL_TOGGLE, shellCss, storedTheme, patchChromeOffset, mountWindowChrome };
+module.exports = { RAIL_TOGGLE, shellCss, storedTheme, patchChromeOffset, patchElement, mountWindowChrome };
