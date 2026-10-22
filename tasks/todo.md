@@ -1,133 +1,124 @@
-# Tasks: Windows development installer rehearsal
+# Tasks: Windows title bar
 
-Spec: `docs/SPEC-windows-development-installer.md`
+Spec: `docs/SPEC-windows-title-bar.md`
 
 Plan: `tasks/plan.md`
 
-## Task 1: Confirm the host toolchain session
+## Task 1: Caption colors and popup checks
 
-**Description:** Set the build session to the Python 3.12 and uv 0.13.4 binaries already on this PC. Do not install tools and do not replace PATH uv 0.12.6.
+**Description:** Add a host helper for the light and dark caption pairs, the menu allow-list, and the popup coordinate check.
 
 **Acceptance criteria:**
 
-- [x] `node -v` prints a v24 release
-- [x] `PYTHON` is `C:\Program Files\Python312\python.exe` and prints a 3.12 version
-- [x] `INTEGRAL_UV_BINARY` is `C:\v75\integral-one\.local\uv-0.13.4\uv.exe` and prints `uv 0.13.4`
-- [x] `INTEGRAL_ACCOUNT_CONFIG`, `ONE_WINDOWS_CERT_SHA1`, `CSC_LINK`, and `CSC_KEY_PASSWORD` are unset in that session
+- [x] Light is `#fafafa` / `#0b0b0c` and dark is `#1a1a1a` / `#ededed`, both with height 32
+- [x] An unknown theme produces no overlay
+- [x] Popup accepts only `file`, `edit`, `view`, `window`, and `help`, and only a finite point inside the content size
 
 **Verification:**
 
-- [x] Manual check: the four version and environment results above are recorded in the session output
+- [x] Tests pass: `npm test --prefix packages/desktop-host`
 - [ ] Build succeeds: not this task
-- [ ] Tests pass: not this task
+- [ ] Manual check: not this task
 
 **Dependencies:** None
 
-**Files likely touched:** None
+**Files likely touched:**
 
-**Estimated scope:** Small: 0 files
+- `packages/desktop-host/lib/window-chrome.js`
+- `packages/desktop-host/scripts/window-chrome.test.js`
 
-## Task 2: Run source setup
+**Estimated scope:** Small: 2 files
 
-**Description:** From the repo root, run `npm run setup` with the Task 1 environment. This installs locked dependencies, composes the UI, and bundles the local runtime. It does not sign or publish.
+## Task 2: Windows main-window chrome
+
+**Description:** On a local Windows main window, hide the title bar, install the dark caption overlay, keep the application menu, and register trusted popup and theme IPC. Leave every other window framed.
 
 **Acceptance criteria:**
 
-- [x] `npm run setup` exits 0
-- [x] The log says setup is complete
-- [x] The unconfigured account file remains `configured: false`
+- [x] The opted-in Windows main window uses the hidden title bar, dark overlay, `#1a1a1a` background, and `autoHideMenuBar`
+- [x] The splash window, a Windows window without the flag, a Mac window with the flag, and remote mode do not gain that chrome or the new IPC
+- [x] A trusted light theme updates the overlay and the window background; an untrusted sender is rejected
 
 **Verification:**
 
-- [x] Build succeeds: `npm run setup`
-- [x] Manual check: closing setup text and no change to `desktop/accounts/config.json`
-- [ ] Tests pass: not this task unless setup itself runs them
+- [x] Tests pass: `npm test --prefix packages/desktop-host`
+- [ ] Build succeeds: not this task
+- [ ] Manual check: not this task
 
 **Dependencies:** Task 1
 
-**Files likely touched:** Generated output under `node_modules/`, `.build/`, and `resources/` only
+**Files likely touched:**
 
-**Estimated scope:** Small: 0 source files
+- `packages/desktop-host/lib/host.js`
+- `packages/desktop-host/lib/preload.js`
+- `packages/desktop-host/scripts/host.test.js`
+- `packages/desktop-host/scripts/preload.test.js`
 
-## Task 3: Build the unsigned installer
+**Estimated scope:** Medium: 4 files
 
-**Description:** Run `npm run build:installers` with no `--signed` flag, using the same session environment. The script disables Windows executable signing and then runs package inspection.
+## Task 3: Page row
+
+**Description:** When `windowChrome` is present, draw the toggle, the host menu labels, and the drag area. Hide the desktop rail chevrons and keep the existing collapse behavior.
 
 **Acceptance criteria:**
 
-- [x] The command exits 0
-- [x] The log includes `Development installer built. It cannot pass the public bootstrap signature/release gates.`
-- [x] `release\integral-one-0.1.2-win-x64.exe` exists
+- [x] The row lists only the menus the host supplied and does not contain “Integral | one”
+- [x] The toggle targets the sidebar’s Collapse sidebar / Expand sidebar button
+- [x] The injected sheet hides those two sidebar buttons and offsets shell chrome by the title-bar height
+- [x] A saved `t75_theme` of light or dark is the caption theme; a missing value stays dark
 
 **Verification:**
 
-- [x] Build succeeds: `npm run build:installers`
-- [x] Manual check: the exe path and the closing log line
-- [ ] Tests pass: package inspection runs inside `build:installers`
+- [x] Tests pass: `node --test tests/window-chrome-page.test.js`
+- [x] Build succeeds: esbuild can parse `frontend/host/register.tsx`
+- [ ] Manual check: not this task
 
 **Dependencies:** Task 2
 
-**Files likely touched:** Generated output under `release/` and `resources/`
+**Files likely touched:**
 
-**Estimated scope:** Small: 0 source files
+- `frontend/host/window-chrome.js`
+- `frontend/host/register.tsx`
+- `tests/window-chrome-page.test.js`
+
+**Estimated scope:** Medium: 3 files
 
 ## Checkpoint: After Tasks 1-3
 
-- [x] The unsigned exe exists at `release\integral-one-0.1.2-win-x64.exe`
-- [x] The build was not `--signed`
-- [x] The host profile was not used as an install target
-- [x] Stop for the human to copy the exe into the Windows VM or sandbox
+- [x] Host tests and the page test pass
+- [x] Account window and splash source are unchanged
+- [x] Mac does not receive `windowChrome`
 
-## Task 4: Install and reinstall in the guest
+## Task 4: Turn the row on and pin the host
 
-**Description:** The human copies the exe into the Windows VM or sandbox and runs it there as a normal user. Open Integral One from the shortcut, quit, and run the exe again with the app closed. This session does not install on the host.
+**Description:** One’s main window opts in. Pack desktop-host `0.1.7-dev.5` and point the product pin and lockfile at that tarball.
 
 **Acceptance criteria:**
 
-- [ ] The guest install completes without accepting an administrator elevation prompt
-- [ ] The guest has a desktop shortcut and a Start menu shortcut for Integral One
-- [ ] Opening the shortcut shows the Integral Account window
-- [ ] The second run, with the app closed, leaves the guest `%APPDATA%\Integral` tree in place, or the note records that the account gate created no such tree
-- [ ] Actual Windows prompts, including SmartScreen if shown, are quoted for the evidence note
+- [x] `desktop/main.js` passes `windowsTitleBar: true` and still sets the window title to `Integral | one`
+- [x] `distribution.json` names `vendor/integral-desktop-host-0.1.7-dev.5.tgz` and its sha256
+- [x] `npm run verify` passes
 
 **Verification:**
 
-- [ ] Manual check: guest install, shortcut launch, and closed-app reinstall
-- [ ] Build succeeds: not this task
-- [ ] Tests pass: not this task
+- [x] Tests pass: `npm run test:host` and `npm test`
+- [x] Build succeeds: `npm run verify`
+- [x] Manual check: the account window and splash constructors are unchanged
 
 **Dependencies:** Checkpoint after Tasks 1-3
 
-**Files likely touched:** None in the repo during the guest run
-
-**Estimated scope:** Small: 0 source files
-
-## Task 5: Write the evidence note
-
-**Description:** Write `docs/WINDOWS-DEVELOPMENT-INSTALLER-EVIDENCE.md` from the host build and the guest rehearsal. State each spec check as pass, fail, or not tested. Omit recovery-key bytes, account tokens, and SmartScreen click-through instructions.
-
-**Acceptance criteria:**
-
-- [ ] The note names version `0.1.2`, the exe path, and the VM or sandbox product
-- [x] Signup, runtime download, offline restart, Authenticode, and public release are recorded as not tested
-- [x] `install.ps1`, `desktop/accounts/config.json`, and `include_windows` are unchanged
-
-**Verification:**
-
-- [ ] Manual check: the note against spec success criteria 1–7
-- [ ] Tests pass: `npm run verify` only if a source fix was separately approved
-- [ ] Build succeeds: already covered by Task 3
-
-**Dependencies:** Task 4
-
 **Files likely touched:**
 
-- `docs/WINDOWS-DEVELOPMENT-INSTALLER-EVIDENCE.md`
+- `desktop/main.js`
+- `packages/desktop-host/package.json`
+- `package.json`
+- `package-lock.json`
+- `distribution.json`
+- `vendor/integral-desktop-host-0.1.7-dev.5.tgz`
 
-**Estimated scope:** Small: 1 file
+**Estimated scope:** Medium: 6 files
 
 ## Checkpoint: Complete
 
-- [ ] `docs/WINDOWS-DEVELOPMENT-INSTALLER-EVIDENCE.md` matches the spec
-- [ ] No signed build, manifest publication, or workflow dispatch was run
-- [ ] Ready for review
+- [x] The spec’s Windows row, caption colors, hidden native menu, and unchanged Mac, account, and splash boundaries are covered by tests
+- [x] Ready for review

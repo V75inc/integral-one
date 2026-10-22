@@ -7,10 +7,13 @@ const { validateWorkspace } = require('./origins');
 // Electron security baseline: https://www.electronjs.org/docs/latest/tutorial/security
 const { createPermissions } = require('./permissions');
 const { createThemeIcons } = require('./theme-icons');
+const { captionOverlay, popupRequest, chromeMenus, chromeArgument, mainWindowChrome } = require('./window-chrome');
 function runDesktop(options = {}) {
 const themeIcons = createThemeIcons({ app, nativeTheme, nativeImage, BrowserWindow, iconRoot: options.iconRoot });
 let window = null;
 let runtime = null;
+let windowChrome = false;
+let windowChromeMenus = [];
 let workspace = null;
 let quitting = false;
 let booting = true;
@@ -37,7 +40,9 @@ async function createWindow() {
   window = new BrowserWindow({
     width: 1280, height: 800, minWidth: 960, minHeight: 600,
     title: options.windowTitle || options.productName || 'Integral', icon: themeIcons.current(), backgroundColor: '#ffffff', show: false,
+    ...mainWindowChrome(windowChrome),
     webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true,
+      ...(windowChrome ? { additionalArguments: [chromeArgument(windowChromeMenus)] } : {}),
       ...(runtime ? { preload: path.join(__dirname, 'preload.js') } : {}) },
   });
   window.once('ready-to-show', () => window?.show());
@@ -92,18 +97,41 @@ async function boot() {
     try { runtime = await startCore({ home, resources }); workspace = runtime.web_url; }
     finally { progress.close(); }
   }
-  Menu.setApplicationMenu(Menu.buildFromTemplate([
+  const applicationMenu = Menu.buildFromTemplate([
     ...(process.platform === 'darwin' ? [{ role: 'appMenu' }] : []),
-    { label: 'File', submenu: [
+    { id: 'file', label: 'File', submenu: [
       { label: 'Set Up AI Model…', click: () => { void window?.loadURL(new URL('/settings#ai-models', workspace).href); } },
       ...(!runtime ? [{ label: 'Open in Browser', click: () => shell.openExternal(workspace) }] : []),
       { label: 'Microphone Access…', click: () => { void permissions.setup({ force: true }).catch(error => dialog.showErrorBox('Microphone setup needs attention', error.message)); } },
       ...(runtime ? [{ label: 'Open Installation Folder', click: () => shell.openPath(runtime.home) }] : []),
       { type: 'separator' }, { role: 'quit' },
     ] },
-    { role: 'editMenu' }, { role: 'viewMenu' }, { role: 'windowMenu' },
-    ...(options.helpMenuItems?.length ? [{ label: 'Help', submenu: options.helpMenuItems }] : []),
-  ]));
+    { id: 'edit', label: 'Edit', role: 'editMenu' }, { id: 'view', label: 'View', role: 'viewMenu' }, { id: 'window', label: 'Window', role: 'windowMenu' },
+    ...(options.helpMenuItems?.length ? [{ id: 'help', label: 'Help', submenu: options.helpMenuItems }] : []),
+  ]);
+  Menu.setApplicationMenu(applicationMenu);
+  windowChrome = options.windowsTitleBar === true && process.platform === 'win32' && Boolean(runtime);
+  windowChromeMenus = windowChrome ? chromeMenus(Array.isArray(applicationMenu) ? applicationMenu : applicationMenu.items) : [];
+  if (windowChrome) {
+    const { trustedSender } = require('./local-session');
+    ipcMain.handle('integral:window-chrome-popup', async (event, id, x, y) => {
+      if (!trustedSender(event, window, workspace)) throw new Error('Untrusted desktop session caller.');
+      const request = popupRequest(id, x, y, window.getContentSize());
+      if (!request) return null;
+      const item = Menu.getApplicationMenu()?.getMenuItemById(request.id);
+      if (!item?.submenu?.popup) return null;
+      item.submenu.popup({ window, x: request.x, y: request.y });
+      return true;
+    });
+    ipcMain.handle('integral:window-chrome-theme', async (event, theme) => {
+      if (!trustedSender(event, window, workspace)) throw new Error('Untrusted desktop session caller.');
+      const overlay = captionOverlay(theme);
+      if (!overlay || !window?.setTitleBarOverlay) return null;
+      window.setTitleBarOverlay(overlay);
+      window.setBackgroundColor(overlay.color);
+      return overlay.color;
+    });
+  }
   // A bundled Core upgrade may remove assets named by a previously cached shell.
   if (runtime) await session.defaultSession.clearCache();
   if (runtime) {
