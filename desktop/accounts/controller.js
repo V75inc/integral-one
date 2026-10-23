@@ -265,6 +265,17 @@ function createController({
         minHeight: 560,
         title: "Integral Account",
         backgroundColor: "#171717",
+        ...(process.platform === "win32"
+          ? {
+              titleBarStyle: "hidden",
+              titleBarOverlay: {
+                color: "#171717",
+                symbolColor: "#ededed",
+                height: 32,
+              },
+              autoHideMenuBar: true,
+            }
+          : {}),
         webPreferences: {
           preload: path.join(accountRoot, "preload.js"),
           sandbox: true,

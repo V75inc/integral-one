@@ -37,6 +37,7 @@ host = require("@integral/desktop-host").runDesktop({
   mode: "local",
   userDataName: "Integral",
   iconRoot: path.join(__dirname, "icons"),
+  windowsTitleBar: true,
   resources,
   helpMenuItems: updates.menuItems,
   onReady: updates.start,

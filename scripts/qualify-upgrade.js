@@ -9,6 +9,26 @@ const { invocation, startCore, runCli } = require("@integral/desktop-host/core-r
 const { localSession } = require("@integral/desktop-host/local-session");
 const { privateFile, loadState } = require("../desktop/accounts/receipt");
 const { verifyAccount } = require("../desktop/accounts/clerk-setup");
+const { runtimeDiagnostics } = require("./qualify-runtime");
+
+// Core's `integral up` gives itself 180s. A cold Windows runner can miss that
+// window once and succeed on the next start. One retry is the bound; a second
+// miss still fails the qualification.
+async function startOrRetry(start, stop, options) {
+  try {
+    return await start(options);
+  } catch (error) {
+    if (!String(error && error.message).includes("Startup timed out")) throw error;
+    console.error(runtimeDiagnostics(options.home));
+    console.error("Synthetic runtime startup timed out; stopping and retrying once.");
+    try {
+      await stop(options.command, ["stop", "--home", options.home, "--json"]);
+    } catch {
+      /* The timed-out start already asks Core to stop. */
+    }
+    return await start(options);
+  }
+}
 
 async function qualify(directory, { requireSettings = false } = {}) {
   const baseline = fs.readdirSync(directory).filter(name => /^integral_core-\d+\.\d+\.\d+(?:(?:a|b|rc)\d+)?-py3-none-any\.whl$/.test(name));
@@ -32,7 +52,8 @@ async function qualify(directory, { requireSettings = false } = {}) {
     return response.json();
   }
   try {
-    const oldRuntime = await startCore({ home, resources, command: prior });
+    const start = options => startOrRetry(startCore, runCli, options);
+    const oldRuntime = await start({ home, resources, command: prior });
     const oldSession = await localSession(oldRuntime);
     const appResult = await api(oldRuntime, oldSession, "/api/apps", "POST", { name: "Upgrade retention fixture" });
     const app = appResult.app || appResult;
@@ -55,7 +76,7 @@ async function qualify(directory, { requireSettings = false } = {}) {
     await runCli(prior, ["backup", "--home", home, "--output", backup, "--json"]);
     assert.ok(fs.statSync(backup).size > 0, "A cold backup must precede engine replacement");
     cleanupCommand = current;
-    const next = await startCore({ home, resources, command: current });
+    const next = await start({ home, resources, command: current });
     assert.equal(next.version, require("../distribution.json").core.version, "Replacement must run the new pinned engine");
     assert.equal(next.installation_id, oldRuntime.installation_id);
     assert.deepEqual(privateKeys(), keysBefore, "Installation keys changed across replacement");
@@ -81,7 +102,7 @@ async function qualify(directory, { requireSettings = false } = {}) {
       });
       assert.ok([400, 422].includes(invalid.status), "Desktop model setup is unavailable or accepts invalid credentials");
       assert.equal((await runCli(current, ["stop", "--home", home, "--json"])).state, "stopped");
-      const restarted = await startCore({ home, resources, command: current });
+      const restarted = await start({ home, resources, command: current });
       assert.equal(restarted.installation_id, oldRuntime.installation_id);
       const restartedSession = await localSession(restarted);
       const savedTimezone = await api(restarted, restartedSession, "/api/users/me/timezone");
@@ -96,13 +117,16 @@ async function qualify(directory, { requireSettings = false } = {}) {
       console.log("Release desktop settings: timezone, pinning, model setup transport and cold-restart retention passed.");
     }
     console.log("Previous Core → composed One engine: backup, App/Track/record, installation keys, account binding and local session retained.");
+  } catch (error) {
+    console.error(runtimeDiagnostics(home));
+    throw error;
   } finally {
     const stopped = await runCli(cleanupCommand, ["stop", "--home", home, "--json"]);
     assert.equal(stopped.state, "stopped", "Retain synthetic home if shutdown cannot be confirmed");
     fs.rmSync(root, { recursive: true, force: true });
   }
 }
-module.exports = { qualify };
+module.exports = { qualify, startOrRetry };
 if (require.main === module) {
   if (![3, 4].includes(process.argv.length) || (process.argv[3] && process.argv[3] !== "--require-settings"))
     throw new Error("Usage: node scripts/qualify-upgrade.js <previous-Core-wheel-directory> [--require-settings]");
