@@ -13,6 +13,8 @@ test('caption inset keeps controls clear of the native caption buttons', () => {
   assert.equal(chrome.captionInset(overlay({ x: 0, width: 1280 }), false), 140);
   assert.equal(chrome.captionInset(overlay({ x: 0, width: 1280 }), true), 0);
   assert.equal(chrome.captionInset(overlay({ x: 8, width: 1100 }), false), 172);
+  assert.equal(chrome.captionInset(overlay({ x: 0, width: 0 }), false), 140);
+  assert.equal(chrome.captionInset(overlay({ x: 0, width: 100 }), false), 140);
 });
 
 test('stored caption theme follows the page and defaults to dark', () => {
@@ -129,7 +131,7 @@ test('the coworker control opens and closes through the existing chat buttons', 
     const bar = document.body.children[0];
     const actions = bar.children[bar.children.length - 1];
     assert.equal(actions.className, 'one-window-titlebar__actions');
-    assert.equal(actions.style.right, '140px');
+    assert.equal(bar.style.width, 'calc(100% - 140px)');
     const coworker = actions.children[1];
     assert.equal(coworker.className, 'one-window-titlebar__icon one-window-titlebar__coworker');
     assert.equal(actions.children[0].className, 'one-window-titlebar__icon one-window-titlebar__fullscreen');
@@ -160,7 +162,7 @@ test('the full screen control toggles the host window and stays left of chat', a
   const document = fakeDocument({ getAttribute: () => 'Collapse sidebar', click() {} });
   document.defaultView = {
     innerWidth: 1400,
-    navigator: { windowControlsOverlay: { getTitlebarAreaRect: () => ({ x: 0, width: 1400 }) } },
+    navigator: { windowControlsOverlay: { getTitlebarAreaRect: () => ({ x: 0, width: 0 }) } },
   };
   chrome.mountWindowChrome(document, {
     height: 32,
@@ -175,16 +177,16 @@ test('the full screen control toggles the host window and stays left of chat', a
   assert.equal(button['aria-label'], 'Enter full screen');
   assert.equal(button['aria-pressed'], 'false');
   assert.equal(actions.children[1].className, 'one-window-titlebar__icon one-window-titlebar__coworker');
-  assert.equal(actions.style.right, '140px');
+  assert.equal(document.body.children[0].style.width, 'calc(100% - 140px)');
   button.click();
   assert.deepEqual(calls, ['read', 'toggle']);
   await Promise.resolve();
   assert.equal(button['aria-label'], 'Exit full screen');
   assert.equal(button['aria-pressed'], 'true');
-  assert.equal(actions.style.right, '0px');
+  assert.equal(document.body.children[0].style.width, '100%');
   notify(false);
   assert.equal(button['aria-label'], 'Enter full screen');
-  assert.equal(actions.style.right, '140px');
+  assert.equal(document.body.children[0].style.width, 'calc(100% - 140px)');
 });
 
 test('the toggle label does not keep notifying itself', () => {

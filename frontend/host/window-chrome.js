@@ -90,15 +90,10 @@ function shellCss() {
     .one-window-titlebar button:focus-visible { outline: 2px solid var(--focus-ring-color); outline-offset: -2px; }
     .one-window-titlebar__drag { flex: 1 1 auto; align-self: stretch; min-width: 12px; -webkit-app-region: drag; }
     .one-window-titlebar__actions {
-      position: fixed;
-      z-index: 46;
-      top: env(titlebar-area-y, 0px);
-      right: 140px;
-      height: var(--window-titlebar-h, 32px);
       display: flex;
       align-items: center;
       gap: 2px;
-      padding-right: 6px;
+      flex: 0 0 auto;
       -webkit-app-region: no-drag;
     }
     .one-window-titlebar button.one-window-titlebar__icon {
@@ -161,10 +156,12 @@ function sidebarIcon(document) {
 function captionInset(view, fullscreen) {
   const rect = view?.navigator?.windowControlsOverlay?.getTitlebarAreaRect?.();
   const width = view?.innerWidth;
-  if (rect && width > 0 && Number.isFinite(rect.x) && Number.isFinite(rect.width)) {
+  // A zero or full-window rect is "not ready", not a caption. Treating it as
+  // the inset pushes the controls off the left edge of the window.
+  if (rect && width > 0 && rect.width > 0 && Number.isFinite(rect.x) && Number.isFinite(rect.width)) {
     const caption = Math.round(width - rect.x - rect.width);
-    if (caption >= 46) return caption;
-    if (fullscreen && caption >= 0 && caption < width) return caption;
+    if (caption >= 46 && caption <= 240) return caption;
+    if (fullscreen && caption >= 0 && caption < 46) return 0;
   }
   return fullscreen ? 0 : CAPTION_FALLBACK;
 }
@@ -270,8 +267,8 @@ function mountWindowChrome(document, chrome, storage) {
   const drag = document.createElement('div');
   drag.className = 'one-window-titlebar__drag';
   bar.appendChild(drag);
-  // Native caption buttons paint over the right edge of this row. These
-  // controls are pinned to that edge so they stay visible just before minimize.
+  // Keep the row inside the area the page can paint. A fixed control whose
+  // inset equals the whole window sits off-screen, to the left of File.
   const actions = document.createElement('div');
   actions.className = 'one-window-titlebar__actions';
   const fullscreenButton = document.createElement('button');
@@ -280,7 +277,8 @@ function mountWindowChrome(document, chrome, storage) {
   fullscreenButton.appendChild(fullscreenIcon(document));
   let fullscreenOn = false;
   const place = () => {
-    actions.style.right = `${captionInset(document.defaultView, fullscreenOn)}px`;
+    const inset = captionInset(document.defaultView, fullscreenOn);
+    bar.style.width = inset > 0 ? `calc(100% - ${inset}px)` : '100%';
   };
   const applyFullScreen = active => {
     if (typeof active !== 'boolean') return;
