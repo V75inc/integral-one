@@ -4,17 +4,16 @@ const assert = require('node:assert/strict');
 const chrome = require('../frontend/host/window-chrome');
 
 test('caption inset keeps controls clear of the native caption buttons', () => {
-  assert.equal(chrome.captionInset(undefined, false), 140);
+  assert.equal(chrome.captionInset(undefined), 140);
   const overlay = rect => ({
     innerWidth: 1280,
     navigator: { windowControlsOverlay: { getTitlebarAreaRect: () => rect } },
   });
-  assert.equal(chrome.captionInset(overlay({ x: 0, width: 1142 }), false), 138);
-  assert.equal(chrome.captionInset(overlay({ x: 0, width: 1280 }), false), 140);
-  assert.equal(chrome.captionInset(overlay({ x: 0, width: 1280 }), true), 0);
-  assert.equal(chrome.captionInset(overlay({ x: 8, width: 1100 }), false), 172);
-  assert.equal(chrome.captionInset(overlay({ x: 0, width: 0 }), false), 140);
-  assert.equal(chrome.captionInset(overlay({ x: 0, width: 100 }), false), 140);
+  assert.equal(chrome.captionInset(overlay({ x: 0, width: 1142 })), 138);
+  assert.equal(chrome.captionInset(overlay({ x: 0, width: 1280 })), 140);
+  assert.equal(chrome.captionInset(overlay({ x: 8, width: 1100 })), 172);
+  assert.equal(chrome.captionInset(overlay({ x: 0, width: 0 })), 140);
+  assert.equal(chrome.captionInset(overlay({ x: 0, width: 100 })), 140);
 });
 
 test('stored caption theme follows the page and defaults to dark', () => {
@@ -88,10 +87,15 @@ test('the row lists the host menus and toggles the existing rail button', () => 
   assert.match(chrome.shellCss(), /Expand sidebar/);
   assert.equal(chrome.shellCss().includes('Open menu'), false);
   assert.equal(chrome.shellCss().includes('Close menu'), false);
-  bar.children[0].click();
+  const nav = bar.children[0];
+  assert.equal(nav.className, 'one-window-titlebar__nav');
+  assert.equal(nav.children[0]['aria-label'], 'Back');
+  assert.equal(nav.children[1]['aria-label'], 'Forward');
+  const toggle = nav.children[2];
+  toggle.click();
   assert.equal(clicks, 1);
-  assert.equal(bar.children[0]['aria-label'], 'Expand sidebar');
-  const icon = bar.children[0].children[0];
+  assert.equal(toggle['aria-label'], 'Expand sidebar');
+  const icon = toggle.children[0];
   assert.equal(icon.children.some(part => part.d === 'M10 3 5 8l5 5'), false);
   assert.equal(icon.children.some(part => part.d === 'M6 2.5v11'), true);
   bar.children[1].click();
@@ -132,9 +136,8 @@ test('the coworker control opens and closes through the existing chat buttons', 
     const actions = bar.children[bar.children.length - 1];
     assert.equal(actions.className, 'one-window-titlebar__actions');
     assert.equal(bar.style.width, 'calc(100% - 140px)');
-    const coworker = actions.children[1];
+    const coworker = actions.children[0];
     assert.equal(coworker.className, 'one-window-titlebar__icon one-window-titlebar__coworker');
-    assert.equal(actions.children[0].className, 'one-window-titlebar__icon one-window-titlebar__fullscreen');
     assert.equal(coworker['aria-label'], 'Open Integral coworker');
     assert.equal(coworker['aria-pressed'], 'false');
     coworker.click();
@@ -156,37 +159,39 @@ test('the coworker control opens and closes through the existing chat buttons', 
   }
 });
 
-test('the full screen control toggles the host window and stays left of chat', async () => {
-  const calls = [];
-  let notify;
+test('back and forward sit left of the sidebar toggle, and chat hides on the agent page', () => {
+  const moves = [];
+  const listeners = {};
   const document = fakeDocument({ getAttribute: () => 'Collapse sidebar', click() {} });
   document.defaultView = {
-    innerWidth: 1400,
-    navigator: { windowControlsOverlay: { getTitlebarAreaRect: () => ({ x: 0, width: 0 }) } },
+    location: { pathname: '/agent' },
+    history: {
+      back() { moves.push('back'); },
+      forward() { moves.push('forward'); },
+    },
+    addEventListener(type, fn) { (listeners[type] ||= []).push(fn); },
   };
   chrome.mountWindowChrome(document, {
     height: 32,
-    menus: [{ id: 'view', label: 'View' }],
+    menus: [],
     popupMenu() {},
     setCaptionTheme() {},
-    fullScreen(action) { calls.push(action); return action === 'toggle'; },
-    onFullScreen(callback) { notify = callback; },
   }, { getItem: () => 'dark' });
-  const actions = document.body.children[0].children.at(-1);
-  const button = actions.children[0];
-  assert.equal(button['aria-label'], 'Enter full screen');
-  assert.equal(button['aria-pressed'], 'false');
-  assert.equal(actions.children[1].className, 'one-window-titlebar__icon one-window-titlebar__coworker');
-  assert.equal(document.body.children[0].style.width, 'calc(100% - 140px)');
-  button.click();
-  assert.deepEqual(calls, ['read', 'toggle']);
-  await Promise.resolve();
-  assert.equal(button['aria-label'], 'Exit full screen');
-  assert.equal(button['aria-pressed'], 'true');
-  assert.equal(document.body.children[0].style.width, '100%');
-  notify(false);
-  assert.equal(button['aria-label'], 'Enter full screen');
-  assert.equal(document.body.children[0].style.width, 'calc(100% - 140px)');
+  const bar = document.body.children[0];
+  const nav = bar.children[0];
+  const back = nav.children[0];
+  const forward = nav.children[1];
+  assert.equal(nav.children[2].className.includes('one-window-titlebar__toggle'), true);
+  assert.equal(back.disabled, false);
+  assert.equal(forward.disabled, false);
+  back.click();
+  forward.click();
+  assert.deepEqual(moves, ['back', 'forward']);
+  const coworker = bar.children.at(-1).children[0];
+  assert.equal(coworker.hidden, true);
+  document.defaultView.location.pathname = '/';
+  for (const fn of listeners.popstate || []) fn();
+  assert.equal(coworker.hidden, false);
 });
 
 test('the toggle label does not keep notifying itself', () => {
@@ -201,7 +206,7 @@ test('the toggle label does not keep notifying itself', () => {
   try {
     const document = fakeDocument({ getAttribute: () => 'Collapse sidebar', click() {} }, () => {
       writes += 1;
-      if (writes > 3) throw new Error('aria-label observer loop');
+      if (writes > 4) throw new Error('aria-label observer loop');
       for (const callback of observers) callback([{ target: { style: {} }, addedNodes: [] }]);
     });
     chrome.mountWindowChrome(document, {
@@ -210,9 +215,9 @@ test('the toggle label does not keep notifying itself', () => {
       popupMenu() {},
       setCaptionTheme() {},
     }, { getItem: () => 'dark' });
-    assert.equal(writes, 3);
+    assert.equal(writes, 4);
     for (const callback of observers) callback([{ target: { style: {} }, addedNodes: [] }]);
-    assert.equal(writes, 3);
+    assert.equal(writes, 4);
   } finally {
     if (previous) globalThis.MutationObserver = previous;
     else delete globalThis.MutationObserver;
@@ -245,7 +250,12 @@ function fakeDocument(rail, onLabel, targets = {}) {
       getBoundingClientRect() { return { left: 8, bottom: 32 }; },
       classList: {
         contains(name) { return node.className.split(/\s+/).includes(name); },
-        toggle(name, on) { node.className = on ? name : ''; },
+        toggle(name, on) {
+          const names = new Set(node.className.split(/\s+/).filter(Boolean));
+          if (on) names.add(name);
+          else names.delete(name);
+          node.className = [...names].join(' ');
+        },
       },
     };
     created.push(node);

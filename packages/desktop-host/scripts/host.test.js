@@ -74,7 +74,7 @@ async function localFixture({owned = true, stop = async () => ({state:'stopped'}
       this.webContents = new EventEmitter(); this.webContents.setWindowOpenHandler=()=>{};
       this.webContents.send = (channel, value) => { this.fullscreenEvent = [channel, value]; };
     }
-    async loadURL() {} close() {} setTitle() {}
+    async loadURL(url) { this.url = url; } close() {} setTitle() {}
     getContentSize() { return [1280, 800]; }
     setTitleBarOverlay(overlay) { this.overlay = overlay; }
     setBackgroundColor(color) { this.backgroundColor = color; }
@@ -165,8 +165,14 @@ test('Windows title bar recolors the native caption and pops the installed menu'
   const argument = main.options.webPreferences.additionalArguments[0];
   const bar = f.menus[0].filter(item => item.id);
   assert.equal(Array.from(bar, item => item.id).join(','), 'file,edit,view,help');
+  const edit = bar.find(item => item.id === 'edit');
+  const editRoles = edit.submenu.map(item => item.role).filter(Boolean);
+  assert.equal(Array.from(editRoles).join(','), 'undo,redo,cut,copy,paste,pasteAndMatchStyle,delete');
+  assert.equal(edit.submenu.some(item => item.role === 'selectAll'), false);
+  edit.submenu.find(item => item.label === 'Settings').click();
+  assert.equal(main.url, 'http://127.0.0.1:19006/settings');
   const viewRoles = bar.find(item => item.id === 'view').submenu.map(item => item.role).filter(Boolean);
-  assert.equal(Array.from(viewRoles).join(','), 'resetZoom,zoomIn,zoomOut,togglefullscreen');
+  assert.equal(Array.from(viewRoles).join(','), 'resetZoom,zoomIn,zoomOut');
   assert.equal(bar.some(item => item.role === 'windowMenu' || item.id === 'window'), false);
   assert.deepEqual(JSON.parse(argument.slice('--integral-window-chrome='.length)).menus.map(menu => menu.id),
     ['file', 'edit', 'view', 'help']);
@@ -182,13 +188,7 @@ test('Windows title bar recolors the native caption and pops the installed menu'
   assert.deepEqual(main.overlay, { color: '#fafafa', symbolColor: '#0b0b0c', height: 32 });
   assert.equal(main.backgroundColor, '#fafafa');
   assert.equal(await f.handlers['integral:window-chrome-theme'](event, 'blue'), null);
-  assert.equal(await f.handlers['integral:window-chrome-fullscreen'](event, 'read'), false);
-  assert.equal(await f.handlers['integral:window-chrome-fullscreen'](event, 'toggle'), true);
-  assert.equal(main.fullScreen, true);
-  assert.equal(Array.from(main.fullscreenEvent).join(','), 'integral:window-chrome-fullscreen,true');
-  assert.equal(await f.handlers['integral:window-chrome-fullscreen'](event, 'toggle'), false);
-  assert.equal(main.fullScreen, false);
-  await assert.rejects(f.handlers['integral:window-chrome-fullscreen']({ sender: {}, senderFrame: event.senderFrame }, 'toggle'), /Untrusted/);
+  assert.equal(f.handlers['integral:window-chrome-fullscreen'], undefined);
   await assert.rejects(f.handlers['integral:window-chrome-popup']({ sender: {}, senderFrame: event.senderFrame }, 'file', 12, 32), /Untrusted/);
 });
 
@@ -197,6 +197,8 @@ test('Mac and a framed Windows window keep the system title bar', async () => {
   assert.equal(mac.windows[0].options.titleBarStyle, undefined);
   assert.equal(mac.windows.at(-1).options.titleBarStyle, undefined);
   assert.equal(mac.windows.at(-1).options.backgroundColor, '#ffffff');
+  const macView = mac.menus[0].find(item => item.id === 'view');
+  assert.equal(macView.submenu.some(item => item.role === 'togglefullscreen'), true);
   assert.equal(mac.handlers['integral:window-chrome-popup'], undefined);
   const framed = await localFixture({ platform: 'win32' });
   assert.equal(framed.windows[0].options.titleBarStyle, undefined);

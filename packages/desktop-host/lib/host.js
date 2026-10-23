@@ -63,10 +63,6 @@ async function createWindow() {
     }
   });
   window.webContents.on('will-attach-webview', event => event.preventDefault());
-  if (windowChrome) {
-    window.on('enter-full-screen', () => window?.webContents?.send?.('integral:window-chrome-fullscreen', true));
-    window.on('leave-full-screen', () => window?.webContents?.send?.('integral:window-chrome-fullscreen', false));
-  }
   window.on('closed', () => { window = null; });
   await window.loadURL(workspace);
 }
@@ -113,10 +109,16 @@ async function boot() {
       ...(runtime ? [{ label: 'Open Installation Folder', click: () => shell.openPath(runtime.home) }] : []),
       { type: 'separator' }, { role: 'quit' },
     ] },
-    { id: 'edit', label: 'Edit', role: 'editMenu' },
+    { id: 'edit', label: 'Edit', submenu: [
+      { role: 'undo' }, { role: 'redo' },
+      { type: 'separator' },
+      { role: 'cut' }, { role: 'copy' }, { role: 'paste' }, { role: 'pasteAndMatchStyle' }, { role: 'delete' },
+      { type: 'separator' },
+      { label: 'Settings', click: () => { void window?.loadURL(new URL('/settings', workspace).href); } },
+    ] },
     { id: 'view', label: 'View', submenu: [
       { role: 'resetZoom' }, { role: 'zoomIn' }, { role: 'zoomOut' },
-      { type: 'separator' }, { role: 'togglefullscreen' },
+      ...(process.platform === 'win32' ? [] : [{ type: 'separator' }, { role: 'togglefullscreen' }]),
     ] },
     ...(options.helpMenuItems?.length ? [{ id: 'help', label: 'Help', submenu: options.helpMenuItems }] : []),
   ]);
@@ -141,13 +143,6 @@ async function boot() {
       window.setTitleBarOverlay(overlay);
       window.setBackgroundColor(overlay.color);
       return overlay.color;
-    });
-    ipcMain.handle('integral:window-chrome-fullscreen', async (event, action) => {
-      if (!trustedSender(event, window, workspace)) throw new Error('Untrusted desktop session caller.');
-      if (action === 'toggle' && window?.setFullScreen && window?.isFullScreen) {
-        window.setFullScreen(!window.isFullScreen());
-      }
-      return Boolean(window?.isFullScreen?.());
     });
   }
   // A bundled Core upgrade may remove assets named by a previously cached shell.

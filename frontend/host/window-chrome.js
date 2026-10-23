@@ -74,7 +74,10 @@ function shellCss() {
     }
     .one-window-titlebar button {
       -webkit-app-region: no-drag;
-      height: 24px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      height: 28px;
       margin: 0;
       border: 0;
       border-radius: 6px;
@@ -88,18 +91,18 @@ function shellCss() {
     .one-window-titlebar button:hover,
     .one-window-titlebar button:focus-visible { background: var(--nav-active-bg); }
     .one-window-titlebar button:focus-visible { outline: 2px solid var(--focus-ring-color); outline-offset: -2px; }
+    .one-window-titlebar button:disabled { opacity: 0.38; }
     .one-window-titlebar__drag { flex: 1 1 auto; align-self: stretch; min-width: 12px; -webkit-app-region: drag; }
+    .one-window-titlebar__nav,
     .one-window-titlebar__actions {
       display: flex;
       align-items: center;
+      align-self: stretch;
       gap: 2px;
       flex: 0 0 auto;
       -webkit-app-region: no-drag;
     }
     .one-window-titlebar button.one-window-titlebar__icon {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
       width: 28px;
       padding: 0;
     }
@@ -129,8 +132,8 @@ function sidebarIcon(document) {
   const svg = document.createElementNS?.('http://www.w3.org/2000/svg', 'svg') || document.createElement('span');
   if (svg.setAttribute) {
     svg.setAttribute('viewBox', '0 0 16 16');
-    svg.setAttribute('width', '14');
-    svg.setAttribute('height', '14');
+    svg.setAttribute('width', '15');
+    svg.setAttribute('height', '15');
     svg.setAttribute('aria-hidden', 'true');
   }
   if (!document.createElementNS || !svg.appendChild) return svg;
@@ -153,7 +156,7 @@ function sidebarIcon(document) {
   return svg;
 }
 
-function captionInset(view, fullscreen) {
+function captionInset(view) {
   const rect = view?.navigator?.windowControlsOverlay?.getTitlebarAreaRect?.();
   const width = view?.innerWidth;
   // A zero or full-window rect is "not ready", not a caption. Treating it as
@@ -161,28 +164,27 @@ function captionInset(view, fullscreen) {
   if (rect && width > 0 && rect.width > 0 && Number.isFinite(rect.x) && Number.isFinite(rect.width)) {
     const caption = Math.round(width - rect.x - rect.width);
     if (caption >= 46 && caption <= 240) return caption;
-    if (fullscreen && caption >= 0 && caption < 46) return 0;
   }
-  return fullscreen ? 0 : CAPTION_FALLBACK;
+  return CAPTION_FALLBACK;
 }
 
-function fullscreenIcon(document) {
+function chevronIcon(document, direction) {
   const svg = document.createElementNS?.('http://www.w3.org/2000/svg', 'svg') || document.createElement('span');
   if (svg.setAttribute) {
     svg.setAttribute('viewBox', '0 0 16 16');
-    svg.setAttribute('width', '14');
-    svg.setAttribute('height', '14');
+    svg.setAttribute('width', '15');
+    svg.setAttribute('height', '15');
     svg.setAttribute('aria-hidden', 'true');
   }
   if (!document.createElementNS || !svg.appendChild) return svg;
-  const corners = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-  corners.setAttribute('d', 'M3 6V3h3M10 3h3v3M13 10v3h-3M6 13H3v-3');
-  corners.setAttribute('fill', 'none');
-  corners.setAttribute('stroke', 'currentColor');
-  corners.setAttribute('stroke-width', '1.5');
-  corners.setAttribute('stroke-linecap', 'round');
-  corners.setAttribute('stroke-linejoin', 'round');
-  svg.appendChild(corners);
+  const chevron = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+  chevron.setAttribute('d', direction === 'back' ? 'M9.5 3.5 5 8l4.5 4.5' : 'M6.5 3.5 11 8l-4.5 4.5');
+  chevron.setAttribute('fill', 'none');
+  chevron.setAttribute('stroke', 'currentColor');
+  chevron.setAttribute('stroke-width', '1.5');
+  chevron.setAttribute('stroke-linecap', 'round');
+  chevron.setAttribute('stroke-linejoin', 'round');
+  svg.appendChild(chevron);
   return svg;
 }
 
@@ -190,8 +192,8 @@ function coworkerIcon(document) {
   const svg = document.createElementNS?.('http://www.w3.org/2000/svg', 'svg') || document.createElement('span');
   if (svg.setAttribute) {
     svg.setAttribute('viewBox', '0 0 24 24');
-    svg.setAttribute('width', '14');
-    svg.setAttribute('height', '14');
+    svg.setAttribute('width', '15');
+    svg.setAttribute('height', '15');
     svg.setAttribute('aria-hidden', 'true');
   }
   if (!document.createElementNS || !svg.appendChild) return svg;
@@ -206,17 +208,37 @@ function coworkerIcon(document) {
   return svg;
 }
 
-function syncFullScreen(button, active) {
-  const label = active ? 'Exit full screen' : 'Enter full screen';
-  if (button.getAttribute('aria-label') !== label) {
-    button.setAttribute('aria-label', label);
-    button.setAttribute('title', label);
+function onAssistantPage(document) {
+  const path = document.defaultView?.location?.pathname || '';
+  return path === '/agent' || path.startsWith('/agent/');
+}
+
+function canTravel(view, direction) {
+  const nav = view?.navigation;
+  const key = direction === 'back' ? 'canGoBack' : 'canGoForward';
+  if (nav && typeof nav[key] === 'boolean') return nav[key];
+  return typeof view?.history?.[direction] === 'function';
+}
+
+function travel(view, direction) {
+  const nav = view?.navigation;
+  if (nav && typeof nav[direction] === 'function') {
+    void Promise.resolve(nav[direction]()).catch(() => {});
+    return;
   }
-  const pressed = active ? 'true' : 'false';
-  if (button.getAttribute('aria-pressed') !== pressed) button.setAttribute('aria-pressed', pressed);
+  view?.history?.[direction]?.();
+}
+
+function syncHistory(view, back, forward) {
+  const backDisabled = !canTravel(view, 'back');
+  const forwardDisabled = !canTravel(view, 'forward');
+  if (back.disabled !== backDisabled) back.disabled = backDisabled;
+  if (forward.disabled !== forwardDisabled) forward.disabled = forwardDisabled;
 }
 
 function syncCoworker(document, button) {
+  const hidden = onAssistantPage(document);
+  if (button.hidden !== hidden) button.hidden = hidden;
   const open = Boolean(document.querySelector(COWORKER_CLOSE));
   const label = open ? 'Close chat' : 'Open Integral coworker';
   if (button.getAttribute('aria-label') !== label) {
@@ -245,12 +267,32 @@ function mountWindowChrome(document, chrome, storage) {
   const bar = document.createElement('header');
   bar.id = 'one-window-titlebar';
   bar.className = 'one-window-titlebar';
+  const nav = document.createElement('div');
+  nav.className = 'one-window-titlebar__nav';
+  const back = document.createElement('button');
+  back.type = 'button';
+  back.className = 'one-window-titlebar__icon one-window-titlebar__back';
+  back.setAttribute('aria-label', 'Back');
+  back.setAttribute('title', 'Back');
+  back.appendChild(chevronIcon(document, 'back'));
+  back.addEventListener('click', () => travel(document.defaultView, 'back'));
+  const forward = document.createElement('button');
+  forward.type = 'button';
+  forward.className = 'one-window-titlebar__icon one-window-titlebar__forward';
+  forward.setAttribute('aria-label', 'Forward');
+  forward.setAttribute('title', 'Forward');
+  forward.appendChild(chevronIcon(document, 'forward'));
+  forward.addEventListener('click', () => travel(document.defaultView, 'forward'));
   const toggle = document.createElement('button');
   toggle.type = 'button';
-  toggle.className = 'one-window-titlebar__toggle';
+  toggle.className = 'one-window-titlebar__icon one-window-titlebar__toggle';
   toggle.appendChild(sidebarIcon(document));
   toggle.addEventListener('click', () => document.querySelector(RAIL_TOGGLE)?.click());
-  bar.appendChild(toggle);
+  nav.appendChild(back);
+  nav.appendChild(forward);
+  nav.appendChild(toggle);
+  bar.appendChild(nav);
+  syncHistory(document.defaultView, back, forward);
   syncToggle(document, toggle);
   for (const menu of chrome.menus) {
     const button = document.createElement('button');
@@ -271,27 +313,9 @@ function mountWindowChrome(document, chrome, storage) {
   // inset equals the whole window sits off-screen, to the left of File.
   const actions = document.createElement('div');
   actions.className = 'one-window-titlebar__actions';
-  const fullscreenButton = document.createElement('button');
-  fullscreenButton.type = 'button';
-  fullscreenButton.className = 'one-window-titlebar__icon one-window-titlebar__fullscreen';
-  fullscreenButton.appendChild(fullscreenIcon(document));
-  let fullscreenOn = false;
   const place = () => {
-    const inset = captionInset(document.defaultView, fullscreenOn);
-    bar.style.width = inset > 0 ? `calc(100% - ${inset}px)` : '100%';
+    bar.style.width = `calc(100% - ${captionInset(document.defaultView)}px)`;
   };
-  const applyFullScreen = active => {
-    if (typeof active !== 'boolean') return;
-    fullscreenOn = active;
-    syncFullScreen(fullscreenButton, active);
-    place();
-  };
-  fullscreenButton.addEventListener('click', () => {
-    if (typeof chrome.fullScreen !== 'function') return;
-    void Promise.resolve(chrome.fullScreen('toggle')).then(applyFullScreen).catch(() => {});
-  });
-  actions.appendChild(fullscreenButton);
-  syncFullScreen(fullscreenButton, false);
   const coworker = document.createElement('button');
   coworker.type = 'button';
   coworker.className = 'one-window-titlebar__icon one-window-titlebar__coworker';
@@ -306,12 +330,15 @@ function mountWindowChrome(document, chrome, storage) {
   place();
   document.body.appendChild(bar);
   const view = document.defaultView;
-  view?.addEventListener?.('resize', place);
+  const refresh = () => {
+    place();
+    syncHistory(view, back, forward);
+    syncCoworker(document, coworker);
+  };
+  view?.addEventListener?.('resize', refresh);
+  view?.addEventListener?.('popstate', refresh);
+  view?.navigation?.addEventListener?.('currententrychange', refresh);
   view?.navigator?.windowControlsOverlay?.addEventListener?.('geometrychange', place);
-  if (typeof chrome.onFullScreen === 'function') chrome.onFullScreen(applyFullScreen);
-  if (typeof chrome.fullScreen === 'function') {
-    void Promise.resolve(chrome.fullScreen('read')).then(applyFullScreen).catch(() => {});
-  }
   const applyTheme = () => Promise.resolve(chrome.setCaptionTheme(activeTheme(document, read))).catch(() => {});
   void applyTheme();
   if (typeof MutationObserver === 'function' && document.body) {
@@ -319,6 +346,7 @@ function mountWindowChrome(document, chrome, storage) {
       .observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
     new MutationObserver(records => {
       syncToggle(document, toggle);
+      syncHistory(document.defaultView, back, forward);
       syncCoworker(document, coworker);
       for (const record of records) {
         if (record.target?.style) patchChromeOffset(record.target.style);
