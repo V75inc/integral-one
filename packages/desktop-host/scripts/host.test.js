@@ -168,9 +168,7 @@ test('Windows title bar recolors the native caption and pops the installed menu'
   const edit = bar.find(item => item.id === 'edit');
   const editRoles = edit.submenu.map(item => item.role).filter(Boolean);
   assert.equal(Array.from(editRoles).join(','), 'undo,redo,cut,copy,paste,pasteAndMatchStyle,delete');
-  assert.equal(edit.submenu.some(item => item.role === 'selectAll'), false);
-  edit.submenu.find(item => item.label === 'Settings').click();
-  assert.equal(main.url, 'http://127.0.0.1:19006/settings');
+  assert.equal(edit.submenu.some(item => item.role === 'selectAll' || item.label === 'Settings'), false);
   const viewRoles = bar.find(item => item.id === 'view').submenu.map(item => item.role).filter(Boolean);
   assert.equal(Array.from(viewRoles).join(','), 'resetZoom,zoomIn,zoomOut');
   assert.equal(bar.some(item => item.role === 'windowMenu' || item.id === 'window'), false);

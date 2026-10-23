@@ -92,6 +92,7 @@ function shellCss() {
     .one-window-titlebar button:focus-visible { background: var(--nav-active-bg); }
     .one-window-titlebar button:focus-visible { outline: 2px solid var(--focus-ring-color); outline-offset: -2px; }
     .one-window-titlebar button:disabled { opacity: 0.38; }
+    .one-window-titlebar button[hidden] { display: none; }
     .one-window-titlebar__drag { flex: 1 1 auto; align-self: stretch; min-width: 12px; -webkit-app-region: drag; }
     .one-window-titlebar__nav,
     .one-window-titlebar__actions {

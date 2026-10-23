@@ -113,8 +113,6 @@ async function boot() {
       { role: 'undo' }, { role: 'redo' },
       { type: 'separator' },
       { role: 'cut' }, { role: 'copy' }, { role: 'paste' }, { role: 'pasteAndMatchStyle' }, { role: 'delete' },
-      { type: 'separator' },
-      { label: 'Settings', click: () => { void window?.loadURL(new URL('/settings', workspace).href); } },
     ] },
     { id: 'view', label: 'View', submenu: [
       { role: 'resetZoom' }, { role: 'zoomIn' }, { role: 'zoomOut' },

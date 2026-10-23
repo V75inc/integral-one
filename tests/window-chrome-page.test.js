@@ -151,6 +151,7 @@ test('the coworker control opens and closes through the existing chat buttons', 
     coworker.click();
     assert.equal(opened, 1);
     assert.equal(closed, 1);
+    assert.match(chrome.shellCss(), /button\[hidden\] \{ display: none; \}/);
     assert.match(chrome.shellCss(), /one-window-titlebar__icon\[aria-pressed="true"\]/);
     assert.match(chrome.shellCss(), /one-window-titlebar__actions/);
   } finally {
