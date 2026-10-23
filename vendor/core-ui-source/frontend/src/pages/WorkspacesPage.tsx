@@ -153,7 +153,7 @@ export function WorkspacesPage() {
                       className="grid min-w-0 grid-cols-[auto_minmax(0,1fr)_auto] gap-x-[18px] py-4 px-4"
                     >
                     <TrackDot
-                      color={w.accent_color}
+                      color={w.accent_color?.trim() || 'var(--brand-accent-default)'}
                       size="md"
                       className="mt-[8px] shrink-0"
                       title={w.name}

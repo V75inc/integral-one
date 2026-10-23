@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 const mocks = vi.hoisted(() => ({
   get: vi.fn(),
+  workspaceRole: 'member',
   noop: vi.fn(),
   user: { id: 'n.User.editor', user_id: 'o.User.editor' },
 }));
@@ -18,7 +19,7 @@ vi.mock('../../context/ChatPageFocusContext', () => ({
   useChatPageFocus: () => ({ setPageContext: mocks.noop, clearPageContext: mocks.noop }),
 }));
 vi.mock('../../context/ScopeContext', () => ({
-  useScope: () => ({ scope: { workspaceId: 'ws' }, setScope: mocks.noop, workspaces: [{ id: 'ws', your_role: 'member' }] }),
+  useScope: () => ({ scope: { workspaceId: 'ws' }, setScope: mocks.noop, workspaces: [{ id: 'ws', your_role: mocks.workspaceRole }] }),
 }));
 vi.mock('../../hooks/useRecents', () => ({ useRecents: () => ({ visit: mocks.noop }) }));
 vi.mock('../../hooks/useWorkspaceCrumbPrefix', () => ({ useWorkspaceCrumbPrefix: () => [] }));
@@ -34,6 +35,10 @@ vi.mock('../../features/app-dashboards/AppDashboardPanel', () => ({
   AppDashboardPanel: ({ canEdit }: { canEdit: boolean }) => <div data-testid="dashboard-rights">{canEdit ? 'editable' : 'read-only'}</div>,
 }));
 
+vi.mock('../../features/app-dashboards/AppHomePanel', () => ({
+  AppHomePanel: () => <div data-testid="app-home">App Home</div>,
+}));
+
 import { AppDetailPage } from '../AppDetailPage';
 
 afterEach(() => {
@@ -42,6 +47,7 @@ afterEach(() => {
 });
 beforeEach(() => {
   mocks.get.mockReset();
+  mocks.workspaceRole = 'member';
   localStorage.setItem('integral:app-section:app', 'dashboards');
 });
 
@@ -86,4 +92,62 @@ it('keeps Collaborators focused on people and places access details in its foote
   expect(screen.queryByRole('dialog', { name: 'Collaborators' })).not.toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: 'Back to collaborators' }));
   expect(await screen.findByRole('dialog', { name: 'Collaborators' })).toBeInTheDocument();
+});
+
+
+it('opens an explicit Home destination ahead of the remembered Dashboards tab', async () => {
+  mocks.get.mockImplementation(async (url: string) => {
+    if (url === '/apps/app') return { data: { app: { id: 'app', name: 'Shared app', workspace_id: 'ws' } } };
+    if (url.includes('home')) return { data: { home: { sections: [] } } };
+    if (url.includes('collaborators')) return { data: { collaborators: [], caller_role: 'viewer' } };
+    return { data: { tracks: [], dashboards: [] } };
+  });
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
+  render(<QueryClientProvider client={client}><MemoryRouter initialEntries={['/apps/app?section=home']}><Routes><Route path="/apps/:appId" element={<AppDetailPage />} /></Routes></MemoryRouter></QueryClientProvider>);
+  expect(await screen.findByTestId('app-home')).toBeInTheDocument();
+  expect(screen.queryByTestId('dashboard-rights')).not.toBeInTheDocument();
+});
+
+it.each([
+  [{}, false],
+  [{type:'object',properties:{}}, false],
+  [{type:'object',properties:{prefix:{type:'string'}}}, true],
+])('shows App settings only for configured fields (%j)', async (settings_schema, shown) => {
+  mocks.get.mockImplementation(async (url: string) => {
+    if (url === '/apps/app') return {data:{app:{id:'app',name:'Owned App',owner_user_id:'o.User.editor',workspace_id:'ws',settings_schema}}};
+    if (url.includes('home')) return {data:{home:null}};
+    return {data:{tracks:[],dashboards:[],collaborators:[],caller_role:'owner'}};
+  });
+  const client = new QueryClient({defaultOptions:{queries:{retry:false,gcTime:0}}});
+  render(<QueryClientProvider client={client}><MemoryRouter initialEntries={['/apps/app']}><Routes><Route path="/apps/:appId" element={<AppDetailPage/>}/></Routes></MemoryRouter></QueryClientProvider>);
+  await screen.findByRole('button',{name:'Edit app'});
+  expect(Boolean(screen.queryByRole('button',{name:'App settings'}))).toBe(shown);
+});
+
+it.each([false, true])('retains meaningful function access without App options (historical grants: %s)', async historical => {
+  mocks.workspaceRole = 'owner';
+  mocks.get.mockImplementation(async (url: string) => {
+    if (url === '/apps/app') return {data:{app:{id:'app',name:'Owned App',workspace_id:'ws',settings_schema:{}}}};
+    if (url.includes('action-bindings')) return {data:{role_actions:historical?{}:{operator:['archive']},bindings:historical?[{id:'grant',active:true}]:[]}};
+    if (url.includes('home')) return {data:{home:null,definition_revision:1}};
+    return {data:{tracks:[],dashboards:[],collaborators:[],caller_role:'owner'}};
+  });
+  const client = new QueryClient({defaultOptions:{queries:{retry:false,gcTime:0}}});
+  render(<QueryClientProvider client={client}><MemoryRouter initialEntries={['/apps/app']}><Routes><Route path="/apps/:appId" element={<AppDetailPage/>}/></Routes></MemoryRouter></QueryClientProvider>);
+  expect(await screen.findByRole('button',{name:'App settings'})).toBeVisible();
+});
+
+it('hides App settings for an owner when there are no options, function roles or grants', async () => {
+  mocks.workspaceRole = 'owner';
+  mocks.get.mockImplementation(async (url: string) => {
+    if (url === '/apps/app') return {data:{app:{id:'app',name:'Owned App',workspace_id:'ws',settings_schema:{}}}};
+    if (url.includes('action-bindings')) return {data:{role_actions:{},bindings:[]}};
+    if (url.includes('home')) return {data:{home:null,definition_revision:1}};
+    return {data:{tracks:[],dashboards:[],collaborators:[],caller_role:'owner'}};
+  });
+  const client = new QueryClient({defaultOptions:{queries:{retry:false,gcTime:0}}});
+  render(<QueryClientProvider client={client}><MemoryRouter initialEntries={['/apps/app']}><Routes><Route path="/apps/:appId" element={<AppDetailPage/>}/></Routes></MemoryRouter></QueryClientProvider>);
+  await screen.findByRole('button',{name:'Edit app'});
+  await waitFor(() => expect(mocks.get).toHaveBeenCalledWith('/apps/app/action-bindings',expect.anything()));
+  expect(screen.queryByRole('button',{name:'App settings'})).toBeNull();
 });

@@ -10,8 +10,9 @@
  *   - Deployment metadata supplies idle, activity and renewal timing.
  *   - Proactive refresh runs only with recent human activity, bounded by
  *     the issued access TTL; optional idle lock pauses earlier.
- *   - Expiry pauses an open page behind a renewal dialog. A rejected
- *     refresh requires credentials; temporary outages remain retryable.
+ *   - Recently active pages renew at expiry before showing recovery. A
+ *     rejected refresh requires credentials; temporary outages retry while
+ *     the access token remains valid, then offer in-place renewal.
  *   - 401 reactive retry: a single retry per request, gated on a
  *     `__sessionRetried` flag on the axios config.
  *
@@ -29,6 +30,7 @@ const ACCESS_TOKEN_KEY = 't75_token';
 const REFRESH_TOKEN_KEY = 't75_refresh_token';
 const USER_KEY = 't75_user';
 const ACCESS_EXPIRES_AT_KEY = 't75_token_expires_at';
+const ACCESS_TTL_MS_KEY = 't75_token_ttl_ms';
 const LAST_ACTIVITY_KEY = 't75_last_activity_at';
 const MAX_TIMER_DELAY_MS = 2_147_483_647;
 
@@ -93,6 +95,7 @@ export function getRefreshToken(): string | null {
 export function setTokens(payload: TokenPayload, { preserveActivity = false } = {}): void {
   if (!payload.access_token) return;
   if (!preserveActivity) {
+    sessionGeneration += 1;
     lastActivityAt = Date.now();
     localStorage.setItem(LAST_ACTIVITY_KEY, String(lastActivityAt));
   }
@@ -108,7 +111,9 @@ export function setTokens(payload: TokenPayload, { preserveActivity = false } = 
     currentAccessTtlMs = getSessionPolicy().access_token_ttl_seconds * 1000;
     localStorage.removeItem(ACCESS_EXPIRES_AT_KEY);
   }
+  localStorage.setItem(ACCESS_TTL_MS_KEY, String(currentAccessTtlMs));
   scheduleProactiveRefresh();
+  if (typeof window !== "undefined") window.dispatchEvent(new Event("integral:tokens-updated"));
 }
 
 /**
@@ -130,6 +135,7 @@ export function clearTokens(): void {
   localStorage.removeItem(REFRESH_TOKEN_KEY);
   localStorage.removeItem(USER_KEY);
   localStorage.removeItem(ACCESS_EXPIRES_AT_KEY);
+  localStorage.removeItem(ACCESS_TTL_MS_KEY);
   for (const key of USER_SCOPED_KEYS) {
     localStorage.removeItem(key);
   }
@@ -200,6 +206,12 @@ export function markActivity(): void {
   }
 }
 
+function activeRefreshWindowMs(): number {
+  const storedTtl = Number(localStorage.getItem(ACCESS_TTL_MS_KEY));
+  const ttl = Number.isFinite(storedTtl) && storedTtl > 0 ? storedTtl : currentAccessTtlMs;
+  return Math.min(ttl, getSessionPolicy().silent_refresh_activity_seconds * 1000);
+}
+
 export function wasActiveWithin(windowMs: number): boolean {
   return windowMs > 0 && Date.now() - Math.max(lastActivityAt, storedActivityAt()) <= windowMs;
 }
@@ -267,12 +279,27 @@ export function pauseForSessionRenewal(): void {
 }
 
 /** Also checked before requests and on tab wake-up, since timers can be throttled. */
-export function checkSessionDeadline(): void {
+export function checkSessionDeadline(): Promise<string | null> | void {
   const expiresAt = Number(localStorage.getItem(ACCESS_EXPIRES_AT_KEY));
   if (isSessionPaused() || !localStorage.getItem(ACCESS_TOKEN_KEY)) return;
   const idleSeconds = getSessionPolicy().idle_timeout_seconds;
   const idleExpired = idleSeconds > 0 && Date.now() >= Math.max(lastActivityAt, storedActivityAt()) + idleSeconds * 1000;
-  if (idleExpired || (expiresAt > 0 && expiresAt <= Date.now())) pauseForSessionRenewal();
+  if (idleExpired) { pauseForSessionRenewal(); return; }
+  if (expiresAt > 0 && expiresAt <= Date.now()) {
+    // Sleeping/throttled tabs and slow refresh responses can cross access
+    // expiry. Recent human activity permits a server-authorized exchange;
+    // request callers await it rather than sending an expired access token.
+    const activeWindow = activeRefreshWindowMs();
+    if (inflightRefresh || (getRefreshToken() && wasActiveWithin(activeWindow))) {
+      const generation = sessionGeneration;
+      const pending = inflightRefresh ?? exchangeRefreshToken();
+      return pending.then(token => {
+        if (!token && generation === sessionGeneration && !isSessionPaused() && localStorage.getItem(ACCESS_TOKEN_KEY)) pauseForSessionRenewal();
+        return token;
+      });
+    }
+    pauseForSessionRenewal();
+  }
 }
 
 /**
@@ -301,8 +328,9 @@ export function scheduleProactiveRefresh(): void {
   if (expiresAt > 0 && Number.isFinite(expiresAt)) {
     expiryTimer = setTimeout(() => {
       expiryTimer = null;
-      checkSessionDeadline();
-      if (!isSessionPaused()) scheduleProactiveRefresh();
+      void Promise.resolve(checkSessionDeadline()).then(() => {
+        if (!isSessionPaused()) scheduleProactiveRefresh();
+      });
     }, Math.min(MAX_TIMER_DELAY_MS, Math.max(0, expiresAt - Date.now())));
   }
   scheduleIdleLock();
@@ -318,9 +346,16 @@ export function scheduleProactiveRefresh(): void {
       scheduleProactiveRefresh();
       return;
     }
-    if (!wasActiveWithin(Math.min(currentAccessTtlMs, getSessionPolicy().silent_refresh_activity_seconds * 1000))) return;
+    if (!wasActiveWithin(activeRefreshWindowMs())) return;
+    const generation = sessionGeneration;
     refreshAccessToken().then(token => {
-      if (!token && !isSessionPaused()) pauseForSessionRenewal();
+      if (generation !== sessionGeneration || isSessionPaused() || !getAccessToken()) return;
+      if (!token) {
+        // A transient outage must not lock a still-valid active session.
+        const expiry = Number(localStorage.getItem(ACCESS_EXPIRES_AT_KEY));
+        if (expiry > Date.now()) scheduleProactiveRefresh();
+        else pauseForSessionRenewal();
+      }
     });
   }, Math.min(MAX_TIMER_DELAY_MS, delayMs));
 }
@@ -347,38 +382,68 @@ async function callRefreshEndpoint(refreshToken: string): Promise<TokenPayload> 
  * the new access token on success, or `null` on failure. The caller
  * should not retry; an authoritative rejection opens the sign-in prompt.
  */
-export function refreshAccessToken(): Promise<string | null> {
-  if (inflightRefresh) return inflightRefresh;
-  checkSessionDeadline();
-  if (isSessionPaused()) return Promise.resolve(null);
-  const refreshToken = getRefreshToken();
-  if (!refreshToken) {
-    return Promise.resolve(null);
-  }
-  const generation = sessionGeneration;
+function storedAccountId(): string | null {
+  try { return JSON.parse(localStorage.getItem(USER_KEY) ?? "null")?.id ?? null; }
+  catch { return null; }
+}
 
+/** One exchange per origin when Web Locks are supported (including other tabs). */
+async function withRefreshLock<T>(operation: () => Promise<T>): Promise<T> {
+  if (typeof navigator !== "undefined" && navigator.locks?.request) {
+    return navigator.locks.request("integral:session-refresh", {
+      signal: AbortSignal.timeout(getSessionPolicy().renewal_request_timeout_seconds * 1000 + 5000),
+    }, operation);
+  }
+  return operation();
+}
+
+function exchangeRefreshToken(): Promise<string | null> {
+  if (inflightRefresh) return inflightRefresh;
+  const refreshToken = getRefreshToken();
+  if (!refreshToken) return Promise.resolve(null);
+  const generation = sessionGeneration;
+  const account = storedAccountId();
+  const adoptRotatedToken = (): string | null => {
+    if (generation !== sessionGeneration || !account || storedAccountId() !== account || isSessionPaused()) return null;
+    if (getRefreshToken() === refreshToken) return null;
+    const expires = Number(localStorage.getItem(ACCESS_EXPIRES_AT_KEY));
+    const token = expires > Date.now() ? getAccessToken() : null;
+    if (token) {
+      scheduleProactiveRefresh();
+      window.dispatchEvent(new Event("integral:tokens-updated"));
+    }
+    return token;
+  };
   inflightRefresh = (async () => {
     try {
-      const payload = await callRefreshEndpoint(refreshToken);
-      if (generation !== sessionGeneration || getRefreshToken() !== refreshToken) return null;
-      if (!payload?.access_token) {
-        throw new Error('Refresh response missing access_token');
-      }
-      setTokens(payload, { preserveActivity: true });
-      return payload.access_token;
+      return await withRefreshLock(async () => {
+        if (generation !== sessionGeneration) return null;
+        if (getRefreshToken() !== refreshToken) return adoptRotatedToken();
+        const payload = await callRefreshEndpoint(refreshToken);
+        if (generation !== sessionGeneration) return null;
+        if (getRefreshToken() !== refreshToken) return adoptRotatedToken();
+        if (!payload?.access_token) throw new Error('Refresh response missing access_token');
+        setTokens(payload, { preserveActivity: true });
+        return payload.access_token;
+      });
     } catch (err) {
+      const shared = adoptRotatedToken();
+      if (shared) return shared;
       const status = (err as AxiosError | undefined)?.response?.status;
-      // Authentication rejection removes invalid credentials. Rate limits,
-      // 5xx and network failures retain credentials for an explicit retry.
       if (generation === sessionGeneration && getRefreshToken() === refreshToken
-          && (status === 400 || status === 401 || status === 403)) {
-        redirectToLogin();
-      }
+          && (status === 400 || status === 401 || status === 403)) redirectToLogin();
       return null;
     } finally {
       inflightRefresh = null;
     }
   })();
-
   return inflightRefresh;
+}
+
+export function refreshAccessToken(): Promise<string | null> {
+  if (inflightRefresh) return inflightRefresh;
+  const renewal = checkSessionDeadline();
+  if (renewal) return renewal;
+  if (isSessionPaused()) return Promise.resolve(null);
+  return exchangeRefreshToken();
 }

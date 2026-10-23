@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import GridLayout from 'react-grid-layout/legacy';
 import { RefreshCw, GripVertical, LayoutDashboard, Sparkles, Trash2, Pencil, Star } from 'lucide-react';
 import 'react-grid-layout/css/styles.css';
@@ -79,7 +79,18 @@ export function AppDashboardPanel({
   const { showToast } = useToast();
   const confirm = useConfirm();
   const { setPageContext } = useChatPageFocus();
+  const [destinationParams, setDestinationParams] = useSearchParams();
+  const requestedDashboardId = destinationParams.get('dashboard_id');
   const [activeId, setActiveId] = useState<string | null>(null);
+  const selectDashboard = useCallback((id: string) => {
+    setActiveId(id);
+    setDestinationParams(previous => {
+      const next = new URLSearchParams(previous);
+      next.set('section', 'dashboards');
+      next.set('dashboard_id', id);
+      return next;
+    }, { replace: true });
+  }, [setDestinationParams]);
   const [editMode, setEditMode] = useState(false);
   const [nameDialog, setNameDialog] = useState<{ id?: string; name: string } | null>(null);
   const [localWidgets, setLocalWidgets] = useState<DashboardWidget[]>([]);
@@ -103,8 +114,8 @@ export function AppDashboardPanel({
 
   const dashboards = useMemo(() => listQuery.data ?? [], [listQuery.data]);
   const activeDashboard = useMemo(
-    () => dashboards.find(d => d.id === activeId) ?? dashboards[0] ?? null,
-    [dashboards, activeId],
+    () => dashboards.find(d => d.id === (requestedDashboardId ?? activeId)) ?? dashboards.find(d => d.id === activeId) ?? dashboards[0] ?? null,
+    [dashboards, activeId, requestedDashboardId],
   );
   const activeDashboardId = activeDashboard?.id ?? null;
   const activeDashboardName = activeDashboard?.name ?? null;
@@ -149,9 +160,9 @@ export function AppDashboardPanel({
     mutationFn: (body: Parameters<typeof dashboardsApi.create>[1]) =>
       dashboardsApi.create(appId, body),
     onSuccess: d => {
-      setActiveId(d.id);
       invalidate();
       onDashboardCreated?.();
+      selectDashboard(d.id);
       showToast('Dashboard created', 'success');
     },
     onError: () => showToast('Failed to create dashboard', 'error')
@@ -194,6 +205,11 @@ export function AppDashboardPanel({
       dashboardsApi.remove(appId, dashboardId),
     onSuccess: () => {
       setActiveId(null);
+      setDestinationParams(previous => {
+        const next = new URLSearchParams(previous);
+        next.delete('dashboard_id');
+        return next;
+      }, { replace: true });
       invalidate();
       showToast('Dashboard deleted', 'success');
     },
@@ -398,7 +414,7 @@ export function AppDashboardPanel({
                   if (event.target.value === '__new__') {
                     setNameDialog({ name: '' });
                   } else {
-                    setActiveId(event.target.value);
+                    selectDashboard(event.target.value);
                     setEditMode(false);
                   }
                 }}>
@@ -497,7 +513,7 @@ export function AppDashboardPanel({
             <div ref={containerRef} className="relative min-h-[320px] w-full">
               <GridLayout
                 className={`dashboard-grid layout${editMode ? ' dashboard-grid--editing' : ''}`}
-                layout={layoutFromWidgets(localWidgets)}
+                layout={layoutFromWidgets(localWidgets, rowHeight)}
                 cols={columns}
                 rowHeight={rowHeight}
                 width={gridWidth}
@@ -602,8 +618,15 @@ export function AppDashboardPanel({
                       <td>{String(item.title || 'Untitled record')}</td>
                       <td>{String(item.track_title || 'Track')}</td>
                       <td>{Object.entries(item)
-                        .filter(([key]) => key.startsWith('custom_fields.'))
-                        .map(([key, value]) => `${key.slice('custom_fields.'.length)}: ${typeof value === 'object' && value !== null ? JSON.stringify(value) : String(value)}`)
+                        .filter(([key]) => key.startsWith('custom_fields.') || ['status', 'created_at', 'updated_at', 'tags'].includes(key))
+                        .map(([key, value]) => {
+                          const name = key.replace(/^custom_fields\./, '').replace(/_/g, ' ');
+                          const label = name.charAt(0).toUpperCase() + name.slice(1);
+                          const text = value === null || value === undefined || value === ''
+                            ? '—'
+                            : typeof value === 'object' ? JSON.stringify(value) : String(value);
+                          return `${label}: ${text}`;
+                        })
                         .join(' · ') || '—'}</td>
                     </tr>
                   ))}

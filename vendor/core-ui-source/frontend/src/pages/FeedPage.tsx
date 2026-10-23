@@ -1,3 +1,4 @@
+import { selectedTagIds, withTagFilters, toggleTagFilter } from '../utils/tagFilters';
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Link, useSearchParams, useNavigate } from 'react-router-dom';
 import { Inbox, Loader2, MessageSquare } from 'lucide-react';
@@ -78,7 +79,7 @@ export function FeedPage() {
   // Tag and author filters live in the URL so any link in the app
   // (feed-card pill, detail-popup chip, etc.) can route to a filtered
   // view by hyperlink alone — no parent-prop wiring needed.
-  const filterTag = searchParams.get('tag')?.trim() || '';
+  const filterTags = useMemo(() => selectedTagIds(searchParams), [searchParams]);
   const filterAuthor = searchParams.get('author')?.trim() || '';
   const navigate = useNavigate();
   const dock = useAssistantDockOptional();
@@ -116,14 +117,9 @@ export function FeedPage() {
 
   // URL-write helpers for the tag/author filters. Toggling matches the
   // existing pattern (click the active filter again → clear).
-  const setFilterTag = useCallback(
-    (id: string) => {
-      const next = new URLSearchParams(searchParams);
-      if (id) next.set('tag', id);
-      else next.delete('tag');
-      setSearchParams(next, { replace: true });
-    },
-    [searchParams, setSearchParams]
+  const setFilterTags = useCallback(
+    (ids: string[]) => setSearchParams(previous => withTagFilters(previous, ids), { replace: true }),
+    [setSearchParams],
   );
   const setFilterAuthor = useCallback(
     (id: string) => {
@@ -173,8 +169,8 @@ export function FeedPage() {
 
   const feedQueryKey = useMemo(
     () =>
-      [...feedEntriesQueryKeyRoot, workspaceId, appIdFromQuery, filterTrack, filterTag] as const,
-    [workspaceId, appIdFromQuery, filterTrack, filterTag]
+      [...feedEntriesQueryKeyRoot, workspaceId, appIdFromQuery, filterTrack, filterTags] as const,
+    [workspaceId, appIdFromQuery, filterTrack, filterTags]
   );
 
   const {
@@ -193,7 +189,7 @@ export function FeedPage() {
         ...(filterTrack ? { track_id: filterTrack } : {}),
         ...(appIdFromQuery ? { app_id: appIdFromQuery } : {}),
         ...(pageParam ? { cursor: pageParam } : {}),
-        ...(filterTag ? { tag_id: filterTag } : {}),
+        ...(filterTags.length ? { tag_ids: filterTags.join(',') } : {}),
       }),
     getNextPageParam: last =>
       last.hasMore && last.nextCursor ? last.nextCursor : undefined,
@@ -310,8 +306,8 @@ export function FeedPage() {
     if (filterType) {
       list = list.filter(e => e.type === filterType);
     }
-    if (filterTag) {
-      list = list.filter(e => e.tags?.some(t => t.id === filterTag));
+    if (filterTags.length) {
+      list = list.filter(e => filterTags.every(id => e.tags?.some(t => t.id === id)));
     }
     if (filterAuthor) {
       list = list.filter(e => e.author_id === filterAuthor);
@@ -343,7 +339,7 @@ export function FeedPage() {
   }, [
     allEntries,
     filterType,
-    filterTag,
+    filterTags,
     filterAuthor,
     feedSearch,
     semanticMode,
@@ -367,7 +363,7 @@ export function FeedPage() {
         app_filter: appIdFromQuery || undefined,
         track_filter: filterTrack || undefined,
         type_filter: filterType || undefined,
-        tag_filter: filterTag || undefined,
+        tag_filters: filterTags.length ? filterTags : undefined,
         author_filter: filterAuthor || undefined,
       },
     });
@@ -377,7 +373,7 @@ export function FeedPage() {
     appIdFromQuery,
     filterTrack,
     filterType,
-    filterTag,
+    filterTags,
     filterAuthor,
     setPageContext,
     clearPageContext,
@@ -395,18 +391,14 @@ export function FeedPage() {
     return missing;
   }, [semanticMode, retrievalResults.length, retrievalIdSet, allEntries]);
 
-  // Resolve human-readable labels for the active tag/author so we can
-  // surface a quiet active-filter strip directly above the entries
-  // list. The label has to be derived from the loaded pages because
-  // the filter only stores the id.
-  const activeTagLabel = useMemo(() => {
-    if (!filterTag) return null;
-    for (const e of allEntries) {
-      const match = e.tags?.find(t => t.id === filterTag);
-      if (match) return match.name?.trim() || null;
-    }
-    return null;
-  }, [allEntries, filterTag]);
+  // Prefer catalog labels so selected tags remain recognizable even
+  // when their intersection has no matching rows.
+  const activeTagLabels = useMemo(() => filterTags.map(id => ({
+    id,
+    label: workspaceTags.find(tag => tag.id === id)?.name?.trim()
+      || allEntries.flatMap(entry => entry.tags ?? []).find(tag => tag.id === id)?.name?.trim()
+      || 'Selected tag',
+  })), [filterTags, workspaceTags, allEntries]);
 
   const activeAuthorLabel = useMemo(() => {
     if (!filterAuthor) return null;
@@ -601,8 +593,8 @@ export function FeedPage() {
     [],
   );
   const handleTagClick = useCallback(
-    (id: string) => setFilterTag(filterTag === id ? '' : id),
-    [filterTag, setFilterTag],
+    (id: string) => setSearchParams(previous => withTagFilters(previous, toggleTagFilter(selectedTagIds(previous), id)), { replace: true }),
+    [setSearchParams],
   );
   const handleAuthorClick = useCallback(
     (id: string) => setFilterAuthor(filterAuthor === id ? '' : id),
@@ -741,8 +733,8 @@ export function FeedPage() {
                 tagTracks={tracks}
                 tags={workspaceTags.filter(tag => !appIdFromQuery || tag.app_id === appIdFromQuery || tracks.some(track => track.id === tag.track_id))}
                 tagsError={tagsError}
-                filterTag={filterTag}
-                setFilterTag={setFilterTag}
+                filterTags={filterTags}
+                setFilterTags={setFilterTags}
                 filterAuthor={filterAuthor}
                 setFilterAuthor={setFilterAuthor}
                 onClearAll={clearAllFilters}
@@ -833,11 +825,8 @@ export function FeedPage() {
                   </span>
                 </div>
               ) : null}
-              {/* Active row-derived filters — tag and author filters
-                  flow in via row clicks and aren't surfaced in the
-                  FilterStrip popover. A small chip strip above the
-                  list lets the user see and clear them. */}
-              {filterTag || filterAuthor ? (
+              {/* Individual removable selections complement the tag menu. */}
+              {filterTags.length > 0 || filterAuthor ? (
                 <div className="mb-3 flex flex-wrap items-center gap-2 text-xs text-[var(--text-subtle)]">
                   <span>Filtered by</span>
                   {filterAuthor && activeAuthorLabel ? (
@@ -858,10 +847,11 @@ export function FeedPage() {
                       <span aria-hidden className="text-[var(--text-subtle)]">×</span>
                     </button>
                   ) : null}
-                  {filterTag && activeTagLabel ? (
+                  {activeTagLabels.map(({ id, label }) => (
                     <button
                       type="button"
-                      onClick={() => setFilterTag('')}
+                      key={id}
+                      onClick={() => setFilterTags(filterTags.filter(tag => tag !== id))}
                       className="
                         inline-flex items-center gap-1
                         rounded-full px-3 py-1
@@ -870,12 +860,12 @@ export function FeedPage() {
                         hover:border-[var(--text-subtle)]
                         transition-colors duration-fast
                       "
-                      aria-label={`Clear tag filter (${activeTagLabel})`}
+                      aria-label={`Clear tag filter (${label})`}
                     >
-                      <span>#{activeTagLabel}</span>
+                      <span>#{label}</span>
                       <span aria-hidden className="text-[var(--text-subtle)]">×</span>
                     </button>
-                  ) : null}
+                  ))}
                 </div>
               ) : null}
               {/* Background refresh failures route through the global
@@ -891,7 +881,7 @@ export function FeedPage() {
                     onTypeClick={handleTypeClick}
                     activeTypeFilter={filterType}
                     onTagClick={handleTagClick}
-                    activeTagFilter={filterTag}
+                    activeTagFilters={filterTags}
                     onAuthorClick={handleAuthorClick}
                     activeAuthorFilter={filterAuthor}
                   />

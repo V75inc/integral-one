@@ -16,7 +16,7 @@ import {
   Settings as SettingsIcon,
   Share2,
   ShieldCheck,
-  Sparkles,
+  Brain,
   UserCircle,
   Wrench,
 } from 'lucide-react';
@@ -141,8 +141,8 @@ const SECTIONS: Section[] = [
   {
     id: 'ai-models',
     label: 'AI Models',
-    icon: Sparkles,
-    render: () => <AiModelsSection />,
+    icon: Brain,
+    render: (ctx) => <AiModelsSection navigateToSection={ctx.navigateToSection} />,
   },
   {
     id: 'skills',

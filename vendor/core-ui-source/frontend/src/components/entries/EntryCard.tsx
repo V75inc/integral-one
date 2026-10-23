@@ -1,7 +1,8 @@
+import { tagFilterHref } from '../../utils/tagFilters';
 import { AttachmentGallery, orderGalleryAttachments } from './AttachmentGallery';
 import { ReactionControl } from './ReactionControl';
 import { useState, useEffect, useMemo, useRef, useCallback, memo } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Trash2,
@@ -71,7 +72,7 @@ interface EntryCardProps {
    *  this with the tag's id. Symmetric to `onTypeClick`. */
   onTagClick?(tagId: string): void;
   /** Tag id to render in active "this is the current filter" state. */
-  activeTagFilter?: string;
+  activeTagFilters?: string[];
   /** When provided, the author segment renders as a button that calls
    *  this with the entry's `author_id`. Symmetric to `onTypeClick`. */
   onAuthorClick?(authorId: string): void;
@@ -96,7 +97,7 @@ function EntryCardInner({
   onTypeClick,
   activeTypeFilter,
   onTagClick,
-  activeTagFilter,
+  activeTagFilters,
   onAuthorClick,
   activeAuthorFilter,
   canEdit: canEditProp,
@@ -106,6 +107,7 @@ function EntryCardInner({
   publicToken,
   publicPermissions
 }: EntryCardProps) {
+  const location = useLocation();
   const { user } = useAuth();
   const { activeWorkspace } = useScope();
   const confirm = useConfirm();
@@ -752,18 +754,19 @@ function EntryCardInner({
             <div className="flex flex-wrap items-center gap-1.5 min-w-0">
               {entry.tags.map(tag => {
                 const isActiveTag =
-                  activeTagFilter !== undefined && activeTagFilter === tag.id;
+                  activeTagFilters?.includes(tag.id) ?? false;
                 const label = tag.name?.trim() || 'tag';
-                const to = isActiveTag
-                  ? '/feed'
-                  : `/feed?tag=${encodeURIComponent(tag.id)}`;
+                const to = tagFilterHref(location.pathname, location.search, tag.id);
                 return (
                   <Link
                     key={tag.id}
                     to={to}
                     onClick={e => {
                       e.stopPropagation();
-                      onTagClick?.(tag.id);
+                      if (onTagClick && !e.metaKey && !e.ctrlKey && !e.shiftKey && !e.altKey && e.button === 0) {
+                        e.preventDefault();
+                        onTagClick(tag.id);
+                      }
                     }}
                     aria-pressed={isActiveTag}
                     className="inline-flex shrink-0 outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus-ring-color)] rounded-[var(--radius-input)] transition-opacity hover:opacity-80"

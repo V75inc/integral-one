@@ -8,10 +8,10 @@ export function WidgetShell({
 }: {
   title: string;
   children: ReactNode;
-  variant?: 'default' | 'chart';
+  variant?: 'default' | 'chart' | 'pie';
 }) {
   return (
-    <div className="dashboard-widget flex h-full min-h-[88px] flex-col">
+    <div className={`dashboard-widget flex h-full min-h-[88px] flex-col${variant !== 'default' ? ' dashboard-widget--chart' : ''}${variant === 'pie' ? ' dashboard-widget--pie' : ''}`}>
       {title ? (
         <div className="dashboard-widget__header">
           <Text variant="heading-sm" as="h3" className="truncate">
@@ -21,8 +21,8 @@ export function WidgetShell({
       ) : null}
       <div
         className={
-          variant === 'chart'
-            ? 'dashboard-widget__body dashboard-widget__body--chart flex flex-col'
+          variant === 'chart' || variant === 'pie'
+            ? `dashboard-widget__body dashboard-widget__body--chart flex flex-col${variant === 'pie' ? ' dashboard-widget__body--pie' : ''}`
             : 'dashboard-widget__body flex flex-col'
         }
       >

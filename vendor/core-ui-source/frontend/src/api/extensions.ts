@@ -6,6 +6,7 @@ export interface ExtensionViewDescriptor {
   description?: string;
   entry: string;
   scope?: string;
+  props_schema?: Record<string, unknown>;
 }
 
 export interface ExtensionViewsListResponse {
@@ -80,7 +81,13 @@ export function requireOperationOutput(result: AppOperationInvokeResponse): AppO
   return result;
 }
 
+export type ExtensionNavigationTarget = { kind: 'app' | 'track' | 'entry' | 'dashboard'; id: string };
+
 export const extensionsApi = {
+  async resolveNavigation(appId: string, target: ExtensionNavigationTarget): Promise<{ path: string }> {
+    const { data } = await apiClient.post(`/extensions/${appId}/navigate`, target);
+    return data;
+  },
   async listViews(appId: string, viewKey?: string): Promise<ExtensionViewsListResponse> {
     const params = viewKey ? { view_key: viewKey } : undefined;
     const { data } = await apiClient.get<ExtensionViewsListResponse>(
