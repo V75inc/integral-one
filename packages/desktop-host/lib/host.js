@@ -63,6 +63,10 @@ async function createWindow() {
     }
   });
   window.webContents.on('will-attach-webview', event => event.preventDefault());
+  if (windowChrome) {
+    window.on('enter-full-screen', () => window?.webContents?.send?.('integral:window-chrome-fullscreen', true));
+    window.on('leave-full-screen', () => window?.webContents?.send?.('integral:window-chrome-fullscreen', false));
+  }
   window.on('closed', () => { window = null; });
   await window.loadURL(workspace);
 }
@@ -137,6 +141,13 @@ async function boot() {
       window.setTitleBarOverlay(overlay);
       window.setBackgroundColor(overlay.color);
       return overlay.color;
+    });
+    ipcMain.handle('integral:window-chrome-fullscreen', async (event, action) => {
+      if (!trustedSender(event, window, workspace)) throw new Error('Untrusted desktop session caller.');
+      if (action === 'toggle' && window?.setFullScreen && window?.isFullScreen) {
+        window.setFullScreen(!window.isFullScreen());
+      }
+      return Boolean(window?.isFullScreen?.());
     });
   }
   // A bundled Core upgrade may remove assets named by a previously cached shell.

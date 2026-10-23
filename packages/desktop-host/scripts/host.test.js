@@ -72,11 +72,17 @@ async function localFixture({owned = true, stop = async () => ({state:'stopped'}
     constructor(options) {
       super(); this.options = options; windows.push(this);
       this.webContents = new EventEmitter(); this.webContents.setWindowOpenHandler=()=>{};
+      this.webContents.send = (channel, value) => { this.fullscreenEvent = [channel, value]; };
     }
     async loadURL() {} close() {} setTitle() {}
     getContentSize() { return [1280, 800]; }
     setTitleBarOverlay(overlay) { this.overlay = overlay; }
     setBackgroundColor(color) { this.backgroundColor = color; }
+    setFullScreen(value) {
+      this.fullScreen = Boolean(value);
+      this.emit(value ? 'enter-full-screen' : 'leave-full-screen');
+    }
+    isFullScreen() { return Boolean(this.fullScreen); }
   }
   const electron = {app, BrowserWindow:Window,
     Menu:{
@@ -176,6 +182,13 @@ test('Windows title bar recolors the native caption and pops the installed menu'
   assert.deepEqual(main.overlay, { color: '#fafafa', symbolColor: '#0b0b0c', height: 32 });
   assert.equal(main.backgroundColor, '#fafafa');
   assert.equal(await f.handlers['integral:window-chrome-theme'](event, 'blue'), null);
+  assert.equal(await f.handlers['integral:window-chrome-fullscreen'](event, 'read'), false);
+  assert.equal(await f.handlers['integral:window-chrome-fullscreen'](event, 'toggle'), true);
+  assert.equal(main.fullScreen, true);
+  assert.equal(Array.from(main.fullscreenEvent).join(','), 'integral:window-chrome-fullscreen,true');
+  assert.equal(await f.handlers['integral:window-chrome-fullscreen'](event, 'toggle'), false);
+  assert.equal(main.fullScreen, false);
+  await assert.rejects(f.handlers['integral:window-chrome-fullscreen']({ sender: {}, senderFrame: event.senderFrame }, 'toggle'), /Untrusted/);
   await assert.rejects(f.handlers['integral:window-chrome-popup']({ sender: {}, senderFrame: event.senderFrame }, 'file', 12, 32), /Untrusted/);
 });
 

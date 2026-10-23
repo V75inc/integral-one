@@ -14,7 +14,11 @@ function loadPreload(argv) {
       assert.equal(id, 'electron');
       return {
         contextBridge: { exposeInMainWorld(name, value) { assert.equal(name, 'integralDesktop'); exposed = value; } },
-        ipcRenderer: { invoke: (...args) => { invoked.push(args); return Promise.resolve(true); } },
+        ipcRenderer: {
+          invoke: (...args) => { invoked.push(args); return Promise.resolve(true); },
+          on(channel, fn) { invoked.push(['on', channel, typeof fn]); },
+          removeListener(channel, fn) { invoked.push(['off', channel, typeof fn]); },
+        },
       };
     },
   };
@@ -39,6 +43,23 @@ test('preload exposes the installed menus and the caption calls', async () => {
     ['integral:window-chrome-popup', 'file', 4, 32],
     ['integral:window-chrome-theme', 'dark'],
   ]);
+});
+
+test('preload forwards full screen to the host window', async () => {
+  const menus = [{ id: 'view', label: 'View' }];
+  const { exposed, invoked } = loadPreload(['electron', `--integral-window-chrome=${JSON.stringify({ height: 32, menus })}`]);
+  let seen = null;
+  const stop = exposed.windowChrome.onFullScreen(value => { seen = value; });
+  await exposed.windowChrome.fullScreen('read');
+  await exposed.windowChrome.fullScreen('toggle');
+  stop();
+  assert.deepEqual(invoked, [
+    ['on', 'integral:window-chrome-fullscreen', 'function'],
+    ['integral:window-chrome-fullscreen', 'read'],
+    ['integral:window-chrome-fullscreen', 'toggle'],
+    ['off', 'integral:window-chrome-fullscreen', 'function'],
+  ]);
+  assert.equal(seen, null);
 });
 
 test('preload ignores a malformed window chrome argument', () => {

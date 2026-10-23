@@ -3,6 +3,18 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const chrome = require('../frontend/host/window-chrome');
 
+test('caption inset keeps controls clear of the native caption buttons', () => {
+  assert.equal(chrome.captionInset(undefined, false), 140);
+  const overlay = rect => ({
+    innerWidth: 1280,
+    navigator: { windowControlsOverlay: { getTitlebarAreaRect: () => rect } },
+  });
+  assert.equal(chrome.captionInset(overlay({ x: 0, width: 1142 }), false), 138);
+  assert.equal(chrome.captionInset(overlay({ x: 0, width: 1280 }), false), 140);
+  assert.equal(chrome.captionInset(overlay({ x: 0, width: 1280 }), true), 0);
+  assert.equal(chrome.captionInset(overlay({ x: 8, width: 1100 }), false), 172);
+});
+
 test('stored caption theme follows the page and defaults to dark', () => {
   assert.equal(chrome.storedTheme(() => 'light'), 'light');
   assert.equal(chrome.storedTheme(() => 'dark'), 'dark');
@@ -115,8 +127,12 @@ test('the coworker control opens and closes through the existing chat buttons', 
       setCaptionTheme() {},
     }, { getItem: () => 'dark' });
     const bar = document.body.children[0];
-    const coworker = bar.children[bar.children.length - 1];
-    assert.equal(coworker.className, 'one-window-titlebar__coworker');
+    const actions = bar.children[bar.children.length - 1];
+    assert.equal(actions.className, 'one-window-titlebar__actions');
+    assert.equal(actions.style.right, '140px');
+    const coworker = actions.children[1];
+    assert.equal(coworker.className, 'one-window-titlebar__icon one-window-titlebar__coworker');
+    assert.equal(actions.children[0].className, 'one-window-titlebar__icon one-window-titlebar__fullscreen');
     assert.equal(coworker['aria-label'], 'Open Integral coworker');
     assert.equal(coworker['aria-pressed'], 'false');
     coworker.click();
@@ -130,11 +146,45 @@ test('the coworker control opens and closes through the existing chat buttons', 
     coworker.click();
     assert.equal(opened, 1);
     assert.equal(closed, 1);
-    assert.match(chrome.shellCss(), /one-window-titlebar__coworker\[aria-pressed="true"\]/);
+    assert.match(chrome.shellCss(), /one-window-titlebar__icon\[aria-pressed="true"\]/);
+    assert.match(chrome.shellCss(), /one-window-titlebar__actions/);
   } finally {
     if (previous) globalThis.MutationObserver = previous;
     else delete globalThis.MutationObserver;
   }
+});
+
+test('the full screen control toggles the host window and stays left of chat', async () => {
+  const calls = [];
+  let notify;
+  const document = fakeDocument({ getAttribute: () => 'Collapse sidebar', click() {} });
+  document.defaultView = {
+    innerWidth: 1400,
+    navigator: { windowControlsOverlay: { getTitlebarAreaRect: () => ({ x: 0, width: 1400 }) } },
+  };
+  chrome.mountWindowChrome(document, {
+    height: 32,
+    menus: [{ id: 'view', label: 'View' }],
+    popupMenu() {},
+    setCaptionTheme() {},
+    fullScreen(action) { calls.push(action); return action === 'toggle'; },
+    onFullScreen(callback) { notify = callback; },
+  }, { getItem: () => 'dark' });
+  const actions = document.body.children[0].children.at(-1);
+  const button = actions.children[0];
+  assert.equal(button['aria-label'], 'Enter full screen');
+  assert.equal(button['aria-pressed'], 'false');
+  assert.equal(actions.children[1].className, 'one-window-titlebar__icon one-window-titlebar__coworker');
+  assert.equal(actions.style.right, '140px');
+  button.click();
+  assert.deepEqual(calls, ['read', 'toggle']);
+  await Promise.resolve();
+  assert.equal(button['aria-label'], 'Exit full screen');
+  assert.equal(button['aria-pressed'], 'true');
+  assert.equal(actions.style.right, '0px');
+  notify(false);
+  assert.equal(button['aria-label'], 'Enter full screen');
+  assert.equal(actions.style.right, '140px');
 });
 
 test('the toggle label does not keep notifying itself', () => {
@@ -158,9 +208,9 @@ test('the toggle label does not keep notifying itself', () => {
       popupMenu() {},
       setCaptionTheme() {},
     }, { getItem: () => 'dark' });
-    assert.equal(writes, 2);
+    assert.equal(writes, 3);
     for (const callback of observers) callback([{ target: { style: {} }, addedNodes: [] }]);
-    assert.equal(writes, 2);
+    assert.equal(writes, 3);
   } finally {
     if (previous) globalThis.MutationObserver = previous;
     else delete globalThis.MutationObserver;

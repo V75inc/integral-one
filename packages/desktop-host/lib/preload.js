@@ -12,6 +12,12 @@ if (chromeArgument) {
         menus: Object.freeze(parsed.menus.map(menu => Object.freeze({ id: menu.id, label: menu.label }))),
         popupMenu: (id, x, y) => ipcRenderer.invoke('integral:window-chrome-popup', id, x, y),
         setCaptionTheme: theme => ipcRenderer.invoke('integral:window-chrome-theme', theme),
+        fullScreen: action => ipcRenderer.invoke('integral:window-chrome-fullscreen', action),
+        onFullScreen: callback => {
+          const listener = (_event, value) => callback(Boolean(value));
+          ipcRenderer.on('integral:window-chrome-fullscreen', listener);
+          return () => ipcRenderer.removeListener('integral:window-chrome-fullscreen', listener);
+        },
       });
     }
   } catch { /* A malformed argument leaves the system title bar in place. */ }

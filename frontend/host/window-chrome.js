@@ -7,6 +7,10 @@ const COWORKER_OPEN = 'button[aria-label="Open Integral coworker"]:not(.one-wind
 const COWORKER_CLOSE = '[data-assistant-dock] button[aria-label="Close chat"]';
 const THEME_KEY = 't75_theme';
 const OFFSET = 'calc(var(--window-titlebar-h, 0px) + var(--system-bar-h, 0px))';
+// Windows caption buttons are about 46px each. Used only when the overlay
+// does not report a real caption strip, which is also when a flex child at
+// the end of the row sits underneath those buttons.
+const CAPTION_FALLBACK = 140;
 
 function storedTheme(read) {
   try {
@@ -85,14 +89,26 @@ function shellCss() {
     .one-window-titlebar button:focus-visible { background: var(--nav-active-bg); }
     .one-window-titlebar button:focus-visible { outline: 2px solid var(--focus-ring-color); outline-offset: -2px; }
     .one-window-titlebar__drag { flex: 1 1 auto; align-self: stretch; min-width: 12px; -webkit-app-region: drag; }
-    .one-window-titlebar button.one-window-titlebar__coworker {
+    .one-window-titlebar__actions {
+      position: fixed;
+      z-index: 46;
+      top: env(titlebar-area-y, 0px);
+      right: 140px;
+      height: var(--window-titlebar-h, 32px);
+      display: flex;
+      align-items: center;
+      gap: 2px;
+      padding-right: 6px;
+      -webkit-app-region: no-drag;
+    }
+    .one-window-titlebar button.one-window-titlebar__icon {
       display: inline-flex;
       align-items: center;
       justify-content: center;
-      width: 24px;
+      width: 28px;
       padding: 0;
     }
-    .one-window-titlebar button.one-window-titlebar__coworker[aria-pressed="true"] { background: var(--nav-active-bg); }
+    .one-window-titlebar button.one-window-titlebar__icon[aria-pressed="true"] { background: var(--nav-active-bg); }
     .system-bar-sidebar button[aria-label="Collapse sidebar"],
     .system-bar-sidebar button[aria-label="Expand sidebar"] { display: none !important; }
     .system-bar-layout { padding-top: ${OFFSET} !important; }
@@ -142,6 +158,37 @@ function sidebarIcon(document) {
   return svg;
 }
 
+function captionInset(view, fullscreen) {
+  const rect = view?.navigator?.windowControlsOverlay?.getTitlebarAreaRect?.();
+  const width = view?.innerWidth;
+  if (rect && width > 0 && Number.isFinite(rect.x) && Number.isFinite(rect.width)) {
+    const caption = Math.round(width - rect.x - rect.width);
+    if (caption >= 46) return caption;
+    if (fullscreen && caption >= 0 && caption < width) return caption;
+  }
+  return fullscreen ? 0 : CAPTION_FALLBACK;
+}
+
+function fullscreenIcon(document) {
+  const svg = document.createElementNS?.('http://www.w3.org/2000/svg', 'svg') || document.createElement('span');
+  if (svg.setAttribute) {
+    svg.setAttribute('viewBox', '0 0 16 16');
+    svg.setAttribute('width', '14');
+    svg.setAttribute('height', '14');
+    svg.setAttribute('aria-hidden', 'true');
+  }
+  if (!document.createElementNS || !svg.appendChild) return svg;
+  const corners = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+  corners.setAttribute('d', 'M3 6V3h3M10 3h3v3M13 10v3h-3M6 13H3v-3');
+  corners.setAttribute('fill', 'none');
+  corners.setAttribute('stroke', 'currentColor');
+  corners.setAttribute('stroke-width', '1.5');
+  corners.setAttribute('stroke-linecap', 'round');
+  corners.setAttribute('stroke-linejoin', 'round');
+  svg.appendChild(corners);
+  return svg;
+}
+
 function coworkerIcon(document) {
   const svg = document.createElementNS?.('http://www.w3.org/2000/svg', 'svg') || document.createElement('span');
   if (svg.setAttribute) {
@@ -160,6 +207,16 @@ function coworkerIcon(document) {
   bubble.setAttribute('stroke-linejoin', 'round');
   svg.appendChild(bubble);
   return svg;
+}
+
+function syncFullScreen(button, active) {
+  const label = active ? 'Exit full screen' : 'Enter full screen';
+  if (button.getAttribute('aria-label') !== label) {
+    button.setAttribute('aria-label', label);
+    button.setAttribute('title', label);
+  }
+  const pressed = active ? 'true' : 'false';
+  if (button.getAttribute('aria-pressed') !== pressed) button.setAttribute('aria-pressed', pressed);
 }
 
 function syncCoworker(document, button) {
@@ -213,17 +270,50 @@ function mountWindowChrome(document, chrome, storage) {
   const drag = document.createElement('div');
   drag.className = 'one-window-titlebar__drag';
   bar.appendChild(drag);
+  // Native caption buttons paint over the right edge of this row. These
+  // controls are pinned to that edge so they stay visible just before minimize.
+  const actions = document.createElement('div');
+  actions.className = 'one-window-titlebar__actions';
+  const fullscreenButton = document.createElement('button');
+  fullscreenButton.type = 'button';
+  fullscreenButton.className = 'one-window-titlebar__icon one-window-titlebar__fullscreen';
+  fullscreenButton.appendChild(fullscreenIcon(document));
+  let fullscreenOn = false;
+  const place = () => {
+    actions.style.right = `${captionInset(document.defaultView, fullscreenOn)}px`;
+  };
+  const applyFullScreen = active => {
+    if (typeof active !== 'boolean') return;
+    fullscreenOn = active;
+    syncFullScreen(fullscreenButton, active);
+    place();
+  };
+  fullscreenButton.addEventListener('click', () => {
+    if (typeof chrome.fullScreen !== 'function') return;
+    void Promise.resolve(chrome.fullScreen('toggle')).then(applyFullScreen).catch(() => {});
+  });
+  actions.appendChild(fullscreenButton);
+  syncFullScreen(fullscreenButton, false);
   const coworker = document.createElement('button');
   coworker.type = 'button';
-  coworker.className = 'one-window-titlebar__coworker';
+  coworker.className = 'one-window-titlebar__icon one-window-titlebar__coworker';
   coworker.appendChild(coworkerIcon(document));
   coworker.addEventListener('click', () => {
     const target = document.querySelector(COWORKER_CLOSE) || document.querySelector(COWORKER_OPEN);
     target?.click();
   });
-  bar.appendChild(coworker);
+  actions.appendChild(coworker);
   syncCoworker(document, coworker);
+  bar.appendChild(actions);
+  place();
   document.body.appendChild(bar);
+  const view = document.defaultView;
+  view?.addEventListener?.('resize', place);
+  view?.navigator?.windowControlsOverlay?.addEventListener?.('geometrychange', place);
+  if (typeof chrome.onFullScreen === 'function') chrome.onFullScreen(applyFullScreen);
+  if (typeof chrome.fullScreen === 'function') {
+    void Promise.resolve(chrome.fullScreen('read')).then(applyFullScreen).catch(() => {});
+  }
   const applyTheme = () => Promise.resolve(chrome.setCaptionTheme(activeTheme(document, read))).catch(() => {});
   void applyTheme();
   if (typeof MutationObserver === 'function' && document.body) {
@@ -241,4 +331,4 @@ function mountWindowChrome(document, chrome, storage) {
   patchElement(document.documentElement);
 }
 
-module.exports = { RAIL_TOGGLE, shellCss, storedTheme, patchChromeOffset, patchElement, mountWindowChrome };
+module.exports = { RAIL_TOGGLE, captionInset, shellCss, storedTheme, patchChromeOffset, patchElement, mountWindowChrome };
