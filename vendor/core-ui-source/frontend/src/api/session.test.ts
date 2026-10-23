@@ -101,3 +101,86 @@ describe('session renewal lifecycle', () => {
     expect(localStorage.getItem('t75_token')).toBeNull();
   });
 });
+
+describe('active session continuity', () => {
+  it('silently renews a recently active session when a throttled timer misses expiry', async () => {
+    vi.spyOn(axios, 'post').mockResolvedValue({data:{access_token:'renewed',refresh_token:'rotated',expires_in:3600}});
+    setTokens({access_token:'access',refresh_token:'refresh',expires_in:3600});
+    vi.setSystemTime(Date.now()+3_599_000);
+    markActivity();
+    vi.setSystemTime(Date.now()+2000);
+    await checkSessionDeadline();
+    expect(getSessionRecovery()).toBeNull();
+    expect(getAccessToken()).toBe('renewed');
+  });
+  it('does not lock an active page while its renewal crosses access expiry', async () => {
+    applySessionPolicy({refresh_lead_seconds:2,min_refresh_interval_seconds:1});
+    let resolve!: (value: unknown) => void;
+    vi.spyOn(axios,'post').mockImplementation(()=>new Promise(done=>{resolve=done;}));
+    setTokens({access_token:'access',refresh_token:'refresh',expires_in:10});
+    await vi.advanceTimersByTimeAsync(7000);
+    markActivity();
+    await vi.advanceTimersByTimeAsync(3000);
+    const atExpiry = getSessionRecovery();
+    resolve({data:{access_token:'renewed',refresh_token:'rotated',expires_in:60}});
+    await vi.advanceTimersByTimeAsync(0);
+    expect(atExpiry).toBeNull();
+    expect(getAccessToken()).toBe('renewed');
+  });
+  it('retries a transient proactive renewal failure while access remains valid', async () => {
+    applySessionPolicy({refresh_lead_seconds:10,min_refresh_interval_seconds:5});
+    const post=vi.spyOn(axios,'post').mockRejectedValueOnce({response:{status:503}}).mockResolvedValueOnce({data:{access_token:'renewed',refresh_token:'rotated',expires_in:60}});
+    setTokens({access_token:'access',refresh_token:'refresh',expires_in:60});
+    await vi.advanceTimersByTimeAsync(45_000);
+    markActivity();
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(getSessionRecovery()).toBeNull();
+    expect(getAccessToken()).toBe('access');
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(post).toHaveBeenCalledTimes(2);
+    expect(getAccessToken()).toBe('renewed');
+  });
+});
+
+describe('refresh rotation and account boundaries', () => {
+  it('adopts a completed same-account rotation while waiting for the cross-tab lock', async () => {
+    const post = vi.spyOn(axios,'post');
+    localStorage.setItem('t75_user',JSON.stringify({id:'owner'}));
+    setTokens({access_token:'old',refresh_token:'old-refresh',expires_in:60});
+    const request=vi.fn(async (_name, _options, run) => {
+      localStorage.setItem('t75_token','shared-access');
+      localStorage.setItem('t75_refresh_token','shared-refresh');
+      localStorage.setItem('t75_token_expires_at',String(Date.now()+60_000));
+      return run();
+    });
+    vi.stubGlobal('navigator',{locks:{request}});
+    try {
+      expect(await refreshAccessToken()).toBe('shared-access');
+      expect(request).toHaveBeenCalledOnce();
+      expect(post).not.toHaveBeenCalled();
+      expect(getSessionRecovery()).toBeNull();
+    } finally { vi.unstubAllGlobals(); }
+  });
+  it('does not mistake a stale refresh rejection for logout when another tab has renewed', async () => {
+    localStorage.setItem('t75_user',JSON.stringify({id:'owner'}));
+    setTokens({access_token:'old',refresh_token:'old-refresh',expires_in:60});
+    vi.spyOn(axios,'post').mockImplementation(async()=>{
+      localStorage.setItem('t75_token','shared-access');
+      localStorage.setItem('t75_refresh_token','shared-refresh');
+      localStorage.setItem('t75_token_expires_at',String(Date.now()+60_000));
+      throw {response:{status:401}};
+    });
+    expect(await refreshAccessToken()).toBe('shared-access');
+    expect(getSessionRecovery()).toBeNull();
+  });
+  it('cannot replace a newly signed-in session with a late renewal response', async () => {
+    let resolve!: (value: unknown) => void;
+    setTokens({access_token:'old',refresh_token:'old-refresh',expires_in:60});
+    vi.spyOn(axios,'post').mockImplementation(()=>new Promise(done=>{resolve=done;}));
+    const pending=refreshAccessToken();
+    setTokens({access_token:'different-login',refresh_token:'different-refresh',expires_in:60});
+    resolve({data:{access_token:'late',refresh_token:'late-refresh',expires_in:60}});
+    expect(await pending).toBeNull();
+    expect(getAccessToken()).toBe('different-login');
+  });
+});

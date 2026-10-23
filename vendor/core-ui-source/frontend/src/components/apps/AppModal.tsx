@@ -265,8 +265,8 @@ export function AppModal({ open, onClose, onSaved, editApp, mode }: AppModalProp
     <StepDialog
       open={open}
       onClose={onClose}
-      title={step === 'profile' ? 'New app — Choose operational model' : 'New app — Details'}
-      steps={['Choose operational model', 'Details']}
+      title={step === 'profile' ? 'New app — Choose template' : 'New app — Details'}
+      steps={['Choose template', 'Details']}
       activeIndex={step === 'profile' ? 0 : 1}
     >
       {step === 'profile' ? (
@@ -276,7 +276,7 @@ export function AppModal({ open, onClose, onSaved, editApp, mode }: AppModalProp
               value={libraryPackageId ? `library:${libraryPackageId}` : ''}
               onChange={v => setLibraryPackageId(v.startsWith('library:') ? v.slice(8) : v)}
               defaultLabel="None / Default"
-              defaultDescription="No operational model applied — app starts with base schema."
+              defaultDescription="Start with standard fields and views."
               libraryPackages={libraryPackages}
               scopeFilter="app"
             />

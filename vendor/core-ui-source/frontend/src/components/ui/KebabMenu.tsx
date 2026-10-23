@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
-import { MoreHorizontal } from 'lucide-react';
+import { Check, MoreHorizontal } from 'lucide-react';
 import { Button } from './Button';
 import { LINE_ICON_STROKE } from './IconWell';
 
@@ -10,6 +10,8 @@ export interface KebabMenuItem {
   /** Visible label. */
   label: string;
   description?: string;
+  /** Radio choice when this menu selects one active option. */
+  selected?: boolean;
   /** Optional leading glyph (lucide icon). */
   icon?: ReactNode;
   /** Action to run on click. */
@@ -34,6 +36,8 @@ interface KebabMenuProps {
   /** Match the size of sibling Button size="sm" so the trigger sits in
    *  the same baseline as inline action buttons. */
   size?: 'sm' | 'md';
+  disabled?: boolean;
+  title?: string;
   icon?: ReactNode;
 }
 
@@ -47,6 +51,8 @@ export function KebabMenu({
   ariaLabel = 'More actions',
   size = 'sm',
   icon,
+  disabled = false,
+  title,
   menuTitle,
   menuCaption,
   align = 'end',
@@ -160,11 +166,14 @@ export function KebabMenu({
           ) : null}
           <button
             type="button"
-            role="menuitem"
+            role={item.selected === undefined ? "menuitem" : "menuitemradio"}
+            aria-checked={item.selected}
             disabled={item.disabled}
+            title={item.description}
             onClick={() => {
               if (item.disabled) return;
               setOpen(false);
+              wrapperRef.current?.querySelector<HTMLButtonElement>("button")?.focus();
               item.onClick();
             }}
             className={[
@@ -184,8 +193,9 @@ export function KebabMenu({
             ) : null}
             <span className="min-w-0">
               <span className={item.description ? 'block font-medium' : 'block truncate'}>{item.label}</span>
-              {item.description && <span className="mt-1 block text-xs leading-relaxed text-[var(--text-muted)] line-clamp-2">{item.description}</span>}
+              {item.description && <span className="mt-1 block break-words text-xs leading-relaxed text-[var(--text-muted)] line-clamp-2">{item.description}</span>}
             </span>
+            {item.selected && <Check size={16} strokeWidth={LINE_ICON_STROKE} className="ml-auto shrink-0" aria-hidden />}
           </button>
         </div>
       ))}
@@ -197,6 +207,8 @@ export function KebabMenu({
       <Button
         variant="outline"
         size={size}
+        disabled={disabled}
+        title={title}
         onClick={() => setOpen(s => !s)}
         aria-haspopup="menu"
         aria-expanded={open}

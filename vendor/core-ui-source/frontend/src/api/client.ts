@@ -62,8 +62,8 @@ export function getActiveScopeHeader(): string | null {
   return _activeScopeHeader;
 }
 
-apiClient.interceptors.request.use(config => {
-  checkSessionDeadline();
+apiClient.interceptors.request.use(async config => {
+  await checkSessionDeadline();
   if (isSessionPaused()) throw new axios.CanceledError('Session renewal required');
   // Only real input events count as activity; polling must not keep a
   // session alive after the user walks away.

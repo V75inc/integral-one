@@ -41,7 +41,7 @@ vi.mock('../../components/system/SessionRenewalDialog', () => ({ SessionRenewalD
 
 import { userTimezoneApi } from '../../api/userTimezone';
 import { authApi } from '../../api';
-import { clearTokens, redirectToLogin } from '../../api/session';
+import { clearTokens, redirectToLogin, getAccessToken } from '../../api/session';
 import { AuthProvider, useAuth } from '../AuthContext';
 import { getSessionRecovery, requestSessionRecovery } from '../../api/sessionRecovery';
 
@@ -174,4 +174,19 @@ describe('Account time zone detection', () => {
     await waitFor(() => expect(result.current.loading).toBe(false));
     expect(userTimezoneApi.set).not.toHaveBeenCalled();
   });
+});
+
+
+it('updates token consumers after silent renewal and another tab renewal', async () => {
+  vi.mocked(authApi.me).mockResolvedValue(cachedUser as never);
+  const {result}=renderHook(()=>useAuth(),{wrapper});
+  await waitFor(()=>expect(result.current.loading).toBe(false));
+  vi.mocked(getAccessToken).mockReturnValue('renewed-access');
+  act(()=>window.dispatchEvent(new Event('integral:tokens-updated')));
+  expect(result.current.token).toBe('renewed-access');
+  vi.mocked(getAccessToken).mockReturnValue('shared-access');
+  act(()=>window.dispatchEvent(new StorageEvent('storage',{key:'t75_token',newValue:'shared-access'})));
+  expect(result.current.token).toBe('shared-access');
+  expect(result.current.user?.id).toBe('u1');
+  vi.mocked(getAccessToken).mockReturnValue('access-1');
 });

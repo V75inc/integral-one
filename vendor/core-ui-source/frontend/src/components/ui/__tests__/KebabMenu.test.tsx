@@ -45,3 +45,18 @@ it.each(['menu item', 'window'] as const)('dismisses Escape from %s without clos
     window.removeEventListener('keydown', parentEscape);
   }
 });
+
+
+it("marks radio choices and returns focus after a selection", () => {
+  const choose = vi.fn();
+  render(<KebabMenu ariaLabel="Models" items={[
+    {key:"auto",label:"Automatic",selected:true,onClick:vi.fn()},
+    {key:"heavy",label:"Heavy",selected:false,onClick:choose},
+  ]}/>);
+  const trigger=screen.getByRole("button",{name:"Models"});
+  fireEvent.click(trigger);
+  expect(screen.getByRole("menuitemradio",{name:"Automatic"})).toHaveAttribute("aria-checked","true");
+  fireEvent.click(screen.getByRole("menuitemradio",{name:"Heavy"}));
+  expect(choose).toHaveBeenCalledOnce();
+  expect(trigger).toHaveFocus();
+});

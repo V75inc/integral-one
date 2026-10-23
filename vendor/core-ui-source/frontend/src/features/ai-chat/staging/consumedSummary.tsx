@@ -16,7 +16,15 @@ export interface CreatedRef {
   trackId?: string | null;
 }
 
+export interface ResultLink {
+  kind: string;
+  id: string;
+  label: string;
+  url: string;
+}
+
 export interface ConsumedNav {
+  resultLinks?: ResultLink[];
   title?: string | null;
   entryId?: string | null;
   trackId?: string | null;
@@ -136,7 +144,7 @@ function createdRefFromResult(
 }
 
 /** Pull navigation ids from bless / fallback execute payloads. */
-export function extractConsumedNav(
+function extractLegacyConsumedNav(
   executeResult: unknown,
   staged: StagedChange,
 ): ConsumedNav {
@@ -185,6 +193,17 @@ export function extractConsumedNav(
     entryId: (diff?.entry_id as string) || null,
     trackId: (diff?.track_id as string) || null,
   };
+}
+
+export function extractConsumedNav(executeResult: unknown, staged: StagedChange): ConsumedNav {
+  const nav = extractLegacyConsumedNav(executeResult, staged);
+  const links = asRecord(executeResult)?.result_links;
+  if (Array.isArray(links)) nav.resultLinks = links.filter((item): item is ResultLink => {
+    const link = asRecord(item);
+    return !!link && typeof link.url === 'string' && /^\/(apps|tracks|entries)\//.test(link.url)
+      && typeof link.id === 'string' && typeof link.label === 'string' && typeof link.kind === 'string';
+  });
+  return nav;
 }
 
 function linkClassName() {
@@ -314,6 +333,16 @@ export function describeConsumed(
   const summary = staged.summary || '';
   const title = nav.title?.trim();
   const token = staged.token;
+  if (nav.resultLinks) {
+    if (!nav.resultLinks.length) return <>Saved.</>;
+    const op = stagedOp(staged);
+    const verb = /(^|_)update/.test(op) ? 'Updated' : op === 'file_content' ? 'Filed' : op.startsWith('create_') ? 'Created' : 'Saved';
+    return <>{verb}{' '}{joinNodes(nav.resultLinks.map(link => (
+      <CreatedNavLink key={link.url} to={link.url} stagingToken={token} entryId={link.kind === 'entry' ? link.id : null}>
+        {link.label}
+      </CreatedNavLink>
+    )))}.</>;
+  }
 
   // Batch (or any change) that created navigable resources: link every one so
   // the user can jump straight to the new app / tracks / entries.

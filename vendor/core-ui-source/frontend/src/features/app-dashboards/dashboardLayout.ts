@@ -120,16 +120,21 @@ export function packDashboardWidgets(
   return compactDashboardVertical(reflowDashboardWidgets(widgets, columns), columns);
 }
 
-export function layoutFromWidgets(widgets: DashboardWidget[]): GridLayoutItem[] {
-  return widgets.map(w => ({
-    i: w.id,
-    x: gridOf(w).x,
-    y: gridOf(w).y,
-    w: gridOf(w).w,
-    h: gridOf(w).h,
-    minW: 2,
-    minH: 2
-  }));
+export function layoutFromWidgets(widgets: DashboardWidget[], rowHeight = 80): GridLayoutItem[] {
+  return widgets.map(w => {
+    const minimumPixels = w.type === 'chart_pie' ? 300 : 240;
+    const minH = w.type.startsWith('chart_')
+      ? Math.max(2, Math.ceil((minimumPixels + 12) / (rowHeight + 12))) : 2;
+    return {
+      i: w.id,
+      x: gridOf(w).x,
+      y: gridOf(w).y,
+      w: gridOf(w).w,
+      h: Math.max(gridOf(w).h, minH),
+      minW: 2,
+      minH
+    };
+  });
 }
 
 export function widgetsFromLayout(

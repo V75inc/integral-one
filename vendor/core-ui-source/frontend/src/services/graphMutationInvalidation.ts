@@ -52,6 +52,7 @@ async function invalidateDashboardData(
   qc: QueryClient,
   appId?: string | null,
 ): Promise<void> {
+  await Promise.all(['app-home-data', 'app-home-definition', 'app-home-query'].map(root => qc.invalidateQueries({ queryKey: appId ? [root, appId] : [root] })));
   if (appId) {
     await qc.invalidateQueries({ queryKey: ['dashboard-data', appId] });
   } else {

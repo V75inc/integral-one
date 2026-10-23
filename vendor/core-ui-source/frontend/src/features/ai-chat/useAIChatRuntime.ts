@@ -86,6 +86,7 @@ function identityConvertMessage(m: ThreadMessageLike): ThreadMessageLike {
 
 export type ObservabilityStep = {
   modelId?: string;
+  modelRole?: "light" | "heavy";
   provider?: string;
   providerCostUsd?: number;
   costSource?:
@@ -105,6 +106,9 @@ export type ObservabilityStep = {
   usage?: { inputTokens?: number; outputTokens?: number };
 };
 
+type PublicToolSummary = import('./providers/types').PublicToolSummary;
+type ChatLatency = import('./providers/types').ChatLatency;
+
 type AssistantMessageDraft = {
   id: string;
   textParts: string[];
@@ -117,6 +121,7 @@ type AssistantMessageDraft = {
       args?: unknown;
       result?: unknown;
       diagnostic?: { code: string; message: string };
+      summary?: PublicToolSummary;
       isError?: boolean;
       status: "pending" | "running" | "complete" | "error";
     }
@@ -127,6 +132,7 @@ type AssistantMessageDraft = {
   timing?: NonNullable<ThreadMessageLike["metadata"]>["timing"];
   steps?: NonNullable<ThreadMessageLike["metadata"]>["steps"];
   customSteps?: ObservabilityStep[];
+  latency?: ChatLatency;
   interactPayload?: Record<string, unknown>;
   // Authoritative final answer (native provider `final` chunk): `finalContent` = the
   // settled answer text, `finalPayload` = the full final chunk. Debug-view
@@ -240,12 +246,13 @@ function draftToMessage(draft: AssistantMessageDraft): ThreadMessageLike {
       timing: draft.timing,
       steps: draft.steps,
       custom:
-        draft.customSteps?.length ||
+        draft.latency || draft.customSteps?.length ||
         draft.interactPayload ||
         draft.finalContent ||
         draft.finalPayload ||
         draft.errorCode
           ? {
+              ...(draft.latency ? { latency: draft.latency } : undefined),
               ...(draft.errorCode ? { errorCode: draft.errorCode } : undefined),
               ...(draft.errorDetail ? { errorDetail: draft.errorDetail } : undefined),
               ...(draft.customSteps?.length
@@ -397,10 +404,12 @@ function coalescePersistedReasoning(parts: MutableContent[]): MutableContent[] {
 
 export function toolSummaryResult(call: {
   result?: unknown;
+  summary?: unknown;
   diagnostic?: unknown;
   status?: unknown;
   isError?: unknown;
 }): unknown {
+  if (call.summary !== undefined && !call.diagnostic && call.status !== "error" && !call.isError) return { publicSummary: call.summary };
   if (call.result !== undefined) return call.result;
   const diagnostic = call.diagnostic as { code?: unknown; message?: unknown } | undefined;
   if (diagnostic && typeof diagnostic.message === "string") {
@@ -451,7 +460,7 @@ export function normalizePersistedParts(rawParts: MutableContent[]): MutableCont
       if (previous !== undefined) {
         out[previous] = {
           ...out[previous], ...normalized,
-          result: p.result ?? (p.diagnostic || p.status === "error"
+          result: p.summary ? summaryResult : p.result ?? (p.diagnostic || p.status === "error"
             ? summaryResult
             : (out[previous] as Record<string, unknown>).result ?? summaryResult),
         } as MutableContent;
@@ -625,6 +634,7 @@ function persistedToMessage(m: AIChatPersistedMessage): ThreadMessageLike {
                 }
               : undefined,
             custom: {
+              ...(pmTiming ? { latency: pmTiming } : undefined),
               ...(errorCode ? { errorCode } : undefined),
               ...(persistedError?.message || pm?.error?.message
                 ? { errorDetail: persistedError?.message || pm?.error?.message }
@@ -2123,6 +2133,7 @@ function applyEvent(draft: AssistantMessageDraft, ev: NormalizedEvent) {
         args: ev.args ?? existing?.args,
         result: ev.result ?? existing?.result,
         diagnostic: ev.diagnostic ?? existing?.diagnostic,
+        summary: ev.summary ?? existing?.summary,
         isError: ev.status === "error" || existing?.isError,
         status: ev.status,
       });
@@ -2161,6 +2172,7 @@ function applyEvent(draft: AssistantMessageDraft, ev: NormalizedEvent) {
         ...(draft.customSteps ?? []),
         {
           modelId: ev.modelId,
+          modelRole: ev.modelRole,
           provider: ev.provider,
           providerCostUsd: ev.providerCostUsd,
           costSource: ev.costSource,
@@ -2180,6 +2192,7 @@ function applyEvent(draft: AssistantMessageDraft, ev: NormalizedEvent) {
     }
     case "message-finish":
       if (ev.timing) {
+        draft.latency = ev.timing;
         draft.timing = {
           streamStartTime: 0,
           firstTokenTime: ev.timing.firstTokenMs,

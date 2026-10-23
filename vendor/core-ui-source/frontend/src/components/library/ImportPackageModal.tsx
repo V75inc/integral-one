@@ -20,17 +20,19 @@ import { FormDialog } from '../../templates';
 import { useToast } from '../../context/ToastContext';
 import { operationalModelsApi } from '../../api/operationalModels';
 import type { ImportPreviewResponse } from '../../api/operationalModels';
+import type { OperationalModelNode } from '../../types';
 
 type Step = 'pick' | 'review' | 'done';
 
 interface Props {
   open: boolean;
   onClose: () => void;
-  onSuccess: () => void;
+  onSuccess: (result: { operational_model?: OperationalModelNode }) => void;
+  expectedScope?: 'track' | 'app';
   workspaceId: string;
 }
 
-export function ImportPackageModal({ open, onClose, onSuccess, workspaceId }: Props) {
+export function ImportPackageModal({ open, onClose, onSuccess, workspaceId, expectedScope }: Props) {
   const toast = useToast();
   const fileRef = useRef<HTMLInputElement>(null);
 
@@ -79,14 +81,14 @@ export function ImportPackageModal({ open, onClose, onSuccess, workspaceId }: Pr
   };
 
   const handlePublish = async () => {
-    if (!file) return;
+    if (!file || !preview?.packages.length || preview.packages.some(p => p.validation_errors.length > 0 || (expectedScope && p.scope_kind !== expectedScope))) return;
     setIsPublishing(true);
     try {
       const data = await operationalModelsApi.importPublish(file, workspaceId);
       const count = data.published ?? 1;
       setPublishedCount(count);
       setStep('done');
-      onSuccess();
+      onSuccess(data);
     } catch (err) {
       toast.showToast(
         err instanceof Error ? err.message : 'Import failed',
@@ -98,7 +100,7 @@ export function ImportPackageModal({ open, onClose, onSuccess, workspaceId }: Pr
   };
 
   const hasAnyErrors =
-    (preview?.packages ?? []).some(p => p.validation_errors.length > 0);
+    (preview?.packages ?? []).some(p => p.validation_errors.length > 0 || (expectedScope && p.scope_kind !== expectedScope));
   const packageCount = preview?.packages.length ?? 0;
 
   if (step === 'pick') {
@@ -106,23 +108,22 @@ export function ImportPackageModal({ open, onClose, onSuccess, workspaceId }: Pr
       <FormDialog
         open={open}
         onClose={onClose}
-        title="Import operational model"
+        title="Import template"
         onConfirm={handlePreview}
         submitLabel="Preview"
         submitDisabled={!file}
         submitLoading={isPreviewing}
       >
         <Text variant="body" tone="muted" as="p">
-          Upload a <code>.yaml</code> or <code>.json</code> profile, or a{' '}
-          <code>.zip</code> archive containing one or more{' '}
-          <code>operational-model.yaml</code> bundles.
+          Upload a <code>.yaml</code>, <code>.yml</code> or <code>.json</code> template, or a <code>.zip</code> package of templates.
         </Text>
         <div className="flex flex-col gap-2">
-          <Text variant="label" tone="subtle">Manifest file</Text>
+          <Text variant="label" tone="subtle">Template file</Text>
           <input
             ref={fileRef}
             type="file"
-            accept=".yaml,.json,.zip"
+            aria-label="Template file"
+            accept=".yaml,.yml,.json,.zip"
             onChange={handleFileChange}
             className="
               block w-full text-sm
@@ -149,7 +150,7 @@ export function ImportPackageModal({ open, onClose, onSuccess, workspaceId }: Pr
       <FormDialog
         open={open}
         onClose={onClose}
-        title="Import operational model"
+        title="Import template"
         actions={
           <>
             <Button
@@ -167,16 +168,16 @@ export function ImportPackageModal({ open, onClose, onSuccess, workspaceId }: Pr
               size="sm"
               onClick={handlePublish}
               loading={isPublishing}
-              disabled={hasAnyErrors || isPublishing}
+              disabled={hasAnyErrors || !packageCount || isPublishing}
             >
-              {packageCount > 1 ? `Publish ${packageCount} operational models` : 'Publish'}
+              {packageCount > 1 ? `Import ${packageCount} templates` : 'Import'}
             </Button>
           </>
         }
       >
         {preview.archive_type === 'archive' && (
           <Text variant="body-sm" tone="subtle" as="p">
-            Archive contains {packageCount} operational model{packageCount !== 1 ? 's' : ''}.
+            Archive contains {packageCount} template{packageCount !== 1 ? 's' : ''}.
           </Text>
         )}
         <div className="flex flex-col gap-3 max-h-64 overflow-y-auto">
@@ -190,8 +191,8 @@ export function ImportPackageModal({ open, onClose, onSuccess, workspaceId }: Pr
                   {pkg.package_name || '(unnamed)'}
                 </Text>
                 <div className="flex items-center gap-2">
-                  <Text variant="body-sm" tone="muted">{pkg.entry_type_count} types</Text>
-                  <Text variant="body-sm" tone="muted">{pkg.view_count} views</Text>
+                  <Text variant="body-sm" tone="muted">{pkg.entry_type_count} {pkg.entry_type_count === 1 ? 'record type' : 'record types'}</Text>
+                  <Text variant="body-sm" tone="muted">{pkg.view_count} {pkg.view_count === 1 ? 'view' : 'views'}</Text>
                 </div>
               </div>
               {pkg.package_description && (
@@ -199,6 +200,9 @@ export function ImportPackageModal({ open, onClose, onSuccess, workspaceId }: Pr
                   {pkg.package_description}
                 </Text>
               )}
+              {expectedScope && pkg.scope_kind !== expectedScope && <Text variant="body-sm" tone="danger" as="p">
+                This file must contain a {expectedScope === 'track' ? 'Track' : 'App'} template. Choose a compatible file before importing.
+              </Text>}
               {pkg.validation_errors.length > 0 && (
                 <ul className="mt-1 flex flex-col gap-0.5">
                   {pkg.validation_errors.map((e, j) => (
@@ -218,7 +222,7 @@ export function ImportPackageModal({ open, onClose, onSuccess, workspaceId }: Pr
     <FormDialog
       open={open}
       onClose={onClose}
-      title="Import operational model"
+      title="Import template"
       actions={
         <Button type="button" variant="primary" size="sm" onClick={onClose}>
           Done
@@ -227,8 +231,8 @@ export function ImportPackageModal({ open, onClose, onSuccess, workspaceId }: Pr
     >
       <Text variant="body" tone="muted" as="p">
         {publishedCount > 1
-          ? `${publishedCount} operational models added to library.`
-          : 'Profile added to library.'}
+          ? `${publishedCount} templates added to library.`
+          : 'Template added to library.'}
       </Text>
     </FormDialog>
   );

@@ -234,16 +234,16 @@ export function TrackConfigPanel({ trackId, canEdit }: TrackConfigPanelProps) {
   const handleDeriveToLibrary = async () => {
     const ok = await confirm({
       title: 'Publish to library',
-      message: 'Create a new library Operational Model from this track\'s current configuration? This will be published as a platform operational model.',
+      message: 'Save this track\'s fields, tags, and views as a reusable template in this workspace\'s library?',
       confirmLabel: 'Publish',
       variant: 'default'
     });
     if (!ok) return;
     try {
       const result = await operationalModelsApi.deriveFromTrack(trackId);
-      showToast(`Profile "${result.operational_model?.name || 'Untitled'}" published to library`, 'success');
+      showToast(`Template "${result.operational_model?.name || 'Untitled'}" published to library`, 'success');
     } catch {
-      showToast('Failed to publish operational model', 'error');
+      showToast('Failed to publish template', 'error');
     }
   };
 
@@ -477,7 +477,7 @@ export function TrackConfigPanel({ trackId, canEdit }: TrackConfigPanelProps) {
                 Share to library
               </h3>
               <p className="text-xs text-[var(--text-muted)] mb-3">
-                Create a reusable library Operational Model from this track's current configuration.
+                Create a reusable library template from this track's current configuration.
               </p>
               <Button size="sm" variant="outline" onClick={handleDeriveToLibrary}>
                 Publish to library

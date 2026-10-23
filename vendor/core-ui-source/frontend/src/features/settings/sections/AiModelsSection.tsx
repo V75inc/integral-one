@@ -1,11 +1,13 @@
-import { PageMeta } from '../../../components/ui';
+import { PageMeta } from "../../../components/ui";
 /**
  * Settings tab — user AI model and API key configuration.
  */
-import { Text } from '../../../ui';
-import { ModelCredentialsSection } from './ModelCredentialsSection';
+import { Text } from "../../../ui";
+import { AiConfigurationSection } from "./AiConfigurationSection";
 
-export function AiModelsSection() {
+export function AiModelsSection({
+  navigateToSection,
+}: { navigateToSection?: (id: string) => void } = {}) {
   return (
     <div className="flex flex-col gap-6">
       <div>
@@ -13,11 +15,10 @@ export function AiModelsSection() {
           AI Models
         </Text>
         <PageMeta as="p">
-          Connect your AI provider and choose your primary chat model and optional
-          voice input.
+          Connect your providers and choose how Integral works with your models.
         </PageMeta>
       </div>
-      <ModelCredentialsSection />
+      <AiConfigurationSection navigateToSection={navigateToSection} />
     </div>
   );
 }

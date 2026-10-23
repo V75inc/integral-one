@@ -64,9 +64,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       resetThreadSessions();
     };
     window.addEventListener('integral:logout', onLogout);
+    const onTokensUpdated = () => { setToken(getAccessToken()); };
+    window.addEventListener('integral:tokens-updated', onTokensUpdated);
     // An explicit sign-out/account change in another tab must also retire
     // this tab's retained page and invalidate pending renewal responses.
     const onStorage = (event: StorageEvent) => {
+      if (event.key === 't75_token' || event.key === 't75_token_expires_at') {
+        onTokensUpdated();
+        scheduleProactiveRefresh();
+        return;
+      }
       if (event.key !== 't75_user') return;
       if (!event.newValue) {
         clearTokens();
@@ -173,6 +180,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return () => {
       active = false;
       window.removeEventListener('integral:logout', onLogout);
+      window.removeEventListener('integral:tokens-updated', onTokensUpdated);
       window.removeEventListener('storage', onStorage);
       cleanupHydration();
     };

@@ -12,6 +12,7 @@ interface HoverTooltipProps {
   label: ReactNode;
   children: ReactElement;
   placement?: HoverTooltipPlacement;
+  disabled?: boolean;
 }
 
 /** Small inverse popover on hover/focus — matches collapsed sidebar nav tooltips. */
@@ -19,11 +20,12 @@ export function HoverTooltip({
   label,
   children,
   placement = 'bottom',
+  disabled = false,
 }: HoverTooltipProps) {
   return (
     <span className="group/hovertip relative inline-flex">
       {children}
-      <span
+      {!disabled && <span
         role="tooltip"
         aria-hidden
         className={[
@@ -38,7 +40,7 @@ export function HoverTooltip({
         ].join(' ')}
       >
         {label}
-      </span>
+      </span>}
     </span>
   );
 }
