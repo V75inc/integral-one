@@ -86,6 +86,57 @@ test('the row lists the host menus and toggles the existing rail button', () => 
   assert.equal(document.documentElement.style['--window-titlebar-h'], '32px');
 });
 
+test('the coworker control opens and closes through the existing chat buttons', () => {
+  let opened = 0;
+  let closed = 0;
+  let dockOpen = false;
+  const open = { click: () => { opened += 1; } };
+  const close = { click: () => { closed += 1; } };
+  const observers = [];
+  const previous = globalThis.MutationObserver;
+  globalThis.MutationObserver = class {
+    constructor(callback) { observers.push(callback); }
+    observe() {}
+    disconnect() {}
+  };
+  try {
+    const document = fakeDocument(
+      { getAttribute: () => 'Collapse sidebar', click() {} },
+      null,
+      {
+        open: () => dockOpen ? null : open,
+        close: () => dockOpen ? close : null,
+      },
+    );
+    chrome.mountWindowChrome(document, {
+      height: 32,
+      menus: [{ id: 'file', label: 'File' }],
+      popupMenu() {},
+      setCaptionTheme() {},
+    }, { getItem: () => 'dark' });
+    const bar = document.body.children[0];
+    const coworker = bar.children[bar.children.length - 1];
+    assert.equal(coworker.className, 'one-window-titlebar__coworker');
+    assert.equal(coworker['aria-label'], 'Open Integral coworker');
+    assert.equal(coworker['aria-pressed'], 'false');
+    coworker.click();
+    assert.equal(opened, 1);
+    assert.equal(closed, 0);
+
+    dockOpen = true;
+    for (const callback of observers) callback([{ target: { style: {} }, addedNodes: [] }]);
+    assert.equal(coworker['aria-label'], 'Close chat');
+    assert.equal(coworker['aria-pressed'], 'true');
+    coworker.click();
+    assert.equal(opened, 1);
+    assert.equal(closed, 1);
+    assert.match(chrome.shellCss(), /one-window-titlebar__coworker\[aria-pressed="true"\]/);
+  } finally {
+    if (previous) globalThis.MutationObserver = previous;
+    else delete globalThis.MutationObserver;
+  }
+});
+
 test('the toggle label does not keep notifying itself', () => {
   const observers = [];
   let writes = 0;
@@ -107,16 +158,16 @@ test('the toggle label does not keep notifying itself', () => {
       popupMenu() {},
       setCaptionTheme() {},
     }, { getItem: () => 'dark' });
-    assert.equal(writes, 1);
+    assert.equal(writes, 2);
     for (const callback of observers) callback([{ target: { style: {} }, addedNodes: [] }]);
-    assert.equal(writes, 1);
+    assert.equal(writes, 2);
   } finally {
     if (previous) globalThis.MutationObserver = previous;
     else delete globalThis.MutationObserver;
   }
 });
 
-function fakeDocument(rail, onLabel) {
+function fakeDocument(rail, onLabel, targets = {}) {
   const created = [];
   const make = tag => {
     const listeners = {};
@@ -156,7 +207,12 @@ function fakeDocument(rail, onLabel) {
     head: { children: [], appendChild(node) { this.children.push(node); } },
     body: { children: [], appendChild(node) { this.children.push(node); } },
     getElementById: id => created.find(node => node.id === id) || null,
-    querySelector: selector => selector.includes('sidebar') ? rail : null,
+    querySelector: selector => {
+      if (selector.includes('sidebar')) return rail;
+      if (selector.includes('Close chat')) return targets.close?.() ?? null;
+      if (selector.includes('Open Integral coworker')) return targets.open?.() ?? null;
+      return null;
+    },
     createElement: make,
     createElementNS: (_namespace, tag) => make(tag),
   };

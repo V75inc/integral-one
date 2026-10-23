@@ -1,6 +1,10 @@
 'use strict';
 
 const RAIL_TOGGLE = '.system-bar-sidebar button[aria-label="Collapse sidebar"], .system-bar-sidebar button[aria-label="Expand sidebar"]';
+// Same name as the floating chat button. The :not() keeps this title-bar
+// control out of the query, so its click cannot land on itself.
+const COWORKER_OPEN = 'button[aria-label="Open Integral coworker"]:not(.one-window-titlebar__coworker)';
+const COWORKER_CLOSE = '[data-assistant-dock] button[aria-label="Close chat"]';
 const THEME_KEY = 't75_theme';
 const OFFSET = 'calc(var(--window-titlebar-h, 0px) + var(--system-bar-h, 0px))';
 
@@ -81,6 +85,14 @@ function shellCss() {
     .one-window-titlebar button:focus-visible { background: var(--nav-active-bg); }
     .one-window-titlebar button:focus-visible { outline: 2px solid var(--focus-ring-color); outline-offset: -2px; }
     .one-window-titlebar__drag { flex: 1 1 auto; align-self: stretch; min-width: 12px; -webkit-app-region: drag; }
+    .one-window-titlebar button.one-window-titlebar__coworker {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 24px;
+      padding: 0;
+    }
+    .one-window-titlebar button.one-window-titlebar__coworker[aria-pressed="true"] { background: var(--nav-active-bg); }
     .system-bar-sidebar button[aria-label="Collapse sidebar"],
     .system-bar-sidebar button[aria-label="Expand sidebar"] { display: none !important; }
     .system-bar-layout { padding-top: ${OFFSET} !important; }
@@ -130,6 +142,37 @@ function sidebarIcon(document) {
   return svg;
 }
 
+function coworkerIcon(document) {
+  const svg = document.createElementNS?.('http://www.w3.org/2000/svg', 'svg') || document.createElement('span');
+  if (svg.setAttribute) {
+    svg.setAttribute('viewBox', '0 0 24 24');
+    svg.setAttribute('width', '14');
+    svg.setAttribute('height', '14');
+    svg.setAttribute('aria-hidden', 'true');
+  }
+  if (!document.createElementNS || !svg.appendChild) return svg;
+  const bubble = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+  bubble.setAttribute('d', 'M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z');
+  bubble.setAttribute('fill', 'none');
+  bubble.setAttribute('stroke', 'currentColor');
+  bubble.setAttribute('stroke-width', '2');
+  bubble.setAttribute('stroke-linecap', 'round');
+  bubble.setAttribute('stroke-linejoin', 'round');
+  svg.appendChild(bubble);
+  return svg;
+}
+
+function syncCoworker(document, button) {
+  const open = Boolean(document.querySelector(COWORKER_CLOSE));
+  const label = open ? 'Close chat' : 'Open Integral coworker';
+  if (button.getAttribute('aria-label') !== label) {
+    button.setAttribute('aria-label', label);
+    button.setAttribute('title', label);
+  }
+  const pressed = open ? 'true' : 'false';
+  if (button.getAttribute('aria-pressed') !== pressed) button.setAttribute('aria-pressed', pressed);
+}
+
 function syncToggle(document, toggle) {
   const rail = document.querySelector(RAIL_TOGGLE);
   const label = rail?.getAttribute('aria-label') || 'Collapse sidebar';
@@ -170,6 +213,16 @@ function mountWindowChrome(document, chrome, storage) {
   const drag = document.createElement('div');
   drag.className = 'one-window-titlebar__drag';
   bar.appendChild(drag);
+  const coworker = document.createElement('button');
+  coworker.type = 'button';
+  coworker.className = 'one-window-titlebar__coworker';
+  coworker.appendChild(coworkerIcon(document));
+  coworker.addEventListener('click', () => {
+    const target = document.querySelector(COWORKER_CLOSE) || document.querySelector(COWORKER_OPEN);
+    target?.click();
+  });
+  bar.appendChild(coworker);
+  syncCoworker(document, coworker);
   document.body.appendChild(bar);
   const applyTheme = () => Promise.resolve(chrome.setCaptionTheme(activeTheme(document, read))).catch(() => {});
   void applyTheme();
@@ -178,6 +231,7 @@ function mountWindowChrome(document, chrome, storage) {
       .observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
     new MutationObserver(records => {
       syncToggle(document, toggle);
+      syncCoworker(document, coworker);
       for (const record of records) {
         if (record.target?.style) patchChromeOffset(record.target.style);
         for (const node of record.addedNodes || []) patchElement(node);
