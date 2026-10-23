@@ -5,7 +5,7 @@ const CAPTION = {
   dark: { color: '#1a1a1a', symbolColor: '#ededed' },
 };
 const TITLEBAR_HEIGHT = 32;
-const MENU_IDS = new Set(['file', 'edit', 'view', 'window', 'help']);
+const MENU_IDS = new Set(['file', 'edit', 'view', 'help']);
 const CHROME_ARGUMENT = '--integral-window-chrome=';
 
 function captionOverlay(theme) {

@@ -4,9 +4,9 @@
   "product_version": "0.1.2",
   "mode": "local",
   "desktop_host": {
-    "version": "0.1.7-dev.6",
-    "artifact": "vendor/integral-desktop-host-0.1.7-dev.6.tgz",
-    "sha256": "401086d6077982024359b1f1260c5526923620983b306c4b7bb2062666ba0f8d"
+    "version": "0.1.7-dev.7",
+    "artifact": "vendor/integral-desktop-host-0.1.7-dev.7.tgz",
+    "sha256": "a67bfa2d4e275deb6675cfaef01952532643ddf40761672c770ef79c20b77c76"
   },
   "core": {
     "version": "0.1.1rc30",

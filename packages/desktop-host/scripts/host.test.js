@@ -157,8 +157,13 @@ test('Windows title bar recolors the native caption and pops the installed menu'
   assert.equal(main.options.backgroundColor, '#1a1a1a');
   assert.deepEqual(main.options.titleBarOverlay, { color: '#1a1a1a', symbolColor: '#ededed', height: 32 });
   const argument = main.options.webPreferences.additionalArguments[0];
+  const bar = f.menus[0].filter(item => item.id);
+  assert.equal(Array.from(bar, item => item.id).join(','), 'file,edit,view,help');
+  const viewRoles = bar.find(item => item.id === 'view').submenu.map(item => item.role).filter(Boolean);
+  assert.equal(Array.from(viewRoles).join(','), 'resetZoom,zoomIn,zoomOut,togglefullscreen');
+  assert.equal(bar.some(item => item.role === 'windowMenu' || item.id === 'window'), false);
   assert.deepEqual(JSON.parse(argument.slice('--integral-window-chrome='.length)).menus.map(menu => menu.id),
-    ['file', 'edit', 'view', 'window', 'help']);
+    ['file', 'edit', 'view', 'help']);
   const event = trustedEvent(main);
   assert.equal(await f.handlers['integral:window-chrome-popup'](event, 'file', 12, 32), true);
   const popped = f.menus[0].find(item => item.id === 'file').popped;
@@ -166,6 +171,7 @@ test('Windows title bar recolors the native caption and pops the installed menu'
   assert.equal(popped.x, 12);
   assert.equal(popped.y, 32);
   assert.equal(await f.handlers['integral:window-chrome-popup'](event, 'tools', 12, 32), null);
+  assert.equal(await f.handlers['integral:window-chrome-popup'](event, 'window', 12, 32), null);
   assert.equal(await f.handlers['integral:window-chrome-theme'](event, 'light'), '#fafafa');
   assert.deepEqual(main.overlay, { color: '#fafafa', symbolColor: '#0b0b0c', height: 32 });
   assert.equal(main.backgroundColor, '#fafafa');

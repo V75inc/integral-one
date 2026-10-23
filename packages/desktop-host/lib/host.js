@@ -109,7 +109,11 @@ async function boot() {
       ...(runtime ? [{ label: 'Open Installation Folder', click: () => shell.openPath(runtime.home) }] : []),
       { type: 'separator' }, { role: 'quit' },
     ] },
-    { id: 'edit', label: 'Edit', role: 'editMenu' }, { id: 'view', label: 'View', role: 'viewMenu' }, { id: 'window', label: 'Window', role: 'windowMenu' },
+    { id: 'edit', label: 'Edit', role: 'editMenu' },
+    { id: 'view', label: 'View', submenu: [
+      { role: 'resetZoom' }, { role: 'zoomIn' }, { role: 'zoomOut' },
+      { type: 'separator' }, { role: 'togglefullscreen' },
+    ] },
     ...(options.helpMenuItems?.length ? [{ id: 'help', label: 'Help', submenu: options.helpMenuItems }] : []),
   ]);
   Menu.setApplicationMenu(applicationMenu);
