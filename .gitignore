@@ -23,3 +23,6 @@ desktop/accounts/config.runtime.json
 # Avoid bloating repo with agent skills
 .agents/
 skills-lock.json
+
+# IDE files
+.idea
