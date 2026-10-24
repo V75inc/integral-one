@@ -22,7 +22,7 @@ function createAttempt() {
     nonce: crypto.randomBytes(32).toString("base64url"),
   };
 }
-function authorizationUrl(appId, attempt) {
+function authorizationUrl(appId, attempt, options = {}) {
   const url = new URL(endpoint("auth"));
   url.searchParams.set("response_type", "code");
   url.searchParams.set("client_id", appId);
@@ -32,6 +32,7 @@ function authorizationUrl(appId, attempt) {
   url.searchParams.set("code_challenge", attempt.challenge);
   url.searchParams.set("state", attempt.state);
   url.searchParams.set("nonce", attempt.nonce);
+  if (options.prompt) url.searchParams.set("prompt", options.prompt);
   return url.toString();
 }
 function decode(part) {
@@ -60,10 +61,10 @@ async function readCapped(response) {
     await reader.cancel();
   }
 }
+const LINKED_ACCOUNT =
+  "Sign in with the account linked to this computer. Your local data is unchanged.";
 function linkedAccount() {
-  throw new Error(
-    "Sign in with the account linked to this computer. Your local data is unchanged.",
-  );
+  throw new Error(LINKED_ACCOUNT);
 }
 function verifyClaims(claims, appId, nonce, now) {
   const seconds = now / 1000;
@@ -88,14 +89,36 @@ function verifyClaims(claims, appId, nonce, now) {
       "Sign-in proof is expired, incomplete or from another application.",
     );
   if (
-    claims.email_verified !== true ||
-    typeof claims.email !== "string" ||
-    claims.email.length > 320 ||
-    !/^[^\s@]+@[^\s@]+$/.test(claims.email) ||
-    typeof claims.name !== "string" ||
-    claims.name.length > 256
+    (claims.email !== undefined &&
+      claims.email !== null &&
+      (typeof claims.email !== "string" ||
+        claims.email.length > 320 ||
+        (claims.email.length > 0 && !/^[^\s@]+@[^\s@]+$/.test(claims.email)))) ||
+    (claims.name !== undefined &&
+      claims.name !== null &&
+      (typeof claims.name !== "string" || claims.name.length > 256))
   )
-    throw new Error("A verified email and name are required.");
+    throw new Error("Invalid account profile.");
+}
+function extractProfile(claims) {
+  const email =
+    typeof claims.email === "string" && claims.email
+      ? claims.email
+      : typeof claims.username === "string" && claims.username
+        ? `${claims.username}@integral.local`
+        : typeof claims.preferred_username === "string" &&
+            claims.preferred_username
+          ? `${claims.preferred_username}@integral.local`
+          : "";
+  const name =
+    typeof claims.name === "string"
+      ? claims.name
+      : typeof claims.username === "string"
+        ? claims.username
+        : typeof claims.preferred_username === "string"
+          ? claims.preferred_username
+          : "";
+  return { email, name };
 }
 function signingJwk(keys, kid) {
   if (!Array.isArray(keys)) throw new Error("Invalid account signing keys.");
@@ -195,7 +218,7 @@ async function verifyLogtoToken(proof, request, now) {
   return {
     sub: claims.sub,
     issuer: claims.iss,
-    profile: { email: claims.email, name: claims.name },
+    profile: extractProfile(claims),
   };
 }
 function keyFile(home) {
@@ -245,7 +268,8 @@ function verifyLogtoSetup(home, state) {
     Object.hasOwn(payload, "exp") ||
     typeof payload.profile?.email !== "string" ||
     payload.profile.email.length > 320 ||
-    !/^[^\s@]+@[^\s@]+$/.test(payload.profile.email) ||
+    (payload.profile.email.length > 0 &&
+      !/^[^\s@]+@[^\s@]+$/.test(payload.profile.email)) ||
     typeof payload.profile.name !== "string" ||
     payload.profile.name.length > 256
   )
@@ -305,6 +329,7 @@ async function saveLogtoSetup(
 }
 module.exports = {
   ISSUER,
+  LINKED_ACCOUNT,
   createAttempt,
   authorizationUrl,
   verifyLogtoSetup,

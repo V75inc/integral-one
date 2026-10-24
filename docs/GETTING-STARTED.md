@@ -30,9 +30,9 @@ Open **File → Set Up AI Model…** or the AI models section of Settings. Confi
 
 ## Accounts and offline access
 
-Your Integral account identifies you to the signup service. Your local workspace remains on this computer. Choosing a hosted AI provider is a separate data flow: prompts and selected context go to that provider.
+Your Integral account identifies you to Logto at https://auth.saas.apps.trueselph.com/oidc. Your local files stay local. This tenant’s user list includes dev signups. Choosing a hosted AI provider is a separate data flow: prompts and selected context go to that provider.
 
-**Sign out** returns to the welcome screen. **Sign in** opens Clerk again. **Continue offline** resumes this computer's existing workspace without an online account check. Another Integral account cannot replace the account already linked to the current local setup.
+**Sign out** returns to the welcome screen. **Sign in** opens the system browser. **Continue offline** does not contact Logto. A different account does not replace the link.
 
 Sign-out is not a lock against another person using the same operating-system account. Protect the computer with your OS account, screen lock and disk encryption.
 

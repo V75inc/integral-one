@@ -25,7 +25,7 @@ These are the idea’s direction, stated so the gate can be tested.
 ### Assumptions
 
 1. Logto’s authorization and token URLs for this issuer are `https://auth.saas.apps.trueselph.com/oidc/auth` and `https://auth.saas.apps.trueselph.com/oidc/token`. The JWKS URL is the one in the idea, `https://auth.saas.apps.trueselph.com/oidc/jwks`. One pins those three URLs. A discovery document cannot retarget them.
-2. The ID token’s `aud` is the public App ID as a string. `email_verified` is the boolean `true`. `name` is a string. Those are required for setup to succeed.
+2. The ID token’s `aud` is the public App ID as a string. Unverified emails and missing names or username-based accounts are accepted and normalize to the local profile.
 3. A normal Logto ID token can live up to one hour. This gate does not reuse Clerk’s five-minute session-token cap. “Fresh” means the token from this PKCE exchange: `iat` within five minutes of the local clock, and `exp` still in the future.
 4. The account controller can listen for the OS protocol callback without changing the desktop host. The host’s existing second-instance handler only focuses the window.
 5. No new npm dependency is required. Verification uses Node’s `crypto`, as the Clerk checker does today.
@@ -160,9 +160,9 @@ The ID token is a single JWT from that token response. The main process rejects 
 - `aud` is the configured App ID string.
 - `nonce` matches this attempt.
 - `sub` is a non-empty string of at most 128 characters. It does not have to match Clerk’s `user_` form.
-- `email_verified` is boolean `true`.
-- `email` is a string of at most 320 characters and contains one `@`.
-- `name` is a string of at most 256 characters. An empty string is allowed. A missing name is not.
+- `email_verified` may be true, false, or omitted.
+- `email`, when present, is a string of at most 320 characters and contains one `@`. When omitted, username or sub derives the local email.
+- `name`, when present, is a string of at most 256 characters. When omitted, username or an empty string is stored.
 - `iat` is within five minutes of the local clock, allowing five seconds of future skew. `nbf`, when present, is not more than five seconds ahead. `exp` is in the future, after `iat`, and no more than one hour after `iat`.
 
 The signature is checked with the pinned JWKS URL only. The fetch uses no credentials, does not follow redirects, times out, and caps the body. Exactly one key may match `kid`. That key is an EC P-384 signature key, `alg` absent or `ES384`, with no private `d`. Any other algorithm, curve, or key count fails closed.

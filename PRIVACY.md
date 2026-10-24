@@ -33,19 +33,22 @@ separately. Update checks are independent of account signup and marketing.
 
 ## Integral account signup
 
-Official first-time setup requires signup or sign-in. Clerk handles authentication
+Official first-time setup requires signup or sign-in. Logto at
+https://auth.saas.apps.trueselph.com/oidc handles authentication
 and email verification. Depending on the method you choose, it and the sign-in
 provider process your email, account/profile identifiers, name or profile image,
 authentication state and connection/security information such as IP address and
 browser details. One displays the verified account email and name from its local
 signed setup record. Passwords and provider credentials are not sent to Core.
+Your local files stay local.
 
-In the configuration-v2 Clerk-only flow, the desktop verifies your fresh signed
-Clerk session and verified email directly, using Clerk's public verification keys.
-It then creates a private setup record on this computer. There is no separate
-registration server, centrally stored installation inventory or first-One-use
-marker in this flow. Authentication providers have their own operational/security
-logs; their configuration and retention still need release review.
+The desktop keeps a local record on this computer: the account identifier,
+installation id, setup timestamp and minimal display profile, signed with a
+private local integrity key. The record has no expiry and is checked locally.
+One stores no Logto session. There is no second user list, separate
+registration server, centrally stored installation inventory, or first-One-use
+marker. Authentication providers have their own operational/security logs;
+their configuration and retention still need release review.
 
 Older configuration-v1 builds use a separate registration service that records a
 first-One-registration marker and returns an installation-bound signed receipt.
@@ -53,27 +56,25 @@ That compatibility path sends a random installation code, not a hardware
 fingerprint. Existing receipts remain supported; their data is not silently
 migrated into a new online account.
 
-Administrative reports count distinct registered Integral accounts and signup
-cohorts in Clerk's production directory. They are not completed-installation,
-One-only registration or active-user measurements. Repeat sign-in uses the same
-account. Directory deletion can reduce the count. No ongoing activity
-heartbeat or workspace-content analytics is added by this signup integration.
+This tenant’s user list includes dev signups. Administrative reports count
+distinct registered Integral accounts and signup cohorts in that list. They
+are not completed-installation, One-only registration or active-user
+measurements. Repeat sign-in uses the same account. Directory deletion can
+reduce the count. No ongoing activity heartbeat or workspace-content analytics
+is added by this signup integration.
 
-Optional Clerk SDK telemetry is disabled in the desktop signup view. This does
-not disable authentication/security processing or make third-party sites offline.
 The separate hosted signup portal requires its own equivalent review before
 launch. Signup does not enroll you in a marketing mailing list.
 
 ## Offline access and sign-out
 
 The desktop keeps a setup record containing the account identifier,
-random installation code, setup timestamp and minimal display profile. New
-Clerk-only records are signed with a private local integrity key; older receipts
-retain their service signature. The record has no expiry and is checked locally.
-The local key is not a remote access credential or a replacement for OS security.
-Clerk tokens in the desktop bridge are held in
-memory and cleared when setup completes or the account window closes; the account
-window uses an in-memory Electron session partition.
+random installation code, setup timestamp and minimal display profile. A new
+record is a version 3 local setup signed with the private local integrity key;
+older receipts retain their service signature. The record has no expiry and is
+checked locally. The local key is not a remote access credential or a replacement
+for OS security. This gate stores no Logto token and holds no Clerk token in a
+desktop bridge. The account window uses an in-memory Electron session partition.
 
 Once set up, an account outage or expired cloud session does not disable existing
 local access. After sign-out, choose Sign in or Continue offline. Sign-out closes
@@ -95,10 +96,9 @@ Business migration and marketplace services are not available in this preview.
 
 ## Providers, requests and retention
 
-Clerk processes end-user account information for V75 Inc. under the applicable
-service arrangements. Its general [privacy policy](https://clerk.com/legal/privacy)
-explains the distinction between Clerk's own customer information and end-user
-data processed for its customers. Your chosen social/AI providers have their own
+Logto at
+https://auth.saas.apps.trueselph.com/oidc processes end-user account
+information for this gate. Your chosen social/AI providers have their own
 policies. Download hosts and operating-system signature services receive ordinary
 download/verification requests. No provider is represented as receiving no data.
 

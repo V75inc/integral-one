@@ -11,7 +11,6 @@ const {
   saveReceipt,
   readState,
 } = require("../desktop/accounts/receipt");
-const { validateConfig } = require("../desktop/accounts/config");
 const {
   isAccountUrl,
   trustedSender,
@@ -130,30 +129,6 @@ test("corrupt state and symlink need recovery without replacing existing bytes",
   }
   assert.throws(() => loadState(f.home));
 });
-test("account config pins Clerk host/HTTPS/public keys and rejects secrets", (t) => {
-  const f = fixture(t);
-  assert.equal(validateConfig(f.config).provider, "clerk");
-  for (const delta of [
-    { activationUrl: "http://attacker.test" },
-    { clerkIssuer: "https://other.example.com" },
-    { secretKey: "never-in-client" },
-    { publicKeys: {} },
-    {
-      environment: "production",
-      publishableKey: f.config.publishableKey.replace("pk_live_", "pk_test_"),
-    },
-  ])
-    assert.throws(() => validateConfig({ ...f.config, ...delta }));
-  assert.equal(
-    validateConfig({
-      ...f.config,
-      environment: "development",
-      publishableKey: f.config.publishableKey.replace("pk_live_", "pk_test_"),
-      activationUrl: "http://127.0.0.1:4187",
-    }).configured,
-    true,
-  );
-});
 test("only the dedicated account top-level window may call activation IPC", () => {
   const window = {
     isDestroyed: () => false,
@@ -199,6 +174,10 @@ test("only fixed account assets are served; CSP does not weaken Core", (t) => {
   assert.ok(!csp.includes("'unsafe-eval'"));
   assert.ok(csp.includes("frame-ancestors 'none'"));
   assert.ok(!csp.includes("http://127.0.0.1"));
+  assert.equal(/clerk|logto|trueselph|cloudflare/i.test(csp), false);
+  assert.throws(() =>
+    asset("integral-one://account/callback?code=1&state=2", root),
+  );
 });
 test("activation request sends only installation ID and bearer to a fixed endpoint, without redirects", async (t) => {
   const f = fixture(t);
@@ -232,60 +211,58 @@ test("activation request sends only installation ID and bearer to a fixed endpoi
     ),
   );
 });
-test("activated cold start skips the account window and all online calls", async (t) => {
+test("a legacy receipt does not open the workspace or gain a Logto binding", async (t) => {
   const f = fixture(t);
-  saveReceipt(f.home, f.state, f.sign(), f.config);
-  const handlers = new Map();
-  let windows = 0,
-    memory,
-    cleanup = 0;
+  const code = f.sign();
+  saveReceipt(f.home, f.state, code, f.config);
+  const file = path.join(f.home, "one-account/activation.json");
+  const original = fs.readFileSync(file);
   const { EventEmitter } = require("node:events");
-  const app = new EventEmitter();
+  let windows = 0;
   const controller = createController({
     config: f.config,
+    request: () => assert.fail("A legacy receipt must not contact the network"),
     electron: {
-      app,
-      clipboard: {},
+      app: new EventEmitter(),
+      ipcMain: { handle() {}, removeHandler() {} },
       session: {
-        fromPartition: () =>
-          assert.fail("Activated app must not create an auth session"),
+        fromPartition: () => ({
+          setPermissionRequestHandler() {},
+          setPermissionCheckHandler() {},
+          protocol: { handle() {} },
+        }),
       },
-      ipcMain: {
-        handle: (name, fn) => handlers.set(name, fn),
-        removeHandler: (name) => handlers.delete(name),
-      },
-      BrowserWindow: class {
+      BrowserWindow: class extends EventEmitter {
         constructor() {
-          windows++;
+          super();
+          windows += 1;
+          this.webContents = new EventEmitter();
+          this.webContents.mainFrame = { url: "integral-one://account/" };
+          this.webContents.setWindowOpenHandler = () => {};
+        }
+        isDestroyed() {
+          return false;
+        }
+        async loadURL() {}
+        close() {
+          this.emit("closed");
         }
       },
-    },
-    createBridge: (options) => {
-      memory = options.storage;
-      return { cleanup: () => cleanup++ };
     },
   });
   const previous = process.env.INTEGRAL_HOME;
   process.env.INTEGRAL_HOME = f.home;
-  try {
-    await controller.beforeBoot({ userData: f.home });
-  } finally {
+  t.after(() => {
+    controller.cleanup();
     if (previous === undefined) delete process.env.INTEGRAL_HOME;
     else process.env.INTEGRAL_HOME = previous;
-  }
-  assert.equal(windows, 0);
-  assert.equal(await memory.getItem("session"), null);
-  controller.authorizeSession();
-  controller.signOut();
-  assert.equal(readState(f.home).signedOut, true);
-  assert.throws(() => controller.authorizeSession(), /Sign in/);
-  assert.ok(readState(f.home).receipt);
-  controller.resumeOffline();
-  assert.equal(readState(f.home).signedOut, false);
-  controller.authorizeSession();
-  controller.cleanup();
-  assert.equal(handlers.size, 0);
-  assert.equal(cleanup, 1);
+  });
+  void controller.beforeBoot({ userData: f.home });
+  assert.equal(windows, 1);
+  assert.equal(controller.accountProfile(), null);
+  assert.equal(fs.readFileSync(file).equals(original), true);
+  assert.equal(readState(f.home).receipt, code);
+  assert.equal(readState(f.home).localSetup, undefined);
 });
 test("signup stays automatic and shows the Integral logo without an activation action", () => {
   const source = fs.readFileSync(
@@ -293,11 +270,10 @@ test("signup stays automatic and shows the Integral logo without an activation a
     "utf8",
   );
   assert.match(source, /src="\/integral-logo\.svg"/);
-  assert.match(source, /window\.integralActivation\.register/);
   assert.match(source, /Your files and records stay on this computer/);
-  assert.match(source, /telemetry=\{false\}/);
   assert.match(source, /Privacy and your account/);
   assert.match(source, /support@v75inc\.com/);
+  assert.doesNotMatch(source, /window\.integralActivation\.register|telemetry=\{false\}/);
   assert.ok(!/>Activate\b/.test(source));
 });
 test("damaged signed-out receipt offers local recovery without replacing state", async (t) => {
@@ -388,31 +364,124 @@ test("signed profile survives offline and another Clerk account cannot replace t
   );
 });
 
-test("account presentation keeps verification headings, accessible controls and one compact form", () => {
-  const source = fs.readFileSync(
-    path.join(__dirname, "../accounts/appearance.js"),
-    "utf8",
-  );
-  assert.ok(!/header:\s*\{\s*display:\s*['"]none/.test(source));
-  assert.match(source, /otpCodeFieldInput/);
-  assert.match(source, /44px/);
-  assert.match(source, /accountLocalization/);
+test("the local account page is a one-column gate and the preload starts the browser with no arguments", () => {
   const renderer = fs.readFileSync(
     path.join(__dirname, "../accounts/renderer.jsx"),
     "utf8",
   );
-  assert.match(renderer, /Restart sign-in/);
-  assert.match(renderer, /ClerkFailed/);
-  assert.match(renderer, /aria-describedby/);
-  assert.match(renderer, /window\.location\.hash\s*=\s*""/);
+  const preload = fs.readFileSync(
+    path.join(__dirname, "../desktop/accounts/preload-entry.js"),
+    "utf8",
+  );
+  const css = fs.readFileSync(
+    path.join(__dirname, "../accounts/account.css"),
+    "utf8",
+  );
+  const windowSource = fs.readFileSync(
+    path.join(__dirname, "../desktop/accounts/controller.js"),
+    "utf8",
+  );
+  function sliceFunction(source, name) {
+    const start = source.indexOf(`function ${name}(`);
+    assert.notEqual(start, -1, `${name} is missing`);
+    let depth = 0;
+    for (let i = source.indexOf("{", start); i < source.length; i++) {
+      if (source[i] === "{") depth++;
+      else if (source[i] === "}") {
+        depth--;
+        if (depth === 0) return source.slice(start, i + 1);
+      }
+    }
+    assert.fail(`${name} is unclosed`);
+  }
+  for (const source of [renderer, preload]) {
+    assert.doesNotMatch(source, /@clerk\/|@logto\/|logto-js/);
+  }
+  assert.doesNotMatch(renderer, /\bClerk|from ["']\.\/appearance["']/);
+  assert.match(preload, /invoke\("integral-one:account-start"\)/);
+  assert.doesNotMatch(
+    preload,
+    /account-start"\s*,|integral-one:activate|activation-import|activation-copy/,
+  );
+  assert.equal(
+    (renderer.match(/integralActivation\.start\(\)/g) || []).length,
+    1,
+  );
+  const configured = sliceFunction(renderer, "ConfiguredSignIn");
+  const preview = sliceFunction(renderer, "UnconfiguredPreview");
+  const app = sliceFunction(renderer, "App");
+  assert.match(configured, /integralActivation\.start\(\)/);
+  assert.match(configured, /Finish signing in in your browser/);
+  assert.match(
+    configured,
+    /Once Integral One opens, you can close the browser tab/,
+  );
+  assert.match(configured, /Restart sign-in/);
+  assert.match(configured, /integralActivation\.restartSignin\(\)/);
+  assert.doesNotMatch(preview, /integralActivation\.start\(/);
+  assert.match(
+    preview,
+    /Account signup is unavailable in this preview\. Existing local data is preserved\./,
+  );
+  assert.match(app, /context\.configured \? \(\s*<ConfiguredSignIn \/>/);
+  assert.match(app, /<UnconfiguredPreview \/>/);
+  assert.match(app, /context\.canContinueOffline &&/);
+  assert.match(app, /Continue offline/);
+  assert.match(app, /integralActivation\.offline\(\)/);
+  assert.match(
+    app,
+    /context\.existingData &&\s*\(!context\.returning \|\| context\.recoveryNeeded\)/,
+  );
+  assert.match(app, /Open local workspace/);
+  assert.match(app, /integralActivation\.recover\(\)/);
+  assert.doesNotMatch(
+    renderer,
+    /offlineImport|setup-code|importReceipt|integralActivation\.register|publishableKey|getToken/,
+  );
+  assert.match(
+    renderer,
+    /https:\/\/auth\.saas\.apps\.trueselph\.com\/oidc/,
+  );
+  assert.match(renderer, /local files stay on this computer/);
+  assert.match(renderer, /this tenant\u2019s user list includes dev signups/);
+  assert.match(renderer, /Your files and records stay on this computer/);
+  assert.doesNotMatch(renderer, /stored session|second user list/i);
+  assert.doesNotMatch(css, /display:\s*grid|grid-template-columns|column-count/);
+  assert.equal((css.match(/@media\s*\(max-width:/g) || []).length, 1);
+  assert.match(
+    css,
+    /\.account-page\s*\{[^}]*width:\s*min\(100% - 48px,\s*384px\)/,
+  );
+  assert.match(windowSource, /minWidth:\s*360/);
+  assert.match(windowSource, /minHeight:\s*560/);
 });
 
-test("OAuth restart is available only to the account main frame and preserves local identity", async (t) => {
+test("the account page keeps accessible controls in one column", () => {
+  const css = fs.readFileSync(
+    path.join(__dirname, "../accounts/account.css"),
+    "utf8",
+  );
+  const renderer = fs.readFileSync(
+    path.join(__dirname, "../accounts/renderer.jsx"),
+    "utf8",
+  );
+  assert.match(css, /\.action\s*\{[^}]*min-height:\s*44px/);
+  assert.match(css, /button:focus-visible/);
+  assert.match(renderer, /<h1>/);
+  assert.match(renderer, /Restart sign-in/);
+  assert.doesNotMatch(
+    renderer,
+    /ClerkFailed|window\.location\.hash|from ["']\.\/appearance["']/,
+  );
+});
+
+test("restart sign-in is available only to the account main frame and preserves local identity", async (t) => {
   const f = fixture(t);
   saveReceipt(f.home, f.state, f.sign(), f.config);
   const original = readState(f.home).receipt;
   const { EventEmitter } = require("node:events");
   const handlers = new Map(),
+    opened = [],
     app = new EventEmitter();
   let win,
     restarted = 0,
@@ -423,11 +492,19 @@ test("OAuth restart is available only to the account main frame and preserves lo
     app.emit("before-quit");
   };
   const controller = createController({
-    config: f.config,
-    createBridge: () => ({ cleanup() {} }),
+    config: {
+      contractVersion: 3,
+      provider: "logto",
+      setupMode: "logto",
+      configured: true,
+      environment: "production",
+      appId: "app_public_test",
+      issuer: "https://auth.saas.apps.trueselph.com/oidc",
+    },
     electron: {
       app,
       clipboard: {},
+      shell: { openExternal: async (url) => opened.push(url) },
       ipcMain: {
         handle: (n, fn) => handlers.set(n, fn),
         removeHandler: (n) => handlers.delete(n),
@@ -451,12 +528,16 @@ test("OAuth restart is available only to the account main frame and preserves lo
           return false;
         }
         async loadURL() {}
+        close() {
+          this.emit("closed");
+        }
       },
     },
   });
   const previous = process.env.INTEGRAL_HOME;
   process.env.INTEGRAL_HOME = f.home;
   t.after(() => {
+    controller.cleanup();
     if (previous === undefined) delete process.env.INTEGRAL_HOME;
     else process.env.INTEGRAL_HOME = previous;
   });
@@ -466,13 +547,15 @@ test("OAuth restart is available only to the account main frame and preserves lo
     restart({ sender: {}, senderFrame: { url: "https://foreign.example" } }),
     /Untrusted/,
   );
+  assert.equal(opened.length, 0);
   assert.equal(restarted, 0);
   await restart({
     sender: win.webContents,
     senderFrame: win.webContents.mainFrame,
   });
-  assert.equal(restarted, 1);
-  assert.equal(quit, 1);
+  assert.equal(opened.length, 1);
+  assert.equal(restarted, 0);
+  assert.equal(quit, 0);
   assert.equal(readState(f.home).receipt, original);
   assert.equal(readState(f.home).installationId, f.state.installationId);
 });

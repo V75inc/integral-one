@@ -2,13 +2,23 @@
 const path = require("node:path");
 const fs = require("node:fs");
 const electron = require("electron");
-const { app } = electron;
+const { app, protocol } = electron;
+protocol.registerSchemesAsPrivileged([
+  {
+    scheme: "integral-one",
+    privileges: {
+      standard: true,
+      secure: true,
+      supportFetchAPI: true,
+      corsEnabled: true,
+    },
+  },
+]);
 const config = require("./accounts/config").loadConfig();
 const { createController } = require("./accounts/controller");
 const controller = createController({
   electron,
   config,
-  createBridge: require("@clerk/electron").createClerkBridge,
 });
 const resources = app.isPackaged
   ? process.resourcesPath

@@ -36,6 +36,7 @@ summary:focus-visible {
   width: min(100% - 48px, 384px);
   margin: 0 auto;
   padding: 44px 0 24px;
+  overflow-wrap: anywhere;
 }
 .account-header {
   text-align: center;
@@ -75,13 +76,6 @@ summary:focus-visible {
 }
 .account-body {
   min-height: 180px;
-}
-.account-switch {
-  text-align: center;
-  font-size: 13px;
-  line-height: 1.6;
-  color: #aaa9a5;
-  margin: 18px 0 0;
 }
 .text-action {
   padding: 4px 2px;
@@ -221,12 +215,6 @@ summary:hover {
 a {
   color: #efa477;
 }
-.cl-rootBox {
-  width: 100%;
-}
-.cl-cardBox {
-  max-width: 100%;
-}
 @media (max-width: 400px) {
   .account-page {
     width: calc(100% - 40px);
@@ -263,9 +251,12 @@ a {
   color: #aaa9a5;
   margin-top: 8px;
 }
-.browser-handoff .text-action {
-  padding: 6px 0;
-  min-height: 36px;
+.browser-handoff .error {
+  margin-top: 12px;
 }
-
-.account-header--form .wordmark{margin-bottom:0}
+.account-body .text-action {
+  display: block;
+  width: fit-content;
+  margin: 8px auto 0;
+  min-height: 44px;
+}

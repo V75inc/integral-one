@@ -1,9 +1,8 @@
 {
-  "contractVersion": 1,
-  "provider": "clerk",
+  "contractVersion": 3,
+  "provider": "logto",
+  "setupMode": "logto",
   "configured": false,
-  "publishableKey": "",
-  "clerkIssuer": "",
-  "activationUrl": "",
-  "publicKeys": {}
+  "appId": "",
+  "issuer": "https://auth.saas.apps.trueselph.com/oidc"
 }

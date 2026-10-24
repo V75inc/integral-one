@@ -41,7 +41,7 @@ See [installation and troubleshooting](docs/INSTALL.md), or download directly fr
 
 Create an App to group related work, add a Track, then create your first record. AI setup is optional. [Getting started](docs/GETTING-STARTED.md) walks through the essentials.
 
-Files and records stay local. If you choose a hosted AI provider, the prompts and context needed for that request are sent to that provider. Account signup sends account information to Clerk. See [accounts and offline access](docs/GETTING-STARTED.md#accounts-and-offline-access).
+Files and records stay local. If you choose a hosted AI provider, the prompts and context needed for that request are sent to that provider. Account signup for this gate uses Logto at https://auth.saas.apps.trueselph.com/oidc; local files stay local, and this tenant’s user list includes dev signups. See [accounts and offline access](docs/GETTING-STARTED.md#accounts-and-offline-access).
 
 ## Help and contribute
 

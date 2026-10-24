@@ -33,11 +33,28 @@ fs.copyFileSync(
   path.join(output, "integral-logo.svg"),
 );
 const { validateConfig } = require("../desktop/accounts/config");
+const productionConfig = path.join(
+  root,
+  "desktop/accounts/config.production.json",
+);
+const isProductionConfigured =
+  fs.existsSync(productionConfig) &&
+  (() => {
+    try {
+      return (
+        JSON.parse(fs.readFileSync(productionConfig, "utf8")).configured === true
+      );
+    } catch {
+      return false;
+    }
+  })();
+const defaultConfig = isProductionConfigured
+  ? productionConfig
+  : path.join(root, "desktop/accounts/config.json");
 const config = validateConfig(
   JSON.parse(
     fs.readFileSync(
-      process.env.INTEGRAL_ACCOUNT_CONFIG ||
-        path.join(root, "desktop/accounts/config.json"),
+      process.env.INTEGRAL_ACCOUNT_CONFIG || defaultConfig,
       "utf8",
     ),
   ),
@@ -47,5 +64,6 @@ fs.writeFileSync(
   JSON.stringify(config, null, 2) + "\n",
 );
 console.log(
-  "Isolated Clerk account renderer and sandbox-compatible preload built.",
+  "Isolated Logto account renderer and sandbox-compatible preload built.",
 );
+
