@@ -1,5 +1,5 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
-import { describe, expect, it, vi, beforeEach } from "vitest";
+import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 
 import { aiChatApi } from "../../../api/aiChat";
 import { useAIChatRuntime } from "../useAIChatRuntime";
@@ -61,20 +61,34 @@ function delay(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+let activeSlowStreams = 0;
+
+afterEach(async () => {
+  // These cases deliberately keep streams alive across runtime unmounts.
+  // Abort and await their finally blocks before Vitest removes window.
+  __resetThreadSessionStoreForTests();
+  await waitFor(() => expect(activeSlowStreams).toBe(0));
+});
+
 async function* slowStream(
   _threadId: string,
   signal?: AbortSignal,
 ): AsyncIterable<NormalizedEvent> {
-  yield { type: "text-delta", delta: "Hello" };
-  for (let i = 0; i < 20; i++) {
-    if (signal?.aborted) return;
-    await delay(25);
+  activeSlowStreams++;
+  try {
+    yield { type: "text-delta", delta: "Hello" };
+    for (let i = 0; i < 20; i++) {
+      if (signal?.aborted) return;
+      await delay(25);
+    }
+    yield { type: "text-delta", delta: " world" };
+    yield {
+      type: "message-finish",
+      timing: { firstTokenMs: 1, totalMs: 2, tps: 1 },
+    };
+  } finally {
+    activeSlowStreams--;
   }
-  yield { type: "text-delta", delta: " world" };
-  yield {
-    type: "message-finish",
-    timing: { firstTokenMs: 1, totalMs: 2, tps: 1 },
-  };
 }
 
 const mockProvider: ChatProvider = {

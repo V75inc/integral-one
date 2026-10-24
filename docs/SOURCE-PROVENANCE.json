@@ -57,6 +57,16 @@
     "source_commit": "eebaa74aeb6e53d009b65dd5ef11c623a678b9bc"
   },
   "released_core": {
+    "version": "0.1.1rc32",
+    "source_commit": "75f3b737be732e1b821f4ca4040050296712e9d1",
+    "wheel_sha256": "3bfcb1c36469038c9aa6bff38125659cf7326b00c5b574c8aa069199f35ef31e",
+    "packaged_python_files_match_source": 806,
+    "original_license_and_notice_match": true,
+    "publication_index": "https://test.pypi.org/project/integral-core/0.1.1rc32/",
+    "ui_source_tree_sha256": "7b01c2f98922cd32cc61f0ffd43b23bc4b89fad44876b2e440b14bdc9367409c",
+    "qualification": "Automated consumer matrix required; signing, native GUI upgrade and release approval remain separate"
+  },
+  "previous_released_core": {
     "version": "0.1.1rc30",
     "source_commit": "0f198e82b328650c4464e5b1066c5246ff561889",
     "wheel_sha256": "4713153e02c2225095b0b646b35e7599b7f80e0749b44e3887212bafe3428a13",
@@ -65,20 +75,5 @@
     "publication_index": "https://test.pypi.org/project/integral-core/0.1.1rc30/",
     "ui_source_tree_sha256": "5a45820d128501b91d194b4d9417829336db43babc1ee155ceac4e88984de7ed",
     "qualification": "Automated consumer matrix required; signing, native GUI upgrade and release approval remain separate"
-  },
-  "previous_released_core": {
-    "version": "0.1.1rc29",
-    "source_commit": "818542ef29390f4350253808668cb4ab13a1334e",
-    "wheel_sha256": "73df3b958043e0146fbdaa3d6622f2a629dac38037c3ea63b082a9545e145c85",
-    "packaged_python_files_match_source": 781,
-    "original_license_and_notice_match": true,
-    "publication_index": "https://test.pypi.org/project/integral-core/0.1.1rc29/",
-    "ui_source_tree_sha256": "0250fd2a58ae34d870e52612028d2d3afa83f3409c820aff9cd8bea40f3ad19c",
-    "qualification": "Local macOS ARM build, exact-source UI tests, packaged startup and rc28-store upgrade/settings/cold-restart checks passed. Native PR CI, Developer ID/notarization, signed GUI update and release approval remain separate.",
-    "consumed_at": "2026-10-21",
-    "source_ci": "https://github.com/V75inc/integral-core/actions/runs/39626017941",
-    "publication_run": "https://github.com/V75inc/integral-core/actions/runs/39633195204",
-    "database_engine_change": false,
-    "existing_installation_upgrade": "rc28 to rc29 synthetic store: backup, record, installation keys, account binding and settings retained through cold restart"
   }
 }

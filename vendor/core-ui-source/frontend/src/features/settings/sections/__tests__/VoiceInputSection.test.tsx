@@ -192,4 +192,9 @@ describe('VoiceInputSection', () => {
       expect(screen.getByRole('alert')).toHaveTextContent('Microphone access is blocked'),
     );
   });
+  it('keeps model management available for an already configured owner', () => {
+    const navigate = renderSection({ ...PROVIDER_CONFIG, workspace_role: 'owner' });
+    fireEvent.click(screen.getByRole('button', { name: 'Manage model in AI Models' }));
+    expect(navigate).toHaveBeenCalledWith('ai-models');
+  });
 });

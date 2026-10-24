@@ -14,6 +14,8 @@ import {
   refreshAccessToken,
   pauseForSessionRenewal,
 } from './session';
+import { isPublicAuthPath } from './sessionRoutes';
+import { isHostManagedSession } from './sessionRuntime';
 import { isSessionPaused } from './sessionRecovery';
 import {
   clearApiFailure,
@@ -62,8 +64,9 @@ export function getActiveScopeHeader(): string | null {
   return _activeScopeHeader;
 }
 
-apiClient.interceptors.request.use(config => {
-  checkSessionDeadline();
+apiClient.interceptors.request.use(async config => {
+  await checkSessionDeadline();
+  if (isHostManagedSession() && !getAccessToken()) throw new axios.CanceledError('Local workspace is reconnecting');
   if (isSessionPaused()) throw new axios.CanceledError('Session renewal required');
   // Only real input events count as activity; polling must not keep a
   // session alive after the user walks away.
@@ -94,19 +97,6 @@ apiClient.interceptors.request.use(config => {
   }
   return config;
 });
-
-function isPublicAuthPath(pathname: string): boolean {
-  return (
-    pathname.includes('/login') ||
-    pathname.includes('/signup') ||
-    pathname.includes('/forgot-password') ||
-    pathname.includes('/reset-password') ||
-    pathname.includes('/verify-email') ||
-    pathname.startsWith('/invitations/') ||
-    pathname.startsWith('/portfolio/shared/') ||
-    pathname.startsWith('/public/tracks/')
-  );
-}
 
 /**
  * Per-request opt-out: set `config.__suppressSystemNotify = true` if a
@@ -176,13 +166,15 @@ apiClient.interceptors.response.use(
 
     const config = err.config as RetryAwareConfig | undefined;
     const requestUrl = config?.url ?? '';
+    // Credential failures belong to their form, never the previous account's refresh.
+    if (/\/auth\/(login|signup|forgot-password|reset-password)(?:$|\?)/.test(requestUrl)) return Promise.reject(err);
     const onPublicSurface =
       typeof window !== 'undefined' && isPublicAuthPath(window.location.pathname);
 
     // Unauthenticated visitors on public surfaces (invite links, auth pages)
     // must never be bounced to /login by background 401s (e.g. stale
     // operational-model-substrate calls from a prior bundle).
-    if (onPublicSurface && !getRefreshToken()) {
+    if (onPublicSurface && !getRefreshToken() && !isHostManagedSession()) {
       return Promise.reject(err);
     }
 
@@ -199,7 +191,7 @@ apiClient.interceptors.response.use(
 
     // No refresh token stored — nothing to try. Same as before: clear
     // and bounce.
-    if (!getRefreshToken()) {
+    if (!getRefreshToken() && !isHostManagedSession()) {
       redirectToLogin();
       return Promise.reject(err);
     }

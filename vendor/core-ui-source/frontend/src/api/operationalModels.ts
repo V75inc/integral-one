@@ -5,6 +5,7 @@ import type { OperationalModelNode } from '../types';
 export interface PackagePreviewItem {
   package_name: string;
   package_description?: string | null;
+  scope_kind?: string | null;
   entry_type_count: number;
   view_count: number;
   tag_count: number;

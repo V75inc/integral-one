@@ -14,7 +14,11 @@ vi.mock("@assistant-ui/react", () => ({
   useAuiState: (selector: (value: typeof state) => unknown) => selector(state),
 }));
 
-import { MessageObservability } from "../MessageObservability";
+import { MessageObservability, useMessageTurnMetrics } from "../MessageObservability";
+
+function CompactMetrics() {
+  return <span data-testid="compact-metrics">{useMessageTurnMetrics()}</span>;
+}
 
 describe("message usage and cost observability", () => {
   beforeEach(() => {
@@ -69,5 +73,53 @@ describe("message usage and cost observability", () => {
 
     expect(screen.getByText(/Estimated cost \$0\.0040/)).toBeVisible();
     expect(screen.queryByText("$0.0040")).not.toBeInTheDocument();
+  });
+
+  it("summarizes the whole turn and all calls without double-counting final usage", () => {
+    state.message.metadata = { custom: {
+      latency: { totalMs: 4200 },
+      steps: [
+        { durationMs: 1000, usage: { inputTokens: 1000, outputTokens: 100 } },
+        { durationMs: 500, usage: { inputTokens: 150, outputTokens: 30 } },
+      ],
+      finalPayload: { interaction: { usage: { total_tokens: 1280 } } },
+    } };
+    render(<CompactMetrics />);
+    expect(screen.getByTestId("compact-metrics")).toHaveTextContent("4.2s · 1.3K tokens");
+  });
+
+  it("labels partial token reporting without inventing a complete total", () => {
+    state.message.metadata = { custom: { steps: [
+      { usage: { inputTokens: 20, outputTokens: 4 } },
+      { usage: { inputTokens: 5 }, usageComplete: false },
+    ] } };
+    render(<CompactMetrics />);
+    expect(screen.getByTestId("compact-metrics")).toHaveTextContent("29 tokens reported");
+  });
+
+  it("uses persisted model-call usage and preserves reported zero tokens", () => {
+    state.message.metadata = { custom: { finalPayload: { interaction: {
+      observability_metrics: [{ event_type: "model_call", data: { usage: { prompt_tokens: 0, completion_tokens: 0 } } }],
+    } } } };
+    render(<CompactMetrics />);
+    expect(screen.getByTestId("compact-metrics")).toHaveTextContent("0 tokens");
+  });
+
+  it("supports final aggregate usage when call details are absent", () => {
+    state.message.metadata = { custom: { finalPayload: { interaction: { usage: { total_tokens: 123 } } } } };
+    render(<CompactMetrics />);
+    expect(screen.getByTestId("compact-metrics")).toHaveTextContent("123 tokens");
+  });
+
+  it("abbreviates million-token totals", () => {
+    state.message.metadata = { custom: { finalPayload: { interaction: { usage: { total_tokens: 1234567 } } } } };
+    render(<CompactMetrics />);
+    expect(screen.getByTestId("compact-metrics")).toHaveTextContent("1.2M tokens");
+  });
+
+  it("omits unavailable duration and tokens rather than fabricating zero", () => {
+    state.message.metadata = { custom: { steps: [{ durationMs: 900 }] } };
+    render(<CompactMetrics />);
+    expect(screen.getByTestId("compact-metrics")).toBeEmptyDOMElement();
   });
 });

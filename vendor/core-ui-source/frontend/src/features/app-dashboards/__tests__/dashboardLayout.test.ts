@@ -4,6 +4,7 @@ import {
   needsDashboardReflow,
   packDashboardWidgets,
   reflowDashboardWidgets,
+  layoutFromWidgets,
 } from '../dashboardLayout';
 import type { DashboardWidget } from '../../../api/dashboards';
 
@@ -25,6 +26,12 @@ function w(
 }
 
 describe('dashboardLayout', () => {
+  it('gives saved undersized charts room for plot, legend and navigation', () => {
+    const chart = { ...w('pie', 0, 0, 4, 1), type: 'chart_pie' };
+    expect(layoutFromWidgets([chart])[0]).toMatchObject({ h: 4, minH: 4 });
+    expect(layoutFromWidgets([chart], 40)[0]).toMatchObject({ h: 6, minH: 6 });
+    expect(layoutFromWidgets([w('metric', 0, 0, 4, 2)])[0].h).toBe(2);
+  });
   it('detects single-column stacks', () => {
     expect(isSingleColumnStack([w('a', 0, 0), w('b', 0, 4)])).toBe(true);
     expect(isSingleColumnStack([w('a', 0, 0), w('b', 4, 0)])).toBe(false);

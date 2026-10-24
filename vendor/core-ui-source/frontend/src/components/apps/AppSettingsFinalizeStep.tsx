@@ -58,6 +58,7 @@ export interface PendingSettingsInstall {
 interface AppSettingsFinalizeStepProps {
   pending: PendingSettingsInstall;
   onComplete(appId: string): void;
+  onQueued?(appId: string): void;
   onFinishLater(): void;
   onError(message: string): void;
 }
@@ -65,6 +66,7 @@ interface AppSettingsFinalizeStepProps {
 export function AppSettingsFinalizeStep({
   pending,
   onComplete,
+  onQueued,
   onFinishLater,
   onError,
 }: AppSettingsFinalizeStepProps) {
@@ -97,6 +99,7 @@ export function AppSettingsFinalizeStep({
       if (result.status === 'queued') {
         setQueuedWorkItemId(result.work_item_id);
         setQueued(true);
+        onQueued?.(pending.appId);
       } else {
         onComplete(result.app_id);
       }
@@ -116,8 +119,7 @@ export function AppSettingsFinalizeStep({
       <Modal.Body>
         {queued ? (
           <Text variant="body-sm" tone="subtle" as="p" data-testid="settings-queued">
-            Settings were accepted and finishing installation has been queued.
-            The App will become available when its lifecycle work completes.
+            Your settings are saved. We're finishing the App's setup. You can close this dialog.
           </Text>
         ) : (
           <>

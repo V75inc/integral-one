@@ -1,3 +1,5 @@
+import axios from 'axios';
+import { getApiBaseURL } from '../config';
 import { getHostSession } from '../host/session';
 import apiClient from './client';
 import { normalizeUserMe } from './helpers';
@@ -45,7 +47,9 @@ export const authApi = {
       return profile ? { ...user, email: profile.email } : user;
     }),
   /** Blacklists the current JWT on the server (requires Bearer token). */
-  logout: () => apiClient.post('/auth/logout').then(r => r.data),
+  logout: (accessToken: string) => axios.post(`${getApiBaseURL()}/auth/logout`, undefined, {
+    headers: { Authorization: `Bearer ${accessToken}` }, timeout: 20_000,
+  }).then(r => r.data),
   updateProfile: (data: Record<string, unknown>): Promise<User> =>
     apiClient
       .put('/auth/update-profile', data)
