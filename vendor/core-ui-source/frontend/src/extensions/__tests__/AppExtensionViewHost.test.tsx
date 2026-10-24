@@ -318,3 +318,25 @@ it('does not turn a pending draft submission into success when its frame closes'
   unmount();
   await expect(pending).resolves.toMatchObject({ ok: false, error: expect.stringContaining('Check the original record') });
 });
+
+it('blocks preview writes and opt-out preview queries at the host boundary', async () => {
+  vi.mocked(extensionsApi.invokeOperation).mockClear();
+  vi.mocked(extensionsApi.invokeQuery).mockClear();
+  const posted: unknown[] = [];
+  const child = { postMessage: (message: unknown) => posted.push(message) };
+  render(<AppExtensionViewHost appId="app-1" viewKey="home" workspaceId="ws-1" handshakeToken="preview-token" context={{ preview: true, liveData: false }} />);
+  const iframe = document.querySelector('iframe')!;
+  Object.defineProperty(iframe, 'contentWindow', { value: child, configurable: true });
+  for (const message of [
+    { type: 'operation', requestId: 'write-preview', operationKey: 'save', payload: {}, idempotencyKey: 'intent' },
+    { type: 'query', requestId: 'query-preview', capabilityKey: 'records', params: {} },
+  ]) {
+    window.dispatchEvent(new MessageEvent('message', { source: child as unknown as Window, data: { protocol: 'integral.extension.v1', ...message } }));
+  }
+  await waitFor(() => expect(posted).toEqual(expect.arrayContaining([
+    expect.objectContaining({ type: 'operation.result', requestId: 'write-preview', ok: false }),
+    expect.objectContaining({ type: 'query.result', requestId: 'query-preview', ok: false }),
+  ])));
+  expect(extensionsApi.invokeOperation).not.toHaveBeenCalled();
+  expect(extensionsApi.invokeQuery).not.toHaveBeenCalled();
+});

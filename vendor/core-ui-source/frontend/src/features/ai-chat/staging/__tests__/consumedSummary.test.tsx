@@ -192,3 +192,33 @@ describe('extractConsumedNav', () => {
     });
   });
 });
+
+describe('canonical completion destinations', () => {
+  it('prefers the server-selected Track over an App and multiple Entry shortcuts', () => {
+    const change = staged({ kind: 'batch' });
+    const nav = extractConsumedNav({ results: [
+      { kind: 'create_app', result: { app: { id: 'a', name: 'Todo' } } },
+      { kind: 'create_entry', result: { id: 'e1', title: 'First', track_id: 't' } },
+      { kind: 'create_entry', result: { id: 'e2', title: 'Second', track_id: 't' } },
+    ], result_links: [{ kind: 'track', id: 't', label: 'Tasks', url: '/tracks/t' }] }, change);
+    const html = renderToStaticMarkup(<MemoryRouter>{describeConsumed(change, nav)}</MemoryRouter>);
+    expect(html).toContain('href="/tracks/t"');
+    expect(html).not.toContain('/apps/a');
+    expect(html).not.toContain('?entry=');
+  });
+  it.each([
+    ['dashboard', '/apps/a?section=dashboards&dashboard_id=d'],
+    ['home', '/apps/a?section=home'],
+  ])('persists the specific %s destination', (kind, url) => {
+    const change = staged({ kind: 'update_app' });
+    const nav = extractConsumedNav({ result_links: [{ kind, id: 'a', label: 'Overview', url }] }, change);
+    const html = renderToStaticMarkup(<MemoryRouter>{describeConsumed(change, JSON.parse(JSON.stringify(nav)))}</MemoryRouter>);
+    expect(html).toContain(url.replace(/&/g, '&amp;'));
+    expect(html).toContain('Updated');
+  });
+  it('does not revive legacy shortcuts when current access yielded no destination', () => {
+    const change = staged({ kind: 'update_entry', diff_machine: { entry_id: 'e', track_id: 't' } });
+    const nav = extractConsumedNav({ result_links: [] }, change);
+    expect(renderToStaticMarkup(<MemoryRouter>{describeConsumed(change, nav)}</MemoryRouter>)).not.toContain('href');
+  });
+});

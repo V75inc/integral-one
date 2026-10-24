@@ -175,6 +175,7 @@ function ExtensionViewSession({
       onDraftPatch={lifecycle?.onDraftPatch}
       onError={() => setFailed(true)}
       onOpenEntry={entryId => navigate(`/entries/${encodeURIComponent(entryId)}`)}
+      onNavigatePath={path => navigate(path)}
       className={
         isTemplateEditor ? EXTENSION_VIEW_TEMPLATE_EDITOR_SHELL_CLASS : undefined
       }

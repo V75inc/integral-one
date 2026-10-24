@@ -1,6 +1,8 @@
 export const EXTENSION_PROTOCOL = 'integral.extension.v1';
 
 export type ExtensionBridgeMessage =
+  | { protocol: typeof EXTENSION_PROTOCOL; type: 'navigation'; requestId: string; target: { kind: 'app' | 'track' | 'entry' | 'dashboard'; id: string } }
+  | { protocol: typeof EXTENSION_PROTOCOL; type: 'navigation.result'; requestId: string; ok: boolean; value?: unknown; error?: string; error_code?: string }
   | {
       protocol: typeof EXTENSION_PROTOCOL;
       type: 'handshake';
@@ -10,6 +12,7 @@ export type ExtensionBridgeMessage =
       viewKey: string;
       packageVersion?: string;
       theme?: Record<string, unknown>;
+      context?: Record<string, unknown>;
     }
   | {
       protocol: typeof EXTENSION_PROTOCOL;
@@ -47,6 +50,7 @@ export type ExtensionBridgeMessage =
       error?: string;
       error_code?: string;
       retryable?: boolean;
+      outcome?: 'unconfirmed';
     }
   | {
       protocol: typeof EXTENSION_PROTOCOL;

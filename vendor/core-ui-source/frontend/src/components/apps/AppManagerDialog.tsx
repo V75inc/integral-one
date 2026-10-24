@@ -209,8 +209,8 @@ export function AppManagerDialog({
 
   async function deleteTemplate(profile: OperationalModelNode) {
     const ok = await confirm({
-      title: 'Delete saved template?',
-      message: `Remove “${profile.name}” from Manage Apps? Apps already installed from it will remain installed.`,
+      title: 'Delete App template?',
+      message: `Delete “${extractPackageMeta(profile).name}” and its saved configuration? Existing Apps and their data are kept. This cannot be undone.`,
       confirmLabel: 'Delete template',
       variant: 'danger',
     });
@@ -227,9 +227,9 @@ export function AppManagerDialog({
       toast.showToast('Template deleted.', 'success');
       onChanged?.();
     } catch (err) {
-      setError(
-        (err as { message?: string })?.message || 'Failed to delete template.',
-      );
+      const detail = (err as { response?: { data?: { detail?: string | { message?: string } } }; message?: string });
+      const reason = detail.response?.data?.detail;
+      toast.showToast((typeof reason === 'string' ? reason : reason?.message) || detail.message || 'Failed to delete template.', 'error');
     } finally {
       setDeletingPackages(prev => {
         const next = new Set(prev);
@@ -381,7 +381,21 @@ export function AppManagerDialog({
     }
   }
 
-  function handleSettingsComplete() {
+  function updateSetupStatus(appId: string, status: string) {
+    setResults(current => current?.batch ? {
+      ...current,
+      batch: {
+        ...current.batch,
+        installed: current.batch.installed.map(row =>
+          row.app_id === appId ? { ...row, status } : row
+        ),
+      },
+    } : current);
+  }
+
+  function handleSettingsComplete(appId: string) {
+    if (settingsQueue[settingsIndex]?.appId !== appId) return;
+    updateSetupStatus(appId, 'active');
     const nextIndex = settingsIndex + 1;
     if (nextIndex < settingsQueue.length) {
       setSettingsIndex(nextIndex);
@@ -449,8 +463,10 @@ export function AppManagerDialog({
       <Modal open={isOpen} onClose={closeDialog} title={title} width="max-w-dialog-wide" tall={phase === 'manage'}>
         {phase === 'settings' && settingsQueue[settingsIndex] ? (
           <AppSettingsFinalizeStep
+            key={settingsQueue[settingsIndex].appId}
             pending={settingsQueue[settingsIndex]}
-            onComplete={() => handleSettingsComplete()}
+            onComplete={handleSettingsComplete}
+            onQueued={appId => updateSetupStatus(appId, 'installing')}
             onFinishLater={() => {
               setPhase(results ? 'results' : 'manage');
             }}
@@ -462,10 +478,10 @@ export function AppManagerDialog({
           <AppManagerLibrary key={workspaceId}
             initialDetailId={initialDetailId}
             libraryActions={<div className="flex flex-wrap gap-2 py-3">
-              {workspaceId && <Button variant="outline" size="sm" disabled={submitting} onClick={() => setImportOpen(true)}>Import package</Button>}
+              {workspaceId && <Button variant="outline" size="sm" disabled={submitting} onClick={() => setImportOpen(true)}>Import template</Button>}
               {isPlatformAdmin && <Button variant="ghost" size="sm" disabled={submitting || refreshing} onClick={() => void refreshLibrary()}> {refreshing ? 'Refreshing…' : 'Refresh library'}</Button>}
             </div>}
-            profiles={profiles} apps={apps} installedApps={bundleApps}
+            profiles={profiles} apps={apps} installedApps={apps.filter(app => app.lifecycle_state !== 'uninstalled')}
             selected={selectedInstall} loading={loading} submitting={submitting}
             workspaceName={workspaceName} includeSeedData={includeSeedData}
             seedEntryCount={selectedSeedEntryCount} onSeedDataChange={setIncludeSeedData}
@@ -484,7 +500,7 @@ export function AppManagerDialog({
                 ...(pf?.blocking_dependents || []).map(d => d.app_name || 'Untitled app'),
                 ...(pf?.blocking_references || []).map(r => r.source_app_name || 'Untitled app'),
               ];
-              return <InstalledRow app={app} canUninstall={canUninstallApp(app, user)}
+              return <InstalledRow app={app} canUninstall={isBundleBackedApp(app) && canUninstallApp(app, user)}
                 uninstallBlocked={Boolean(pf?.blocking_dependents?.length || pf?.blocking_references?.length)}
                 blockerNames={[...new Set(blockers)]}
                 onUninstall={() => setUninstallTarget({ appId: app.id, appName: app.name })}
@@ -716,7 +732,7 @@ function ResultsView({
                         {row.name || 'Untitled app'}
                         {row.status === 'awaiting_settings'
                           ? ' (needs settings)'
-                          : ''}
+                          : row.status === 'installing' ? ' (finishing setup)' : ''}
                       </Text>
                     </li>
                   ))}

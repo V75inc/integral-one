@@ -14,10 +14,13 @@ import {
 } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { AppManagerDialog } from './AppManagerDialog';
+import { appsApi } from '../../api/apps';
 import type { App, OperationalModelNode } from '../../types';
 
 const mockListProfiles = vi.fn();
 const mockDeleteProfile = vi.fn();
+const mockToast = vi.fn();
+const mockConfirm = vi.fn();
 const mockBatchInstall = vi.fn();
 const mockUninstall = vi.fn();
 const mockUninstallPreflight = vi.fn();
@@ -31,10 +34,10 @@ vi.mock('../../api/operationalModels', () => ({
 }));
 
 vi.mock('../../context/ConfirmContext', () => ({
-  useConfirm: () => vi.fn().mockResolvedValue(true),
+  useConfirm: () => mockConfirm,
 }));
 vi.mock('../../context/ToastContext', () => ({
-  useToast: () => ({ showToast: vi.fn() }),
+  useToast: () => ({ showToast: mockToast }),
 }));
 
 vi.mock('../../api/apps', () => ({
@@ -141,6 +144,9 @@ describe('AppManagerDialog', () => {
   beforeEach(() => {
     mockListProfiles.mockReset();
     mockDeleteProfile.mockReset();
+    mockToast.mockClear();
+    mockConfirm.mockReset();
+    mockConfirm.mockResolvedValue(true);
     mockDeleteProfile.mockResolvedValue(undefined);
     mockBatchInstall.mockReset();
     mockUninstall.mockReset();
@@ -390,6 +396,12 @@ describe('AppManagerDialog', () => {
     );
     expect(screen.getByText('Region')).toBeInTheDocument();
     expect(screen.getByText('Finish app setup')).toBeInTheDocument();
+    vi.mocked(appsApi.finalizeInstall).mockResolvedValueOnce({
+      app_id: 'app-pending', status: 'active',
+    });
+    fireEvent.click(screen.getByTestId('settings-submit'));
+    await screen.findByText('App change results');
+    expect(screen.queryByText(/HR Suite \(needs settings\)/)).not.toBeInTheDocument();
   });
 
   it('shows Needs settings badge for awaiting_settings apps', async () => {
@@ -521,6 +533,7 @@ describe('AppManagerDialog', () => {
     expect(mockBatchInstall).toHaveBeenCalledTimes(1);
   });
   it('keeps selections and custom details through search, tabs and review', async () => {
+    mockListProfiles.mockResolvedValue([{ ...LIB_AVAILABLE, manifest: { ...LIB_AVAILABLE.manifest, app: { tracks: [{ key: 'employees', name: 'Employees' }], seeds: [{ track: 'employees', entries: [{ title: 'Example employee' }] }] } } }]);
     renderDialog();
     fireEvent.click(await screen.findByRole('button', { name: 'Add HR Suite' }));
     fireEvent.click(screen.getByRole('button', { name: 'Customize details' }));
@@ -607,7 +620,7 @@ describe('AppManagerDialog', () => {
     renderDialog();
     fireEvent.click(await screen.findByRole('button', { name: 'Add HR Suite' }));
     fireEvent.click(screen.getByRole('button', { name: 'Review (1)' }));
-    fireEvent.click(screen.getByTestId('app-manager-review'));
+    expect(screen.getByTestId('app-manager-apply')).toBeInTheDocument();
     const back = screen.getByRole('button', { name: 'Back to library' });
     back.focus();
     fireEvent.click(back);
@@ -625,5 +638,54 @@ describe('AppManagerDialog', () => {
     expect(screen.getByRole('button', { name: 'Remove HR Suite' })).toHaveAttribute('aria-pressed', 'true');
     expect(mockBatchInstall).not.toHaveBeenCalled();
   });
+
+
+it('offers deletion directly in the App library for user templates only', async () => {
+  mockListProfiles.mockResolvedValue([LIB_AVAILABLE, LIB_INSTALLED]);
+  renderDialog();
+  fireEvent.click(await screen.findByRole('button', { name: 'Delete HR Suite template' }));
+  await waitFor(() => expect(mockDeleteProfile).toHaveBeenCalledWith('lib-hr'));
+  expect(mockConfirm).toHaveBeenCalledWith(expect.objectContaining({
+    title: 'Delete App template?',
+    message: expect.stringContaining('Delete “HR Suite”'),
+  }));
+  expect(mockConfirm.mock.calls[0][0].message).toContain('Existing Apps and their data are kept');
+  expect(mockConfirm.mock.calls[0][0].message).toContain('cannot be undone');
+  await waitFor(() => expect(screen.queryByTestId('app-manager-row-hr-suite')).toBeNull());
+  expect(screen.queryByRole('button', { name: 'Delete Content Factory template' })).toBeNull();
+  expect(mockUninstall).not.toHaveBeenCalled();
+});
+
+it('preserves a rejected App model deletion and uses a toast instead of an inline update', async () => {
+  mockListProfiles.mockResolvedValue([LIB_AVAILABLE]);
+  mockDeleteProfile.mockRejectedValue({ response: { data: { detail: 'Model is attached by reference.' } } });
+  renderDialog();
+  fireEvent.click(await screen.findByRole('button', { name: 'Delete HR Suite template' }));
+  await waitFor(() => expect(mockToast).toHaveBeenCalledWith('Model is attached by reference.', 'error'));
+  expect(screen.getByTestId('app-manager-row-hr-suite')).toBeInTheDocument();
+  expect(screen.queryByText('Model is attached by reference.')).toBeNull();
+});
+
+it('shows management guidance on Installed and hides irrelevant installation controls', async () => {
+  renderDialog();
+  fireEvent.click(await screen.findByRole('button', { name: 'Add HR Suite' }));
+  expect(screen.queryByTestId('include-seed-data-toggle')).toBeNull();
+  await showInstalled();
+  expect(screen.getByText('Open an App or manage its installation.')).toBeInTheDocument();
+  expect(screen.queryByText('No Apps selected')).toBeNull();
+  expect(screen.queryByTestId('app-manager-review')).toBeNull();
+  fireEvent.click(screen.getByRole('tab', { name: /Browse library/ }));
+  expect(screen.getByRole('button', { name: 'Remove HR Suite' })).toHaveAttribute('aria-pressed', 'true');
+});
+
+
+it('includes custom Apps in Installed without offering library-only uninstall actions', async () => {
+  renderDialog({ apps: [{ id: 'custom-app', name: 'My custom App', owner_user_id: 'user-1', lifecycle_state: 'active' }] });
+  await showInstalled();
+  expect(await screen.findByText('My custom App')).toBeInTheDocument();
+  expect(screen.getByRole('link', { name: /Open App/ })).toHaveAttribute('href', '/apps/custom-app');
+  expect(screen.queryByTestId('app-manager-uninstall-custom-app')).toBeNull();
+  expect(mockUninstallPreflight).not.toHaveBeenCalled();
+});
 
 });

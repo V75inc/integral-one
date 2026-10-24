@@ -49,7 +49,40 @@ describe('renewal authority', () => {
     error.response = { status: 401 } as never;
     vi.spyOn(axios, 'post').mockRejectedValue(error);
     await expect(renewSession('owner')).rejects.toThrow();
-    expect(getSessionRecovery()).toBe('signin');
+    expect(getSessionRecovery()).toBeNull();
     expect(localStorage.getItem('t75_refresh_token')).toBeNull();
   });
+});
+
+
+it('does not submit renewal after the retained access session expires', async () => {
+  localStorage.setItem('t75_token_expires_at', String(Date.now() - 1));
+  const post = vi.spyOn(axios, 'post');
+  await expect(renewSession('owner')).rejects.toThrow('session expired');
+  expect(post).not.toHaveBeenCalled();
+  expect(getSessionRecovery()).toBeNull();
+});
+
+it('verifies and resumes a valid access-only session without demanding another login', async () => {
+  localStorage.removeItem('t75_refresh_token');
+  const post = vi.spyOn(axios, 'post');
+  vi.spyOn(axios, 'get').mockResolvedValue({ data: { user: { id: 'owner' } } });
+  const result = await renewSession('owner');
+  expect(result.tokens.access_token).toBe('old');
+  expect(result.tokens.expires_in).toBeGreaterThan(0);
+  expect(post).not.toHaveBeenCalled();
+});
+
+it('does not clear a newer login after a retired renewal fails', async () => {
+  let reject!: (error: unknown) => void;
+  vi.spyOn(axios, 'post').mockImplementation(() => new Promise((_done, fail) => { reject = fail; }));
+  const pending = renewSession('owner');
+  clearTokens();
+  enableSessionRecovery('new-owner');
+  setTokens({ access_token: 'new-login', refresh_token: 'new-refresh', expires_in: 60 });
+  const error = new AxiosError('late rejection');
+  error.response = { status: 401 } as never;
+  reject(error);
+  await expect(pending).rejects.toThrow('late rejection');
+  expect(localStorage.getItem('t75_token')).toBe('new-login');
 });

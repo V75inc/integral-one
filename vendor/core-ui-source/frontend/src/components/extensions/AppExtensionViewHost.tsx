@@ -3,6 +3,7 @@ import {
   useCallback,
   useEffect,
   useImperativeHandle,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -18,6 +19,7 @@ import {
 import { EXTENSION_PROTOCOL } from './extensionProtocol';
 import { ExtensionViewFallback } from './ExtensionViewFallback';
 import { Skeleton } from '../ui';
+import { useExtensionTheme } from './useExtensionTheme';
 
 export interface AppExtensionViewHostProps {
   appId: string;
@@ -37,6 +39,8 @@ export interface AppExtensionViewHostProps {
   minHeight?: number;
   /** Open one of the app's entries when the frame asks (the host page supplies routing). */
   onOpenEntry?: (entryId: string) => void;
+  onNavigatePath?: (path: string) => void;
+  onChanged?: () => void;
 }
 
 export type AppExtensionViewHostHandle = ExtensionBridgeApi;
@@ -59,10 +63,16 @@ export const AppExtensionViewHost = forwardRef<
     onDraftPatch,
     minHeight = 240,
     onOpenEntry,
+    onNavigatePath,
+    onChanged,
   },
   ref,
 ) {
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
+  const currentTheme = useExtensionTheme();
+  const activeScope = useRef('');
+  const onNavigatePathRef = useRef(onNavigatePath);
+  useEffect(() => { onNavigatePathRef.current = onNavigatePath; }, [onNavigatePath]);
   const [failed, setFailed] = useState(false);
   const [recordedCompletion, setRecordedCompletion] = useState(false);
   // Do not relabel an already mounted grant when parent scope props change
@@ -73,6 +83,7 @@ export const AppExtensionViewHost = forwardRef<
     tokenScopeRef.current = { token: handshakeToken, scopeKey };
   }
   const frameGrantMatches = tokenScopeRef.current.scopeKey === scopeKey;
+  useLayoutEffect(() => { activeScope.current = JSON.stringify([scopeKey, handshakeToken]); return () => { activeScope.current = ''; }; }, [scopeKey, handshakeToken]);
   // A real sandbox document has its own hash-only CSP. srcDoc would inherit
   // Core's CSP and block the verified package's inline bridge script.
   const frameUrl = apiClient.getUri({
@@ -111,10 +122,10 @@ export const AppExtensionViewHost = forwardRef<
       viewKey,
       handshakeToken,
       packageVersion,
-      theme,
+      theme: { ...theme, ...currentTheme },
       context,
     }),
-    [workspaceId, appId, viewKey, handshakeToken, packageVersion, theme, context],
+    [workspaceId, appId, viewKey, handshakeToken, packageVersion, theme, currentTheme, context],
   );
 
   const readHandler = useMemo(
@@ -130,6 +141,8 @@ export const AppExtensionViewHost = forwardRef<
         }
         return null;
       }
+      if (path === 'props') return ctx.context?.props ?? {};
+      if (path === 'theme') return ctx.theme ?? {};
       if (path === 'context') {
         return ctx.context ?? {};
       }
@@ -147,13 +160,15 @@ export const AppExtensionViewHost = forwardRef<
       payload: Record<string, unknown>,
       ctx: ExtensionBridgeContext,
       idempotencyKey?: string,
-    ) =>
-      extensionsApi.invokeOperation(
+    ) => {
+      if (ctx.context?.preview) return Promise.reject(new Error('Business actions are disabled in previews.'));
+      return extensionsApi.invokeOperation(
         ctx.appId,
         operationKey,
         payload,
         idempotencyKey,
-      ),
+      );
+    },
     [],
   );
 
@@ -173,7 +188,9 @@ export const AppExtensionViewHost = forwardRef<
       capabilityKey: string,
       params: Record<string, unknown>,
       ctx: ExtensionBridgeContext,
-    ) => extensionsApi.invokeQuery(ctx.appId, capabilityKey, params),
+    ) => ctx.context?.preview && !ctx.context?.liveData
+      ? Promise.reject(new Error('Live data is disabled in this preview.'))
+      : extensionsApi.invokeQuery(ctx.appId, capabilityKey, params),
     [],
   );
 
@@ -191,11 +208,25 @@ export const AppExtensionViewHost = forwardRef<
       onResize: height =>
         setFrameHeight(height === 'fill' ? 'fill' : Math.min(Math.max(Math.round(height), minHeight), 2400)),
       onNavigate: entryId => onOpenEntry?.(entryId),
-      onOperationResult: value => setRecordedCompletion(isRecordedOutputWithheld(value)),
+      onOperationResult: value => {
+        const withheld = isRecordedOutputWithheld(value);
+        setRecordedCompletion(withheld);
+        if (!withheld) onChanged?.();
+      },
+      onNavigation: async (target, ctx) => {
+        const signature = JSON.stringify([JSON.stringify([ctx.workspaceId, ctx.appId, ctx.viewKey]), ctx.handshakeToken]);
+        if (ctx.context?.preview) throw new Error('Navigation is disabled in previews.');
+        const result = await extensionsApi.resolveNavigation(ctx.appId, target);
+        if (activeScope.current !== signature) throw new Error('View changed.');
+        if (onNavigatePathRef.current) onNavigatePathRef.current(result.path);
+        else window.location.assign(result.path);
+        return result;
+      },
     },
   );
 
   useImperativeHandle(ref, () => bridgeApi, [bridgeApi]);
+  useEffect(() => { bridgeApi.sendHandshake(); }, [bridgeApi.sendHandshake, context, currentTheme]);
 
   // Entry hydration may finish after the iframe's initial ready handshake.
   // Notify the mounted view to reread through the now-current bridge context.

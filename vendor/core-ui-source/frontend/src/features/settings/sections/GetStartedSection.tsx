@@ -4,7 +4,7 @@ import { PageMeta } from '../../../components/ui';
  * (`OnboardingGetStartedBanner` → `/settings#get-started`).
  */
 import { useNavigate } from 'react-router-dom';
-import { MessageSquare, LayoutGrid, ListIcon, Bot } from 'lucide-react';
+import { MessageSquare, LayoutGrid, ListIcon, Brain } from 'lucide-react';
 
 import { Button } from '../../../components/ui/Button';
 import { LINE_ICON_STROKE } from '../../../components/ui';
@@ -80,7 +80,7 @@ export function GetStartedSection({
           type="button"
           variant="secondary"
           size="sm"
-          icon={<Bot size={14} strokeWidth={LINE_ICON_STROKE} />}
+          icon={<Brain size={14} strokeWidth={LINE_ICON_STROKE} />}
           onClick={() => navigateToSection?.('ai-models')}
         >
           Connect a model

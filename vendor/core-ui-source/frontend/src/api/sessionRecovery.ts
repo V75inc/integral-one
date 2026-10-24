@@ -1,3 +1,6 @@
+import { isPublicAuthPath } from './sessionRoutes';
+import { isHostManagedSession } from './sessionRuntime';
+
 /** UI lock only. Authentication and token expiry remain server enforced. */
 export type SessionRecovery = 'renew' | 'signin' | null;
 
@@ -19,7 +22,7 @@ export function enableSessionRecovery(id: string | null): void {
 }
 
 export function requestSessionRecovery(mode: Exclude<SessionRecovery, null>): boolean {
-  if (!accountId) return false;
+  if (isHostManagedSession() || !accountId || (typeof window !== 'undefined' && isPublicAuthPath(window.location.pathname))) return false;
   // A rejected refresh token must never be downgraded to a refresh-only prompt.
   state = state === 'signin' ? state : mode;
   listeners.forEach(listener => listener());

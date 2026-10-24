@@ -1,4 +1,6 @@
+import { isAxiosError } from 'axios';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef } from 'react';
+import type { ExtensionNavigationTarget } from '../../api/extensions';
 import { isRecordedOutputWithheld, RECORDED_OUTPUT_WITHHELD_MESSAGE } from '../../api/extensions';
 import {
   EXTENSION_PROTOCOL,
@@ -38,6 +40,7 @@ export type ExtensionHostActions = {
   onResize?: (height: number | 'fill') => void;
   onNavigate?: (entryId: string) => void;
   onOperationResult?: (value: unknown) => void;
+  onNavigation?: (target: ExtensionNavigationTarget, context: ExtensionBridgeContext) => Promise<{ path: string }>;
 };
 
 export type DraftPatchHandler = (patch: {
@@ -150,6 +153,7 @@ export function useExtensionBridge(
       viewKey: current.viewKey,
       packageVersion: current.packageVersion,
       theme: current.theme,
+      context: current.context,
     });
   }, [postToChild]);
 
@@ -274,6 +278,18 @@ export function useExtensionBridge(
         return;
       }
 
+      if (msg.type === 'navigation') {
+        const handler = actionsRef.current?.onNavigation;
+        if (!handler || !msg.target || !['app', 'track', 'entry', 'dashboard'].includes(msg.target.kind)
+          || typeof msg.target.id !== 'string' || !/^[A-Za-z0-9_.-]{1,128}$/.test(msg.target.id)) {
+          reply({ protocol: EXTENSION_PROTOCOL, type: 'navigation.result', requestId: msg.requestId, ok: false, error: 'Destination unavailable', error_code: 'navigation_unavailable' });
+          return;
+        }
+        void handler(msg.target, current).then(value => reply({ protocol: EXTENSION_PROTOCOL, type: 'navigation.result', requestId: msg.requestId, ok: true, value }))
+          .catch(() => reply({ protocol: EXTENSION_PROTOCOL, type: 'navigation.result', requestId: msg.requestId, ok: false, error: 'Destination unavailable', error_code: 'navigation_unavailable' }));
+        return;
+      }
+
       if (msg.type === 'navigate') {
         // Only a plain entry id: never a path or URL a frame could steer the page with.
         const entryId = String(msg.entryId || '');
@@ -336,6 +352,7 @@ export function useExtensionBridge(
           let value: unknown;
           let ok = true;
           let error: string | undefined;
+          let failure: { error_code?: string; retryable?: boolean; outcome?: 'unconfirmed' } = {};
           let withheld = false;
           try {
             value = await operationHandler(
@@ -353,9 +370,19 @@ export function useExtensionBridge(
           } catch (err) {
             ok = false;
             error = err instanceof Error ? err.message : 'operation failed';
+            if (isAxiosError(err)) {
+              const data = err.response?.data as { error_code?: unknown; message?: unknown; retryable?: unknown } | undefined;
+              error = typeof data?.message === 'string' ? data.message : 'Operation result could not be confirmed. Check current state before retrying.';
+              const unconfirmed = !err.response || err.response.status >= 500 || err.response.status === 408;
+              failure = {
+                error_code: typeof data?.error_code === 'string' ? data.error_code : unconfirmed ? 'operation_unconfirmed' : 'operation_failed',
+                retryable: false,
+                ...(unconfirmed ? { outcome: 'unconfirmed' as const } : {}),
+              };
+            }
           }
           if (!currentReply()) return;
-          actionsRef.current?.onOperationResult?.(value);
+          if (ok || withheld) actionsRef.current?.onOperationResult?.(value);
           reply({
             protocol: EXTENSION_PROTOCOL,
             type: 'operation.result',
@@ -363,6 +390,7 @@ export function useExtensionBridge(
             ok,
             value,
             error,
+            ...failure,
             ...(withheld ? { error_code: 'operation_output_withheld', retryable: false } : {}),
           });
         })();

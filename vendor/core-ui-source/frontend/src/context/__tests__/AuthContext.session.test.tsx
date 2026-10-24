@@ -9,8 +9,9 @@
  * comes back online or the user next interacts.
  */
 import React from 'react';
+import { MemoryRouter, useNavigate } from 'react-router-dom';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { act, render, renderHook, waitFor, cleanup } from '@testing-library/react';
+import { act, render, renderHook, waitFor, cleanup, screen } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 vi.mock('../../api/userTimezone', () => ({ userTimezoneApi: { set: vi.fn(async () => ({ timezone: 'America/Guyana', configured: true })) } }));
@@ -25,6 +26,7 @@ vi.mock('../../api', () => ({
 }));
 
 vi.mock('../../api/session', () => ({
+  getSessionGeneration: vi.fn(() => 0),
   clearTokens: vi.fn(),
   getAccessToken: vi.fn(() => 'access-1'),
   installActivityListeners: vi.fn(),
@@ -37,11 +39,11 @@ vi.mock('../../api/session', () => ({
 vi.mock('../../features/ai-chat/threadSessionStore', () => ({
   resetThreadSessions: vi.fn(),
 }));
-vi.mock('../../components/system/SessionRenewalDialog', () => ({ SessionRenewalDialog: () => null }));
+vi.mock('../../components/system/SessionRenewalDialog', () => ({ SessionRenewalDialog: () => <div data-testid="inactivity-dialog" /> }));
 
 import { userTimezoneApi } from '../../api/userTimezone';
 import { authApi } from '../../api';
-import { clearTokens, redirectToLogin } from '../../api/session';
+import { clearTokens, redirectToLogin, getAccessToken, getSessionGeneration } from '../../api/session';
 import { AuthProvider, useAuth } from '../AuthContext';
 import { getSessionRecovery, requestSessionRecovery } from '../../api/sessionRecovery';
 
@@ -51,7 +53,7 @@ function wrapper({ children }: { children: React.ReactNode }) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return (
     <QueryClientProvider client={qc}>
-      <AuthProvider>{children}</AuthProvider>
+      <MemoryRouter><AuthProvider>{children}</AuthProvider></MemoryRouter>
     </QueryClientProvider>
   );
 }
@@ -71,7 +73,7 @@ afterEach(() => {
 });
 
 describe('AuthContext boot hydration', () => {
-  it('registers recovery before authenticated child polling effects', async () => {
+  it('does not enable recovery from a cached, unverified profile', async () => {
     vi.mocked(authApi.me).mockImplementation(() => new Promise(() => {}));
     let accepted: boolean | undefined;
     function PollingChild() {
@@ -82,8 +84,8 @@ describe('AuthContext boot hydration', () => {
       return null;
     }
     render(<PollingChild />, { wrapper });
-    await waitFor(() => expect(accepted).toBe(true));
-    expect(getSessionRecovery()).toBe('renew');
+    await waitFor(() => expect(accepted).toBe(false));
+    expect(getSessionRecovery()).toBeNull();
   });
   it('keeps the cached user when /auth/me fails for a non-auth reason', async () => {
     vi.mocked(authApi.me).mockRejectedValue(httpError(503));
@@ -174,4 +176,65 @@ describe('Account time zone detection', () => {
     await waitFor(() => expect(result.current.loading).toBe(false));
     expect(userTimezoneApi.set).not.toHaveBeenCalled();
   });
+});
+
+
+it('updates token consumers after silent renewal and another tab renewal', async () => {
+  vi.mocked(authApi.me).mockResolvedValue(cachedUser as never);
+  const {result}=renderHook(()=>useAuth(),{wrapper});
+  await waitFor(()=>expect(result.current.loading).toBe(false));
+  vi.mocked(getAccessToken).mockReturnValue('renewed-access');
+  act(()=>window.dispatchEvent(new Event('integral:tokens-updated')));
+  expect(result.current.token).toBe('renewed-access');
+  vi.mocked(getAccessToken).mockReturnValue('shared-access');
+  act(()=>window.dispatchEvent(new StorageEvent('storage',{key:'t75_token',newValue:'shared-access'})));
+  expect(result.current.token).toBe('shared-access');
+  expect(result.current.user?.id).toBe('u1');
+  vi.mocked(getAccessToken).mockReturnValue('access-1');
+});
+
+
+it('enables inactivity recovery only after profile verification, and removes it on public navigation', async () => {
+  vi.mocked(authApi.me).mockResolvedValue(cachedUser as never);
+  let navigate!: ReturnType<typeof useNavigate>;
+  function RouterProbe() { navigate = useNavigate(); return null; }
+  render(<RouterProbe />, { wrapper });
+  await waitFor(() => expect(authApi.me).toHaveBeenCalled());
+  await waitFor(() => {
+    act(() => { expect(requestSessionRecovery('renew')).toBe(true); });
+  });
+  expect(screen.getByTestId('inactivity-dialog')).toBeInTheDocument();
+  act(() => navigate('/login'));
+  expect(screen.queryByTestId('inactivity-dialog')).not.toBeInTheDocument();
+  expect(getSessionRecovery()).toBeNull();
+  expect(requestSessionRecovery('renew')).toBe(false);
+});
+
+it('does not restore a cached account from a late hydration response after logout', async () => {
+  let resolve!: (user: never) => void;
+  vi.mocked(authApi.me).mockImplementation(() => new Promise(done => { resolve = done; }));
+  const { result } = renderHook(() => useAuth(), { wrapper });
+  await waitFor(() => expect(authApi.me).toHaveBeenCalled());
+  vi.mocked(getSessionGeneration).mockReturnValue(1);
+  act(() => window.dispatchEvent(new Event('integral:logout')));
+  await act(async () => resolve(cachedUser as never));
+  expect(result.current.user).toBeNull();
+  expect(result.current.token).toBeNull();
+  vi.mocked(getSessionGeneration).mockReturnValue(0);
+});
+
+it('retires the local account immediately while remote signout is still pending', async () => {
+  vi.mocked(authApi.me).mockResolvedValue(cachedUser as never);
+  let finish!: (value: never) => void;
+  vi.mocked(authApi.logout).mockImplementation(() => new Promise(done => { finish = done; }));
+  localStorage.setItem('t75_token', 'captured-token');
+  const { result } = renderHook(() => useAuth(), { wrapper });
+  await waitFor(() => expect(result.current.loading).toBe(false));
+  let pending!: Promise<void>;
+  act(() => { pending = result.current.logout(); });
+  expect(result.current.user).toBeNull();
+  expect(result.current.token).toBeNull();
+  expect(requestSessionRecovery('renew')).toBe(false);
+  await waitFor(() => expect(authApi.logout).toHaveBeenCalledWith('captured-token'));
+  await act(async () => { finish(undefined as never); await pending; });
 });

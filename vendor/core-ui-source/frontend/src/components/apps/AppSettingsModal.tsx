@@ -12,6 +12,7 @@ import { AppFunctionAccess } from '../access/AppFunctionAccess';
 import { AppSettingsForm } from './AppSettingsForm';
 import { appsApi } from '../../api/apps';
 import { errorMessageFromAxios } from '../../api/helpers';
+import { useToast } from '../../context/ToastContext';
 
 function seedDefaultsFromSchema(
   schema: Record<string, unknown>
@@ -42,6 +43,7 @@ export interface AppSettingsModalProps {
   appName: string;
   onClose(): void;
   onSaved?(): void;
+  initialSection?: 'settings' | 'access';
   /** Only supplied for a workspace owner; server checks remain authoritative. */
   functionAccessWorkspaceId?: string;
 }
@@ -53,20 +55,26 @@ export function AppSettingsModal({
   onClose,
   onSaved,
   functionAccessWorkspaceId,
+  initialSection = 'settings',
 }: AppSettingsModalProps) {
-  const [section, setSection] = useState<'settings' | 'access'>('settings');
-  useEffect(() => { if (open) setSection('settings'); }, [open]);
+  const { showToast } = useToast();
+  const [section, setSection] = useState<'settings' | 'access'>(initialSection);
+  useEffect(() => { if (open) setSection(initialSection); }, [open, initialSection]);
   const [schema, setSchema] = useState<Record<string, unknown> | null>(null);
   const [value, setValue] = useState<Record<string, unknown>>({});
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [initialValue, setInitialValue] = useState<Record<string, unknown>>({});
+  const [loadError, setLoadError] = useState(false);
+  const [retry, setRetry] = useState(0);
+  const hasFields = Boolean(schema && Object.keys(schema.properties || {}).length);
+  const dirty = JSON.stringify(value) !== JSON.stringify(initialValue);
 
   useEffect(() => {
     if (!open || !appId) return;
     let cancelled = false;
     setLoading(true);
-    setError(null);
+    setLoadError(false);
     setSchema(null);
     appsApi
       .getAppSettings(appId)
@@ -74,14 +82,14 @@ export function AppSettingsModal({
         if (cancelled) return;
         const nextSchema = res.settings_schema || {};
         setSchema(nextSchema);
-        setValue({
-          ...seedDefaultsFromSchema(nextSchema),
-          ...(res.settings || {}),
-        });
+        const loaded = { ...seedDefaultsFromSchema(nextSchema), ...(res.settings || {}) };
+        setValue(loaded);
+        setInitialValue(loaded);
       })
       .catch(err => {
         if (cancelled) return;
-        setError(errorMessageFromAxios(err, 'Failed to load settings'));
+        setLoadError(true);
+        showToast(errorMessageFromAxios(err, 'Could not load App settings.'), 'error');
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -89,17 +97,19 @@ export function AppSettingsModal({
     return () => {
       cancelled = true;
     };
-  }, [open, appId]);
+  }, [open, appId, retry, showToast]);
 
   async function handleSave() {
+    if (loading || saving || !hasFields || !dirty) return;
     setSaving(true);
-    setError(null);
     try {
       await appsApi.updateAppSettings(appId, value);
+      showToast('App settings saved.', 'success');
+      setInitialValue(value);
       onSaved?.();
       onClose();
     } catch (err) {
-      setError(errorMessageFromAxios(err, 'Failed to save settings'));
+      showToast(errorMessageFromAxios(err, 'Could not save App settings.'), 'error');
     } finally {
       setSaving(false);
     }
@@ -108,7 +118,7 @@ export function AppSettingsModal({
   return (
     <Modal open={open} onClose={onClose} title={`${appName} settings`}>
       <Modal.Body>
-        {functionAccessWorkspaceId && <div role="tablist" aria-label="App settings sections" className="mb-5 flex flex-wrap gap-2">
+        {functionAccessWorkspaceId && hasFields && <div role="tablist" aria-label="App settings sections" className="mb-5 flex flex-wrap gap-2">
           <Button size="sm" role="tab" aria-selected={section === 'settings'} variant={section === 'settings' ? 'primary' : 'outline'} onClick={() => setSection('settings')}>Settings</Button>
           <Button size="sm" role="tab" aria-selected={section === 'access'} variant={section === 'access' ? 'primary' : 'outline'} onClick={() => setSection('access')}>Function access</Button>
         </div>}
@@ -128,32 +138,25 @@ export function AppSettingsModal({
             disabled={saving}
           />
         ) : null}
-        {error ? (
-          <Text
-            variant="body-sm"
-            tone="danger"
-            as="p"
-            className="mt-3"
-            data-testid="app-settings-modal-error"
-          >
-            {error}
-          </Text>
-        ) : null}
+        {loadError && <div className="space-y-3">
+          <Text as="p" tone="muted">App settings are unavailable.</Text>
+          <Button variant="secondary" onClick={() => setRetry(count => count + 1)}>Retry settings</Button>
+        </div>}
         </>}
       </Modal.Body>
       {section === 'settings' ? <Modal.Footer align="between">
         <Button variant="ghost" onClick={onClose} disabled={saving}>
-          Cancel
+          {hasFields ? 'Cancel' : 'Close'}
         </Button>
-        <Button
+        {hasFields && <Button
           variant="primary"
           onClick={handleSave}
           loading={saving}
-          disabled={loading || !schema}
+          disabled={loading || saving || !dirty}
           data-testid="app-settings-modal-save"
         >
           Save settings
-        </Button>
+        </Button>}
       </Modal.Footer> : <Modal.Footer><Button variant="outline" onClick={onClose}>Done</Button></Modal.Footer>}
     </Modal>
   );

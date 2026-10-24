@@ -1,5 +1,32 @@
 import { useMessageTiming, useAuiState } from "@assistant-ui/react";
+import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { Surface, Text } from "../../../ui";
 import type { ObservabilityStep } from "../useAIChatRuntime";
+
+/** Keep the full table readable; only its own viewport scrolls sideways. */
+function StatisticsScroll({ label, children }: { label: string; children: ReactNode }) {
+  const viewport = useRef<HTMLDivElement>(null);
+  const [overflowing, setOverflowing] = useState(false);
+  useLayoutEffect(() => {
+    const element = viewport.current;
+    const measure = () => { if (element) setOverflowing(element.scrollWidth > element.clientWidth + 1); };
+    measure();
+    const resize = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(measure);
+    if (element) {
+      resize?.observe(element);
+      if (element.firstElementChild) resize?.observe(element.firstElementChild);
+    }
+    window.addEventListener("resize", measure);
+    return () => { resize?.disconnect(); window.removeEventListener("resize", measure); };
+  }, [children]);
+  return <div className="min-w-0 max-w-full">
+    {overflowing && <Text as="p" variant="meta" tone="muted" className="mb-2">Scroll horizontally to see all columns.</Text>}
+    <div ref={viewport} role="region" aria-label={label} tabIndex={overflowing ? 0 : undefined}
+      className="max-w-full overflow-x-auto overscroll-x-contain pb-1 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2">
+      {children}
+    </div>
+  </div>;
+}
 
 /** native provider final-payload usage block (interaction.usage). */
 type FinalUsage = {
@@ -70,6 +97,39 @@ export function useMessageModelLabel(): string | undefined {
   });
 }
 
+/** Whole-turn elapsed time and reported usage, without double-counting final metrics. */
+export function useMessageTurnMetrics(): string {
+  const timing = useMessageTiming();
+  const custom = useAuiState((s) => s.message.metadata?.custom as {
+    latency?: { totalMs?: number };
+    steps?: ObservabilityStep[];
+    finalPayload?: { interaction?: { usage?: FinalUsage; observability_metrics?: FinalMetric[] } };
+  } | undefined);
+  const interaction = custom?.finalPayload?.interaction;
+  const steps = custom?.steps?.length ? custom.steps :
+    (interaction?.observability_metrics ?? []).filter(metric => metric.event_type === "model_call")
+      .map(metric => ({ usage: { inputTokens: metric.data?.usage?.prompt_tokens, outputTokens: metric.data?.usage?.completion_tokens } }));
+  const validTokens = (value: number | undefined): value is number =>
+    value != null && Number.isFinite(value) && value >= 0;
+  const reported = steps.flatMap(step => [step.usage?.inputTokens, step.usage?.outputTokens]).filter(validTokens);
+  const complete = steps.length > 0 && steps.every(step =>
+    !("usageComplete" in step && step.usageComplete === false) &&
+    validTokens(step.usage?.inputTokens) && validTokens(step.usage?.outputTokens));
+  const finalUsage = interaction?.usage;
+  const finalTotal = validTokens(finalUsage?.total_tokens) ? finalUsage.total_tokens :
+    validTokens(finalUsage?.prompt_tokens) && validTokens(finalUsage?.completion_tokens) ?
+      finalUsage.prompt_tokens + finalUsage.completion_tokens : undefined;
+  const tokens = reported.length > 0 ? reported.reduce((sum, value) => sum + value, 0) : finalTotal;
+  const partial = reported.length > 0 && !complete;
+  // Model-call durations exclude queue, preparation and tools; never sum them here.
+  const elapsed = custom?.latency?.totalMs ?? timing?.totalStreamTime;
+  const compactTokens = tokens == null ? undefined : new Intl.NumberFormat("en", {
+    notation: "compact", maximumFractionDigits: 1,
+  }).format(tokens);
+  return [formatTime(elapsed), compactTokens != null ? `${compactTokens} tokens${partial ? " reported" : ""}` : undefined]
+    .filter(Boolean).join(" · ");
+}
+
 export function MessageObservability() {
   const role = useAuiState((s) => s.message.role);
   const statusType = useAuiState((s) =>
@@ -103,6 +163,7 @@ export function MessageObservability() {
       )?.finalPayload?.interaction?.observability_metrics ?? undefined,
   );
   const timing = useMessageTiming();
+  const latency = useAuiState(s => (s.message.metadata?.custom as { latency?: import('../providers/types').ChatLatency } | undefined)?.latency);
 
   if (role !== "assistant") return null;
   if (statusType === "running") return null;
@@ -188,120 +249,136 @@ export function MessageObservability() {
   const tpsStr = formatTps(timing?.tokensPerSecond);
 
   return (
-    <div data-slot="aui_usage-details" className="rounded-[var(--radius-input)] bg-[var(--panel-2)] px-3 py-2 text-[11px] text-[var(--text-muted)]">
+    <Surface data-slot="aui_usage-details" tone="panel-2" border="none" radius="input" padding="sm" className="min-w-0 max-w-full shrink-0">
+      <Text as="div" variant="body-sm" tone="default">
       {hasNativeCallDetails && (
-        <div className="overflow-x-auto">
-        <table className="w-full text-left tabular-nums">
+        <StatisticsScroll label="Model call statistics">
+        <table aria-label="Model calls" className="w-full min-w-[44rem] whitespace-nowrap text-left tabular-nums">
           <thead>
-            <tr className="text-[10px] uppercase tracking-wide text-[var(--text-subtle)]">
-              <th className="pb-1 pr-3 font-medium">Call</th>
-              <th className="pb-1 pr-3 font-medium">Model</th>
-              <th className="pb-1 pr-3 font-medium text-right">In</th>
-              <th className="pb-1 pr-3 font-medium text-right">Out</th>
-              <th className="pb-1 pr-3 font-medium text-right">Cost</th>
-              <th className="pb-1 pr-3 font-medium text-right">Time</th>
-              <th className="pb-1 font-medium text-right">State</th>
-            </tr>
+            <Text as="tr" variant="label" tone="muted" className="uppercase tracking-wide">
+              <th scope="col" className="pb-2 pr-4 font-medium">Call</th>
+              <th scope="col" className="pb-2 pr-4 font-medium">Model</th>
+              <th scope="col" className="pb-2 pr-4 font-medium text-right">In</th>
+              <th scope="col" className="pb-2 pr-4 font-medium text-right">Out</th>
+              <th scope="col" className="pb-2 pr-4 font-medium text-right">Cost</th>
+              <th scope="col" className="pb-2 pr-4 font-medium text-right">Time</th>
+              <th scope="col" className="pb-2 font-medium text-right">State</th>
+            </Text>
           </thead>
           <tbody>
             {steps.map((step, index) => (
               <tr key={step.requestId ?? index}>
-                <td className="pr-3 py-0.5">{index + 1}</td>
-                <td className="pr-3 py-0.5 font-mono text-[10px]">
+                <td className="pr-4 py-2">{index + 1}</td>
+                <td className="pr-4 py-2 font-mono">
                   <span title={step.modelId ?? step.provider}>
-                    {step.modelId ?? step.provider ?? "unknown"}
+                    {step.modelRole ? `${step.modelRole === "light" ? "Light" : "Heavy"} · ` : ""}{step.modelId ?? step.provider ?? "unknown"}
                   </span>
                 </td>
-                <td className="pr-3 py-0.5 text-right">
+                <td className="pr-4 py-2 text-right">
                   {formatExactTokens(step.usage?.inputTokens)}
                 </td>
-                <td className="pr-3 py-0.5 text-right">
+                <td className="pr-4 py-2 text-right">
                   {formatExactTokens(step.usage?.outputTokens)}
                 </td>
                 <td
-                  className="pr-3 py-0.5 text-right"
+                  className="pr-4 py-2 text-right"
                   title={step.costSource ? costSourceLabel(step.costSource) : undefined}
                 >
                   {step.providerCostUsd == null
                     ? "—"
                     : `${step.costSource === "litellm_calculated" ? "~" : ""}$${step.providerCostUsd.toFixed(4)}`}
                 </td>
-                <td className="pr-3 py-0.5 text-right">
+                <td className="pr-4 py-2 text-right">
                   {formatTime(step.durationMs) ?? "—"}
                 </td>
-                <td className="py-0.5 text-right">{step.outcome ?? "—"}</td>
+                <td className="py-2 text-right">{step.outcome ?? "—"}</td>
               </tr>
             ))}
             {steps.length > 1 && (
               <tr className="border-t border-[var(--border-subtle)] text-[var(--text)]">
-                <td className="pr-3 pt-1" colSpan={2}>Total</td>
-                <td className="pr-3 pt-1 text-right">{formatExactTokens(totalIn)}</td>
-                <td className="pr-3 pt-1 text-right">{formatExactTokens(totalOut)}</td>
-                <td className="pr-3 pt-1 text-right">
+                <td className="pr-4 pt-2" colSpan={2}>Total</td>
+                <td className="pr-4 pt-2 text-right">{formatExactTokens(totalIn)}</td>
+                <td className="pr-4 pt-2 text-right">{formatExactTokens(totalOut)}</td>
+                <td className="pr-4 pt-2 text-right">
                   {costableSteps.length === 0 || [providerCostSteps, litellmCostSteps, estimatedCostSteps].filter((group) => group.length > 0).length > 1
                     ? "—"
                     : `${estimatedCostSteps.length > 0 ? "~" : ""}$${costableSteps.reduce((sum, step) => sum + (step.providerCostUsd ?? 0), 0).toFixed(4)}`}
                 </td>
-                <td className="pt-1" colSpan={2} />
+                <td className="pt-2" colSpan={2} />
               </tr>
             )}
           </tbody>
         </table>
-        </div>
+        </StatisticsScroll>
       )}
       {metricSteps.length > 0 && (
-        <table className="w-full text-left tabular-nums">
+        <StatisticsScroll label="Model step statistics">
+        <table aria-label="Model steps" className="w-full min-w-[36rem] whitespace-nowrap text-left tabular-nums">
           <thead>
-            <tr className="text-[10px] uppercase tracking-wide text-[var(--text-subtle)]">
-              <th className="pb-1 pr-3 font-medium">Step</th>
-              <th className="pb-1 pr-3 font-medium">Model</th>
-              <th className="pb-1 pr-3 font-medium text-right">In</th>
-              <th className="pb-1 pr-3 font-medium text-right">Out</th>
-              <th className="pb-1 font-medium text-right">Time</th>
-            </tr>
+            <Text as="tr" variant="label" tone="muted" className="uppercase tracking-wide">
+              <th scope="col" className="pb-2 pr-4 font-medium">Step</th>
+              <th scope="col" className="pb-2 pr-4 font-medium">Model</th>
+              <th scope="col" className="pb-2 pr-4 font-medium text-right">In</th>
+              <th scope="col" className="pb-2 pr-4 font-medium text-right">Out</th>
+              <th scope="col" className="pb-2 font-medium text-right">Time</th>
+            </Text>
           </thead>
           <tbody>
             {metricSteps.map((step, i) => (
               <tr key={i}>
-                <td className="pr-3 py-0.5">{i + 1}</td>
-                <td className="pr-3 py-0.5 font-mono text-[10px]">
-                  {shortModel(step.data?.model)}
+                <td className="pr-4 py-2">{i + 1}</td>
+                <td className="pr-4 py-2 font-mono">
+                  {step.data?.model ?? "—"}
                 </td>
-                <td className="pr-3 py-0.5 text-right">
+                <td className="pr-4 py-2 text-right">
                   {formatExactTokens(step.data?.usage?.prompt_tokens)}
                 </td>
-                <td className="pr-3 py-0.5 text-right">
+                <td className="pr-4 py-2 text-right">
                   {formatExactTokens(step.data?.usage?.completion_tokens)}
                 </td>
-                <td className="py-0.5 text-right">
+                <td className="py-2 text-right">
                   {formatTimeSec(step.data?.duration) ?? "—"}
                 </td>
               </tr>
             ))}
             {metricSteps.length > 1 && (
               <tr className="border-t border-[var(--border-subtle)] text-[var(--text)]">
-                <td className="pr-3 pt-1" colSpan={2}>
+                <td className="pr-4 pt-2" colSpan={2}>
                   Total
                 </td>
-                <td className="pr-3 pt-1 text-right">
+                <td className="pr-4 pt-2 text-right">
                   {formatExactTokens(totalIn)}
                 </td>
-                <td className="pr-3 pt-1 text-right">
+                <td className="pr-4 pt-2 text-right">
                   {formatExactTokens(totalOut)}
                 </td>
-                <td className="pt-1" />
+                <td className="pt-2" />
               </tr>
             )}
           </tbody>
         </table>
+        </StatisticsScroll>
       )}
 
       {(hasTiming || totalTokens > 0 || totalIn != null || totalOut != null || steps.length > 0 || legacyEstimatedCost != null) && (
-        <div className="mt-1.5 flex flex-wrap gap-x-4 gap-y-0.5 text-[10px] text-[var(--text-subtle)]">
+        <Text as="div" variant="meta" tone="muted" className="mt-3 flex flex-wrap gap-x-4 gap-y-1">
           {timing?.firstTokenTime != null && timing.firstTokenTime > 0 && (
-            <span>TTFT: {formatTime(timing.firstTokenTime)}</span>
+            <span>First answer text: {formatTime(timing.firstTokenTime)}</span>
           )}
           {timeStr && <span>Total: {timeStr}</span>}
+          {latency && ([
+            ['queueMs', 'Queue'], ['preparationMs', 'Preparation'],
+            ['providerFirstTokenMs', 'First provider output'],
+            ['lightPassMs', 'Light pass'],
+            ['escalationMs', 'Escalation'],
+            ['heavyFirstTokenMs', 'First heavy answer text'],
+            ['firstToolRequestedMs', 'First tool requested'],
+            ['firstToolStartedMs', 'First tool started'],
+            ['firstOperationalToolMs', 'First operational tool'],
+            ['clientFirstTextMs', 'First text received'],
+            ['clientFirstToolMs', 'First tool received'],
+            ['clientCompletionMs', 'Completion received'],
+          ] as const).map(([key, label]) => latency[key] != null && <span key={key}>{label}: {formatTime(latency[key]) ?? '0s'}</span>)}
           {tpsStr && <span>{tpsStr}</span>}
           {totalIn != null && <span>Input {formatExactTokens(totalIn)} tokens{hasStepUsage ? ` (${inputCoverageCount}/${inputCoverageTotal} calls reported)` : ""}</span>}
           {totalOut != null && <span>Output {formatExactTokens(totalOut)} tokens{hasStepUsage ? ` (${outputCoverageCount}/${outputCoverageTotal} calls reported)` : ""}</span>}
@@ -313,8 +390,9 @@ export function MessageObservability() {
           {steps.length > 0 && unavailableCostCount > 0 && <span>Cost unavailable for {unavailableCostCount}/{steps.length} calls</span>}
           {incompleteUsageCount > 0 && <span>Token usage incomplete for {incompleteUsageCount}/{steps.length} calls</span>}
           {incompleteCostCount > 0 && <span>Reported cost incomplete for {incompleteCostCount}/{steps.length} calls</span>}
-        </div>
+        </Text>
       )}
-    </div>
+      </Text>
+    </Surface>
   );
 }
