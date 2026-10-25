@@ -1,5 +1,6 @@
 import { useAui, useAuiState } from "@assistant-ui/react";
 import { ArrowUpIcon } from "lucide-react";
+import { HoverTooltip } from "../../../components/ui/HoverTooltip";
 
 import { useChatEntityRefsOptional } from "../../../context/ChatEntityRefsContext";
 import { useComposerDictationActions } from "../../speech/ComposerDictationContext";
@@ -20,7 +21,7 @@ export function ComposerSendWithRefs({
   const dictation = useComposerDictationActions();
 
   return (
-    <button
+    <HoverTooltip label={ariaLabel} placement="top"><button
       type="button"
       aria-label={ariaLabel}
       title={ariaLabel}
@@ -37,6 +38,6 @@ export function ComposerSendWithRefs({
     >
       <ArrowUpIcon size={16} strokeWidth={2.5} />
       {label}
-    </button>
+    </button></HoverTooltip>
   );
 }

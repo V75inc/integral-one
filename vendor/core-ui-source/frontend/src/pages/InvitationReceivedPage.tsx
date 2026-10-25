@@ -6,11 +6,13 @@ import type { MyInvitation } from '../api/sharing';
 import { Button, PageHeading, PageMeta, Skeleton } from '../components/ui';
 import { Text } from '../ui';
 import { useToast } from '../context/ToastContext';
+import { useAuth } from '../context/AuthContext';
 import { usePublishPageContext } from '../hooks/usePublishPageContext';
 import { invitationAcceptanceMessage } from '../utils/invitationAcceptance';
 
 export function InvitationReceivedPage() {
   const { invitationId = '' } = useParams<{ invitationId: string }>();
+  const { user, loading: authLoading } = useAuth();
   const { showToast } = useToast();
   const navigate = useNavigate();
   const qc = useQueryClient();
@@ -42,8 +44,8 @@ export function InvitationReceivedPage() {
   }, [invitationId]);
 
   useEffect(() => {
-    if (invitationId) load();
-  }, [invitationId, load]);
+    if (invitationId && !authLoading && user?.email_verified === true) load();
+  }, [invitationId, load, authLoading, user?.email_verified]);
 
   const accept = async () => {
     if (!invitation) return;
@@ -86,7 +88,29 @@ export function InvitationReceivedPage() {
     }
   };
 
-  if (loading) {
+  if (!authLoading && user && user.email_verified !== true) {
+    return (
+      <div className="min-h-screen flex items-center justify-center px-4">
+        <div className="app-card max-w-md w-full p-6 text-center">
+          <PageHeading>Verify your email to continue</PageHeading>
+          <PageMeta as="p" className="mt-4">
+            Verify your email before viewing or accepting invitations. Once verified,
+            you’ll return here to review this invitation.
+          </PageMeta>
+          <Button
+            className="mt-6 w-full"
+            onClick={() => navigate('/verify-email', {
+              state: { returnTo: `/invitations/received/${encodeURIComponent(invitationId)}` },
+            })}
+          >
+            Verify email
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  if (authLoading || loading) {
     return (
       <div className="min-h-screen flex items-center justify-center px-4">
         <Skeleton className="h-40 w-full max-w-md rounded-lg" />

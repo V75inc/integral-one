@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import { Button, Logo } from '../components/ui';
@@ -23,6 +23,12 @@ export function VerifyEmailPage() {
   const { user, refreshUser } = useAuth();
   const { showToast } = useToast();
   const navigate = useNavigate();
+  const location = useLocation();
+  const requestedReturn = (location.state as { returnTo?: unknown } | null)?.returnTo;
+  // Only resume the local invitation flow; navigation state is not a trusted URL.
+  const returnTo = typeof requestedReturn === 'string'
+    && /^\/invitations\/received\/[^/?#]+$/.test(requestedReturn)
+    ? requestedReturn : '/';
   const [code, setCode] = useState('');
   const [loading, setLoading] = useState(false);
   const [resending, setResending] = useState(false);
@@ -43,7 +49,7 @@ export function VerifyEmailPage() {
       await authApi.verifyEmail(trimmed);
       await refreshUser();
       showToast('Email verified!', 'success');
-      navigate('/', { replace: true });
+      navigate(returnTo, { replace: true });
     } catch (err: unknown) {
       const detail = (err as { response?: { data?: { detail?: string } } })
         ?.response?.data?.detail;

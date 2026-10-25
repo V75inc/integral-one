@@ -1,3 +1,4 @@
+import { useSingleFlight } from '../hooks/useSingleFlight';
 import { useState, useEffect, useLayoutEffect, useCallback, useMemo, useRef } from 'react';
 import { usePhantomClickGuard } from '../hooks/usePhantomClickGuard';
 import { Link, useSearchParams } from 'react-router-dom';
@@ -102,7 +103,7 @@ export function AppsPage() {
     setLoading(true);
   }, [workspaceId]);
 
-  const load = useCallback(async () => {
+  const load = useSingleFlight(useCallback(async () => {
     const workspaceId = workspaceRef.current;
     const sequence = ++loadSequence.current;
     setLoading(true);
@@ -132,7 +133,7 @@ export function AppsPage() {
         setLoading(false);
       }
     }
-  }, []);
+  }, [workspaceId]), true);
 
   // Refetch on workspace switch — /apps is scoped server-side via
   // X-Integral-Scope, so the active workspace decides what we receive.

@@ -158,7 +158,25 @@ describe('DashboardWidgetRenderer', () => {
         }}
       />,
     );
-    expect(screen.getByTestId('chart-legend')).toBeInTheDocument();
+    expect(screen.getByRole('list', { name: 'Chart legend' })).toBeInTheDocument();
+    expect(screen.getByText('2 · 67%')).toBeInTheDocument();
+    expect(screen.queryByTestId('chart-legend')).not.toBeInTheDocument();
+  });
+
+  it('uses the raw group key when drilling through a named pie slice', () => {
+    const onDrillThrough = vi.fn();
+    render(<ChartPieWidget title="Habits" onDrillThrough={onDrillThrough}
+      data={{ series: [{ key: 'n.Entry.raw', label: 'Daily reading', value: 12 }] }} />);
+    screen.getByRole('button', { name: /Daily reading/ }).click();
+    expect(onDrillThrough).toHaveBeenCalledWith('n.Entry.raw');
+    expect(screen.queryByText('n.Entry.raw')).not.toBeInTheDocument();
+  });
+
+  it('hides the pie legend without replacing it with an unbounded chip list', () => {
+    render(<ChartPieWidget title="Habits" config={{ show_legend: false }} onDrillThrough={vi.fn()}
+      data={{ series: [{ label: 'Daily reading', value: 12 }] }} />);
+    expect(screen.queryByRole('list', { name: 'Chart legend' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Daily reading/ })).not.toBeInTheDocument();
   });
 
   it('falls back for unknown widget type', () => {

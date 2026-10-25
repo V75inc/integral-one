@@ -144,3 +144,18 @@ describe('useRetrieve()', () => {
     expect(result.current.results).toEqual([]);
   });
 });
+
+it('ignores a late response after clearing the search or changing workspace', async () => {
+  let resolve!: (value: unknown) => void;
+  vi.mocked(retrieveApi.retrieve).mockImplementationOnce(() => new Promise(done => { resolve = done; }) as any);
+  const { result, rerender } = renderHook(({ authorityKey }) => useRetrieve({ authorityKey }), { initialProps: { authorityKey: 'w1' }, wrapper: wrapper() });
+  let pending!: Promise<void>;
+  act(() => { pending = result.current.run('old workspace'); });
+  rerender({ authorityKey: 'w2' });
+  await act(async () => {
+    resolve({ results: [{ entry_id: 'old-result' }], degraded: false });
+    await pending;
+  });
+  expect(result.current.results).toEqual([]);
+  expect(result.current.loading).toBe(false);
+});

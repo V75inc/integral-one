@@ -14,14 +14,15 @@ vi.mock('../../AIChatSurface', () => ({useChatActivity: () => ({activityText: 'R
 import { WorkTrail } from '../Thread';
 
 describe('activity disclosure', () => {
-  it('uses one model and step readout with usage only inside the disclosure', () => {
+  it('shows model, turn duration and abbreviated tokens before expanding exact usage', () => {
     state.message.status.type = 'complete';
     state.message.parts = [{type: 'tool-call'}, {type: 'tool-call'}];
     state.message.metadata = {custom: {steps: [{modelId: 'ollama_chat/deepseek-v4.1-flash:cloud', provider: 'ollama', durationMs: 1700, usage: {inputTokens: 1200, outputTokens: 50}}]}};
     render(<WorkTrail><span>Tool receipt</span></WorkTrail>);
     const trigger = screen.getByRole('button');
     expect(trigger).toHaveTextContent('Finished · 2 tool calls · deepseek-v4.1-flash:cloud');
-    expect(trigger).not.toHaveTextContent(/tokens|cost|1.7s/);
+    expect(trigger).toHaveTextContent('1.7s · 1.3K tokens');
+    expect(trigger).not.toHaveTextContent(/cost/);
     expect(screen.queryByText('1,250 tokens')).not.toBeInTheDocument();
     fireEvent.click(trigger);
     expect(screen.getAllByRole('button')).toHaveLength(1);
@@ -65,6 +66,6 @@ describe('activity disclosure', () => {
     rerender(<WorkTrail><span>Tool receipt</span></WorkTrail>);
     expect(trigger).toHaveAttribute('aria-expanded', 'true');
     expect(screen.getByText('Tool receipt')).toBeVisible();
-    expect(screen.getByText(/Private model reasoning is not displayed/)).toBeVisible();
+    expect(screen.getByText('Activity, tool results, and model usage are shown here.')).toBeVisible();
   });
 });

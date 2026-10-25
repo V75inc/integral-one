@@ -8,6 +8,7 @@
  * dictation provider.
  */
 import { Loader2, Mic, MicOff } from 'lucide-react';
+import { HoverTooltip } from '../../../components/ui/HoverTooltip';
 
 import { IconButton, LevelMeter } from '../../../ui';
 import type { DictationStatus } from '../../speech/dictationMachine';
@@ -34,8 +35,8 @@ export function ComposerMicButton() {
   const label = active ? `Stop dictation (${hotkeyLabel})` : `Dictate (${hotkeyLabel})`;
 
   return (
-    <span className="inline-flex items-center gap-1">
-      <IconButton
+    <span className="inline-flex shrink-0 items-center gap-1">
+      <HoverTooltip label={label} placement="top"><IconButton
         label={label}
         title={label}
         size="md"
@@ -52,7 +53,7 @@ export function ComposerMicButton() {
         ) : (
           <Mic size={15} aria-hidden />
         )}
-      </IconButton>
+      </IconButton></HoverTooltip>
       {listening ? <LevelMeter level={level} /> : null}
       <span className="sr-only" role="status" aria-live="polite">
         {status === 'error' ? (error?.message ?? '') : STATUS_ANNOUNCEMENT[status]}

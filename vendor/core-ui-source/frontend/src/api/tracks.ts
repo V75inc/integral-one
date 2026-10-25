@@ -9,6 +9,7 @@ import {
   unwrapApiDataEnvelope,
 } from './helpers';
 import { FEED_PAGE_LIMIT } from './feed';
+import { getTypeNameMapForTrack } from './entryTypes';
 import type { OperationalModelNode, Entry, Track, User } from '../types';
 
 export type TrackEntriesPage = {
@@ -165,10 +166,9 @@ export const tracksApi = {
     const hasMore = Boolean(inner.has_more);
     const total = typeof inner.total === 'number' ? inner.total : undefined;
     await hydrateEntryTagsForList(raw as any[]);
-    const etRes = await apiClient.get('/entry-types', {
-      params: { track_id: id },
-    });
-    const typeNameById = buildTypeNameById(toArr(etRes.data));
+    const typeNameById = raw.some((entry: any) => entry.type_id && !entry.type)
+      ? await getTypeNameMapForTrack(id)
+      : {};
     const entries = mapEntriesForTrack(raw as any[], typeNameById) as Entry[];
     return { entries, nextCursor, hasMore, total };
   },

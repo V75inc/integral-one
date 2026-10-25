@@ -257,6 +257,18 @@ function ToolFallbackResult({
   if (typeof result === "string") {
     try { parsed = JSON.parse(result); } catch { /* Ordinary text result. */ }
   }
+  if (parsed && typeof parsed === 'object' && 'publicSummary' in parsed) {
+    const summary = parsed.publicSummary as import('../providers/types').PublicToolSummary;
+    if (!summary || typeof summary !== 'object' || typeof summary.outcome !== 'string') return null;
+    const messages = {
+      completed: 'This step completed successfully.',
+      returned: summary.returned_count === 0 ? 'No matching results were returned.' : `Returned ${summary.returned_count ?? 0} results.`,
+      awaiting_approval: 'These changes are awaiting your approval.',
+      failed: "This step couldn't be completed.",
+    };
+    const message = summary && Object.prototype.hasOwnProperty.call(messages, summary.outcome) ? messages[summary.outcome] : undefined;
+    if (message) return <div className="px-4"><p>{message}</p>{summary.duration_ms != null && Number.isFinite(summary.duration_ms) && <p className="text-[var(--text-muted)]">{(summary.duration_ms / 1000).toFixed(1)} seconds</p>}</div>;
+  }
   if (parsed && typeof parsed === "object" && "error" in parsed && parsed.error) {
     return <ExpandableChatError className="px-4 text-[var(--danger-fg)]" summary={friendlyToolFailure(parsed)}>{fullErrorMessage(parsed)}</ExpandableChatError>;
   }

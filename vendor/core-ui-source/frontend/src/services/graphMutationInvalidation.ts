@@ -1,5 +1,6 @@
-import type { QueryClient } from '@tanstack/react-query';
+import { matchQuery, type QueryClient, type InvalidateQueryFilters } from '@tanstack/react-query';
 import {
+  type QueryInvalidator,
   invalidateFeedCaches,
   invalidateWorkspaceListCaches,
 } from '../queryKeys';
@@ -49,9 +50,10 @@ export function appIdFromScope(scope?: string): string | undefined {
 
 /** Refresh open dashboard aggregate queries (charts/metrics). */
 async function invalidateDashboardData(
-  qc: QueryClient,
+  qc: QueryInvalidator,
   appId?: string | null,
 ): Promise<void> {
+  await Promise.all(['app-home-data', 'app-home-definition', 'app-home-query'].map(root => qc.invalidateQueries({ queryKey: appId ? [root, appId] : [root] })));
   if (appId) {
     await qc.invalidateQueries({ queryKey: ['dashboard-data', appId] });
   } else {
@@ -61,7 +63,7 @@ async function invalidateDashboardData(
 
 /** Refresh dashboard layout list + aggregates for an app (or all apps). */
 async function invalidateDashboardCaches(
-  qc: QueryClient,
+  qc: QueryInvalidator,
   appId?: string | null,
 ): Promise<void> {
   await Promise.all([
@@ -141,7 +143,7 @@ function appIdFromStaged(staged: StagedChange): string | undefined {
 }
 
 async function invalidateTrackEntryLists(
-  qc: QueryClient,
+  qc: QueryInvalidator,
   trackId?: string | null,
 ): Promise<void> {
   await invalidateFeedCaches(qc);
@@ -150,14 +152,22 @@ async function invalidateTrackEntryLists(
   }
 }
 
-function maybeDispatchEntryRefetch(action: string, entryId?: string): void {
+interface DetailRefreshes { entries: Set<string>; comments: Set<string> }
+
+function requestCommentRefetch(entryId: string, batch?: DetailRefreshes): void {
+  if (batch) batch.comments.add(entryId);
+  else dispatchCommentRefetch(entryId);
+}
+
+function maybeDispatchEntryRefetch(action: string, entryId?: string, batch?: DetailRefreshes): void {
   if (!entryId) return;
   if (action === 'entry.delete' || action === 'delete_entry') return;
-  dispatchEntryRefetch(entryId);
+  if (batch) batch.entries.add(entryId);
+  else dispatchEntryRefetch(entryId);
 }
 
 /** Metadata changes must refresh open pickers and saved-view schema too. */
-async function invalidateConfiguration(qc: QueryClient, trackId?: string): Promise<void> {
+async function invalidateConfiguration(qc: QueryInvalidator, trackId?: string): Promise<void> {
   await Promise.all([
     ...['tags', 'entryTypes', 'views', 'operationalModel', 'operational-models', 'operational-model'].map(
       root => qc.invalidateQueries({ queryKey: [root] }),
@@ -169,8 +179,9 @@ async function invalidateConfiguration(qc: QueryClient, trackId?: string): Promi
 
 /** Invalidate list/detail caches after a ChangeEvent from the events stream. */
 export async function invalidateAfterChangeEvent(
-  qc: QueryClient,
+  qc: QueryInvalidator,
   evt: ActivityEvent,
+  batch?: DetailRefreshes,
 ): Promise<void> {
   const action = evt.action;
   if (!action) return;
@@ -192,7 +203,7 @@ export async function invalidateAfterChangeEvent(
     await qc.invalidateQueries({ queryKey: ['notifications'] });
     const after = asRecord(evt.after);
     if (after?.type === 'mention' && typeof after.entry_id === 'string') {
-      dispatchCommentRefetch(after.entry_id);
+      requestCommentRefetch(after.entry_id, batch);
     }
     return;
   }
@@ -206,7 +217,7 @@ export async function invalidateAfterChangeEvent(
       invalidateFeedCaches(qc),
       invalidateTrackEntryLists(qc, trackIdFromScope(evt.scope)),
     ]);
-    if (entryId) dispatchCommentRefetch(entryId);
+    if (entryId) requestCommentRefetch(entryId, batch);
     return;
   }
 
@@ -216,7 +227,7 @@ export async function invalidateAfterChangeEvent(
       // Aggregates may change; scope is track-scoped so refresh all open dashboards.
       invalidateDashboardData(qc),
     ]);
-    maybeDispatchEntryRefetch(action, evt.resource_id);
+    maybeDispatchEntryRefetch(action, evt.resource_id, batch);
     return;
   }
 
@@ -275,9 +286,44 @@ export async function invalidateAfterChangeEvent(
   }
 }
 
+/** Reconcile a history/bulk burst once per active query, never per event. */
+export async function invalidateAfterChangeEvents(qc: QueryClient, events: ActivityEvent[]): Promise<void> {
+  const filters: InvalidateQueryFilters[] = [];
+  const details: DetailRefreshes = { entries: new Set(), comments: new Set() };
+  const collector: QueryInvalidator = {
+    invalidateQueries: async filter => { filters.push(filter ?? {}); },
+  };
+  for (const event of events) await invalidateAfterChangeEvent(collector, event, details);
+  if (!filters.length) return;
+  const withheld = filters.filter(filter => filter.refetchType === 'none');
+  const refresh = filters.filter(filter => filter.refetchType !== 'none');
+  await qc.invalidateQueries({
+    predicate: query => filters.some(filter => matchQuery(filter, query)),
+    refetchType: 'none',
+  });
+  const refreshFilter = {
+    type: 'active' as const,
+    predicate: (query: import('@tanstack/react-query').Query) => refresh.some(filter => matchQuery(filter, query))
+      && !withheld.some(filter => matchQuery(filter, query)),
+  };
+  const alreadyReading = new Set(qc.getQueryCache().findAll(refreshFilter)
+    .filter(query => query.state.fetchStatus === 'fetching').map(query => query.queryHash));
+  await qc.refetchQueries(refreshFilter, { cancelRefetch: false });
+  if (alreadyReading.size) {
+    // A read begun before this mutation may hold an older snapshot. Wait for
+    // it, then make one fresh read; never cancel/restart it per event.
+    await qc.refetchQueries({ ...refreshFilter,
+      predicate: query => alreadyReading.has(query.queryHash) && refreshFilter.predicate(query),
+    }, { cancelRefetch: false });
+  }
+  const deleted = new Set(events.filter(event => event.action === 'entry.delete').map(event => event.resource_id));
+  for (const entryId of details.entries) if (!deleted.has(entryId)) dispatchEntryRefetch(entryId);
+  for (const entryId of details.comments) if (!deleted.has(entryId)) dispatchCommentRefetch(entryId);
+}
+
 /** Invalidate caches after an agent staging write completes (bless / fallback). */
 export async function invalidateAfterAgentWrite(
-  qc: QueryClient,
+  qc: QueryInvalidator,
   input: { staged: StagedChange; executeResult?: unknown },
 ): Promise<void> {
   const { staged, executeResult } = input;

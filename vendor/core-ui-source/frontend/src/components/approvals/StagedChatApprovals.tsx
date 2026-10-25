@@ -1,3 +1,5 @@
+import { useSingleFlight } from '../../hooks/useSingleFlight';
+import { useSerialPolling } from '../../hooks/useSerialPolling';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Eye, X } from 'lucide-react';
 import { Link } from 'react-router-dom';
@@ -32,7 +34,7 @@ export function useStagedApprovals() {
   const [loaded, setLoaded] = useState(false);
   const [refreshFailed, setRefreshFailed] = useState(false);
 
-  const refetch = useCallback(async () => {
+  const refetch = useSingleFlight(useCallback(async () => {
     const revision = ++requestRevision.current;
     try {
       const [pending, savedDesigns] = await Promise.all([listPendingStagedChanges(), listDesignDecisions()]);
@@ -53,7 +55,7 @@ export function useStagedApprovals() {
     } finally {
       if (revision === requestRevision.current) setLoaded(true);
     }
-  }, [workspaceId]);
+  }, [workspaceId]));
 
   useEffect(() => {
     setRows([]);
@@ -63,18 +65,18 @@ export function useStagedApprovals() {
     // External MCP proposals have no local chat event. Refresh boundedly and
     // on the events shared by chat/Inbox so this page does not require reload.
     const refresh = () => void refetch();
-    const interval = window.setInterval(refresh, 15_000);
     window.addEventListener('focus', refresh);
     window.addEventListener('integral:staging-created', refresh);
     window.addEventListener('integral:staging-state-changed', refresh);
     return () => {
       ++requestRevision.current;
-      window.clearInterval(interval);
       window.removeEventListener('focus', refresh);
       window.removeEventListener('integral:staging-created', refresh);
       window.removeEventListener('integral:staging-state-changed', refresh);
     };
   }, [refetch]);
+
+  useSerialPolling(refetch, 15_000);
 
   return { rows, designs, count: rows.length + designs.length, loaded, refreshFailed, refetch };
 }
