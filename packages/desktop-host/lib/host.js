@@ -107,14 +107,12 @@ async function boot() {
   // A bundled Core upgrade may remove assets named by a previously cached shell.
   if (runtime) await session.defaultSession.clearCache();
   if (runtime) {
-    const { localSession, trustedSender } = require('./local-session');
-    let pendingSession = null;
-    ipcMain.handle('integral:local-session', async event => {
-      if (!trustedSender(event, window, workspace)) throw new Error('Untrusted desktop session caller.');
-      await options.account?.authorizeSession?.();
-      if (!pendingSession) pendingSession = localSession(runtime).finally(() => { pendingSession = null; });
-      return pendingSession;
-    });
+    const { createSessionHandler, trustedSender } = require('./local-session');
+    ipcMain.handle('integral:local-session', createSessionHandler({
+      getRuntime: () => runtime,
+      authorize: () => options.account?.authorizeSession?.(),
+      isTrusted: event => trustedSender(event, window, workspace),
+    }));
   }
   if (runtime) for (const [method, callback] of Object.entries({
     profile: options.account?.profile,
