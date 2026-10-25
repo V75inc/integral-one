@@ -4,7 +4,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ReactNode } from 'react';
 
 vi.mock('../../context/AuthContext', () => ({
-  useAuth: () => ({ token: 'test-token', user: { id: 'user-1' } }),
+  useAuth: vi.fn(() => ({ token: 'test-token', user: { id: 'user-1' } })),
 }));
 
 vi.mock('../../api/events', () => ({
@@ -14,10 +14,12 @@ vi.mock('../../api/events', () => ({
 
 vi.mock('../../services/graphMutationInvalidation', () => ({
   invalidateAfterAgentWrite: vi.fn(),
-  invalidateAfterChangeEvent: vi.fn(),
+  invalidateAfterChangeEvents: vi.fn(),
 }));
 
-import { openEventStream } from '../../api/events';
+import { useAuth } from '../../context/AuthContext';
+import { fetchEventsPage, openEventStream } from '../../api/events';
+import { invalidateAfterChangeEvents } from '../../services/graphMutationInvalidation';
 import { useChangeEventInvalidation } from '../useChangeEventInvalidation';
 
 class FakeWebSocket {
@@ -46,6 +48,7 @@ async function settle() {
 
 describe('useChangeEventInvalidation', () => {
   beforeEach(() => {
+    vi.mocked(useAuth).mockReturnValue({ token: 'test-token', user: { id: 'user-1' } } as ReturnType<typeof useAuth>);
     vi.useFakeTimers();
   });
 
@@ -103,4 +106,65 @@ describe('useChangeEventInvalidation', () => {
     });
     expect(openEventStream).toHaveBeenCalledTimes(1);
   });
+  it('stops a catch-up cycle when the cursor does not advance', async () => {
+    const socket = new FakeWebSocket();
+    vi.mocked(openEventStream).mockResolvedValue(socket as unknown as WebSocket);
+    vi.mocked(fetchEventsPage).mockResolvedValue({ events: [], next_cursor: 'stuck', has_more: true });
+    const { unmount } = renderHook(() => useChangeEventInvalidation(), { wrapper });
+    await settle();
+    await act(async () => { await vi.advanceTimersByTimeAsync(15_000); });
+    expect(fetchEventsPage).toHaveBeenCalledTimes(2);
+    unmount();
+  });
+
+  it('bounds a busy event stream to ten pages per tick', async () => {
+    const socket = new FakeWebSocket();
+    vi.mocked(openEventStream).mockResolvedValue(socket as unknown as WebSocket);
+    let cursor = 0;
+    vi.mocked(fetchEventsPage).mockImplementation(async () => ({ events: [], next_cursor: String(++cursor), has_more: true }));
+    const { unmount } = renderHook(() => useChangeEventInvalidation(), { wrapper });
+    await settle();
+    await act(async () => { await vi.advanceTimersByTimeAsync(15_000); });
+    expect(fetchEventsPage).toHaveBeenCalledTimes(10);
+    unmount();
+  });
+
+  it('retains the live resume position after an exhausted history page', async () => {
+    vi.mocked(openEventStream).mockResolvedValue(new FakeWebSocket() as unknown as WebSocket);
+    vi.mocked(fetchEventsPage).mockResolvedValue({ events: [], next_cursor: null, resume_cursor: 'last-scanned', has_more: false });
+    const { unmount } = renderHook(() => useChangeEventInvalidation(), { wrapper });
+    await settle();
+    await act(async () => { await vi.advanceTimersByTimeAsync(30_000); });
+    expect(fetchEventsPage).toHaveBeenNthCalledWith(2, expect.objectContaining({ since: 'last-scanned' }));
+    unmount();
+  });
+
+  it('coalesces a live write burst before invalidating queries', async () => {
+    const socket = new FakeWebSocket();
+    vi.mocked(openEventStream).mockResolvedValue(socket as unknown as WebSocket);
+    const { unmount } = renderHook(() => useChangeEventInvalidation(), { wrapper });
+    await settle();
+    act(() => {
+      for (let n = 0; n < 100; n += 1) socket.onmessage?.({ data: JSON.stringify({ id: String(n), ts: '2026-01-01T00:00:00Z', actor_kind: 'agent', actor_id: 'agent', action: 'entry.update', resource_id: 'entry', scope: 'track:track' }) } as MessageEvent);
+    });
+    await act(async () => { await vi.advanceTimersByTimeAsync(100); });
+    expect(invalidateAfterChangeEvents).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(invalidateAfterChangeEvents).mock.calls[0][1]).toHaveLength(1);
+    unmount();
+  });
+
+  it('keeps the scan position when only the access token is renewed', async () => {
+    vi.mocked(openEventStream).mockResolvedValue(new FakeWebSocket() as unknown as WebSocket);
+    vi.mocked(fetchEventsPage).mockResolvedValue({ events: [], next_cursor: null, resume_cursor: 'resume-after-history', has_more: false });
+    const { rerender, unmount } = renderHook(() => useChangeEventInvalidation(), { wrapper });
+    await settle();
+    await act(async () => { await vi.advanceTimersByTimeAsync(15_000); });
+    vi.mocked(useAuth).mockReturnValue({ token: 'renewed-token', user: { id: 'user-1' } } as ReturnType<typeof useAuth>);
+    rerender();
+    await settle();
+    await act(async () => { await vi.advanceTimersByTimeAsync(15_000); });
+    expect(fetchEventsPage).toHaveBeenNthCalledWith(2, expect.objectContaining({ since: 'resume-after-history' }));
+    unmount();
+  });
+
 });

@@ -101,6 +101,22 @@ describe('AppDashboardPanel drill-through dialog', () => {
     });
   });
 
+  it('opens the dashboard named in the URL and updates the URL when switching', async () => {
+    listMock.mockResolvedValue([
+      { id: 'd1', name: 'First', app_id: 'app-1', widgets: [], is_default: true },
+      { id: 'd2', name: 'Second', app_id: 'app-1', widgets: [], is_default: false },
+    ]);
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(<MemoryRouter initialEntries={['/apps/app-1?section=dashboards&dashboard_id=d2']}>
+      <QueryClientProvider client={queryClient}><AppDashboardPanel appId="app-1" canEdit={false} /><LocationProbe /></QueryClientProvider>
+    </MemoryRouter>);
+    const picker = await screen.findByRole('combobox', { name: 'Dashboard' });
+    await waitFor(() => expect(picker).toHaveValue('d2'));
+    fireEvent.change(picker, { target: { value: 'd1' } });
+    await waitFor(() => expect(screen.getByTestId('location')).toHaveTextContent('dashboard_id=d1'));
+    expect(picker).toHaveValue('d1');
+  });
+
   it('uses the standard padded Modal.Body for chart record results', async () => {
     const queryClient = new QueryClient({
       defaultOptions: { queries: { retry: false } },
@@ -183,6 +199,30 @@ describe('AppDashboardPanel drill-through dialog', () => {
       ),
     ).toBeInTheDocument();
     expect(screen.queryByText(/AxiosError/)).not.toBeInTheDocument();
+  });
+
+  it('renders selected platform and custom values without hiding zero or false', async () => {
+    drillThroughMock.mockResolvedValueOnce({
+      items: [{ id: 'entry-1', title: 'Stored record', track_id: 'track-1',
+        status: 'In progress', 'custom_fields.amount': 0,
+        'custom_fields.confirmed': false, 'custom_fields.note': null }],
+      result_set_id: 'result-1', graph_revision: 'revision-1', membership_limit: 100,
+      membership_scope: {}, calculation: { op: 'count' },
+      refreshed_at: '2026-10-22T00:00:00Z', current_widget_value: 1,
+      total_estimate: 1,
+    });
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(<MemoryRouter><QueryClientProvider client={queryClient}>
+      <AppDashboardPanel appId="app-1" canEdit={false} />
+    </QueryClientProvider></MemoryRouter>);
+    fireEvent.click(await screen.findByRole('button', { name: 'Open chart records' }));
+    const row = (await screen.findByText('Stored record')).closest('tr');
+    expect(row).toHaveTextContent('Status: In progress');
+    expect(row).toHaveTextContent('Amount: 0');
+    expect(row).toHaveTextContent('Confirmed: false');
+    expect(row).toHaveTextContent('Note: —');
+    expect(row).not.toHaveTextContent('entry-1');
+    expect(row).not.toHaveTextContent('track-1');
   });
 
   it('continues with the governed cursor and appends the next page', async () => {

@@ -1,5 +1,6 @@
 import { defineConfig } from 'vitest/config';
 import react from '@vitejs/plugin-react';
+import { availableParallelism } from 'node:os';
 
 export default defineConfig({
   plugins: [react()],
@@ -16,7 +17,9 @@ export default defineConfig({
         : [],
     // Bound jsdom concurrency: host-wide CPU fan-out made the 101-row
     // projection test exceed 5s; the same assertions take 417ms in isolation.
-    maxWorkers: 4,
+    // A two-CPU CI runner should not start four jsdom workers. Keep the local
+    // four-worker ceiling while respecting the runner's available CPUs.
+    maxWorkers: Math.min(4, availableParallelism()),
     exclude: ['**/node_modules/**', '**/domain_apps/**'],
   },
 });

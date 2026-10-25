@@ -1,3 +1,4 @@
+import { Button } from '../../../components/ui/Button';
 import { PageMeta } from '../../../components/ui';
 import {
   SettingsField,
@@ -35,7 +36,7 @@ interface Props {
  * it surfaces matches beyond the in-memory list and is more
  * comprehensive than the substring filter.
  */
-export function SearchModeSection({ settings, update }: Props) {
+export function SearchModeSection({ settings, update, navigateToSection }: Props) {
   const mode = settings.retrieval.mode;
 
   const setMode = (next: RetrievalModeSetting) => {
@@ -52,6 +53,7 @@ export function SearchModeSection({ settings, update }: Props) {
         <PageMeta as="p">
           Pick how every search box in Integral resolves your query.
         </PageMeta>
+        {navigateToSection && <Button variant="ghost" size="sm" onClick={() => navigateToSection('ai-models')}>Manage embedding model in AI Models</Button>}
       </div>
 
       <SettingsSection

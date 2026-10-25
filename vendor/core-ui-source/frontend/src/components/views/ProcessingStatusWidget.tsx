@@ -1,3 +1,5 @@
+import { useSingleFlight } from '../../hooks/useSingleFlight';
+import { useSerialPolling } from '../../hooks/useSerialPolling';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { CheckCircle2, AlertCircle, Loader2 } from 'lucide-react';
 
@@ -60,7 +62,7 @@ export function ProcessingStatusWidget({ view }: ViewWidgetProps) {
   const [retryError, setRetryError] = useState('');
   const generation = useRef(0);
 
-  const load = useCallback(async () => {
+  const load = useSingleFlight(useCallback(async () => {
     if (!entryId) return;
     const current = ++generation.current;
     try {
@@ -81,7 +83,7 @@ export function ProcessingStatusWidget({ view }: ViewWidgetProps) {
     } catch {
       if (current === generation.current) setEntry(null);
     }
-  }, [entryId, config.job_field]);
+  }, [entryId, config.job_field]));
 
   useEffect(() => {
     void load();
@@ -93,12 +95,8 @@ export function ProcessingStatusWidget({ view }: ViewWidgetProps) {
   const isActive = active.has(status);
   const isFailed = failed.has(status);
 
-  useEffect(() => {
-    if (!isActive) return;
-    const seconds = Math.min(Math.max(Number(config.poll_seconds) || 4, 2), 60);
-    const timer = window.setInterval(() => { void load(); }, seconds * 1000);
-    return () => window.clearInterval(timer);
-  }, [isActive, config.poll_seconds, load]);
+  useSerialPolling(load, Math.min(Math.max(Number(config.poll_seconds) || 4, 2), 60) * 1000, isActive);
+
 
   if (!entryId) return null;
   if (!entry) {

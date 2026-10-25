@@ -180,7 +180,7 @@ export function MetricRowWidget({
 
 function chartSeriesFromData(
   data?: Record<string, unknown>,
-): { label: string; value: number }[] {
+): { key: string; label: string; value: number }[] {
   if (!data) return [];
   const rawSeries = data.series;
   if (Array.isArray(rawSeries)) {
@@ -191,9 +191,9 @@ function chartSeriesFromData(
         const label = String(row.label ?? row.key ?? row.name ?? '');
         const value = Number(row.value ?? row.count ?? 0);
         if (!label && !Number.isFinite(value)) return null;
-        return { label, value: Number.isFinite(value) ? value : 0 };
+        return { key: String(row.key ?? label), label, value: Number.isFinite(value) ? value : 0 };
       })
-      .filter((row): row is { label: string; value: number } => row != null);
+      .filter((row): row is { key: string; label: string; value: number } => row != null);
   }
   const groups = data.groups;
   if (Array.isArray(groups)) {
@@ -202,11 +202,12 @@ function chartSeriesFromData(
         if (!group || typeof group !== 'object') return null;
         const row = group as Record<string, unknown>;
         return {
+          key: String(row.key ?? row.label ?? ''),
           label: String(row.label ?? row.key ?? ''),
           value: Number(row.value ?? row.count ?? 0),
         };
       })
-      .filter((row): row is { label: string; value: number } => row != null);
+      .filter((row): row is { key: string; label: string; value: number } => row != null);
   }
   return [];
 }
@@ -233,6 +234,7 @@ function ChartSeries({
   if (errorUi) return errorUi;
 
   const series = chartSeriesFromData(data);
+  const total = series.reduce((sum, point) => sum + Math.max(0, point.value), 0);
   const accent = colors[0];
   const horizontal = config?.orientation === 'horizontal';
   const showLegend =
@@ -254,9 +256,9 @@ function ChartSeries({
   }
 
   return (
-    <WidgetShell title={title} variant="chart">
-      <div className="dashboard-chart-canvas min-h-[140px] w-full flex-1">
-        <ResponsiveContainer width="100%" height={160}>
+    <WidgetShell title={title} variant={kind === 'pie' ? 'pie' : 'chart'}>
+      <div className="dashboard-chart-canvas w-full flex-1">
+        <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
           {kind === 'bar' ? (
             <BarChart
               data={series}
@@ -308,8 +310,8 @@ function ChartSeries({
                 nameKey="label"
                 cx="50%"
                 cy="50%"
-                innerRadius={36}
-                outerRadius={60}
+                innerRadius="48%"
+                outerRadius="80%"
                 paddingAngle={2}
               >
                 {series.map((_, i) => (
@@ -317,19 +319,49 @@ function ChartSeries({
                 ))}
               </Pie>
               <DashboardChartTooltip />
-              {showLegend ? <Legend /> : null}
             </PieChart>
           )}
         </ResponsiveContainer>
       </div>
-      {onDrillThrough ? (
+      {kind === 'pie' && showLegend ? (
+        <ul className="dashboard-pie-legend dashboard-no-drag" aria-label="Chart legend">
+          {series.map((point, index) => {
+            const content = (
+              <>
+                <span
+                  className="dashboard-pie-legend__swatch"
+                  style={{ backgroundColor: colors[index % colors.length] }}
+                />
+                <Text as="span" variant="meta" className="dashboard-pie-legend__label">
+                  {point.label}
+                </Text>
+                <Text as="span" variant="meta" tone="muted" className="dashboard-pie-legend__value">
+                  {point.value.toLocaleString()} · {total > 0 ? `${Math.round(point.value / total * 100)}%` : '0%'}
+                </Text>
+              </>
+            );
+            return (
+              <li key={point.key}>
+                {onDrillThrough ? (
+                  <button type="button" className="dashboard-pie-legend__row" title={point.label}
+                    onClick={() => onDrillThrough(point.key)}>
+                    {content}
+                  </button>
+                ) : (
+                  <div className="dashboard-pie-legend__row" title={point.label}>{content}</div>
+                )}
+              </li>
+            );
+          })}
+        </ul>
+      ) : kind !== 'pie' && onDrillThrough ? (
         <div className="dashboard-drillthrough-groups">
           {series.map(point => (
             <button
-              key={point.label}
+              key={point.key}
               type="button"
               className="dashboard-drillthrough-chip dashboard-no-drag"
-              onClick={() => onDrillThrough(point.label)}
+              onClick={() => onDrillThrough(point.key)}
             >
               {point.label}: {point.value}
             </button>

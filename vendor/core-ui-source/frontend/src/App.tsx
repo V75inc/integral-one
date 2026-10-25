@@ -1,3 +1,4 @@
+import { useHostSessionNotification } from './components/system/useHostSessionNotification';
 import { useDeployment } from './hooks/useDeployment';
 import { AppCatalogRedirect } from './components/apps/AppCatalogRedirect';
 import { HostAccessPage } from './host/access';
@@ -253,6 +254,7 @@ function RequireAuth({ children }: { children: React.ReactNode }) {
 /** Mount inside the provider so the hook can call notify/dismiss. */
 function SystemConnectivityWatchers() {
   useOfflineNotification();
+  useHostSessionNotification();
   useBuildVersionWatch();
   return null;
 }

@@ -38,14 +38,12 @@ interface FeedFilterStripProps {
   typeOptions: string[];
   feedSearch: string;
   setFeedSearch: (q: string) => void;
-  /** Row-derived filters owned by the parent (tag and author come from
-   *  EntryCard clicks rather than FilterStrip dropdowns). When provided,
-   *  the strip's "Clear all" extends to wipe these too — otherwise the
-   *  user would still see chips after clearing. */
+  /** URL filters owned by the parent. Tags can be selected here or from
+   *  record links; Clear all must clear both tags and author together. */
   tags?: Tag[];
   tagsError?: boolean;
-  filterTag?: string;
-  setFilterTag?: (id: string) => void;
+  filterTags?: string[];
+  setFilterTags?: (ids: string[]) => void;
   filterAuthor?: string;
   setFilterAuthor?: (id: string) => void;
   /** Atomic clear-all callback that clears every filter dimension in a
@@ -86,8 +84,8 @@ export function FeedFilterStrip({
   setFeedSearch,
   tags = [],
   tagsError = false,
-  filterTag = '',
-  setFilterTag,
+  filterTags = [],
+  setFilterTags,
   filterAuthor = '',
   setFilterAuthor,
   onClearAll,
@@ -156,14 +154,20 @@ export function FeedFilterStrip({
     [typeOptions]
   );
 
+  const tagChoices: Tag[] = [
+    ...tags.filter(tag => !filterTrack || tag.track_id === filterTrack || filterTags.includes(tag.id)),
+    ...filterTags.filter(id => !tags.some(tag => tag.id === id))
+      .map(id => ({ id, name: 'Selected tag' })),
+  ];
+
   const granularActiveCount =
-    (appIdFromQuery ? 1 : 0) + (filterTrack ? 1 : 0) + (filterType ? 1 : 0) + (filterTag ? 1 : 0);
+    (appIdFromQuery ? 1 : 0) + (filterTrack ? 1 : 0) + (filterType ? 1 : 0) + filterTags.length;
   const anyActive = Boolean(
     feedSearch.trim() ||
       appIdFromQuery ||
       filterTrack ||
       filterType ||
-      filterTag ||
+      filterTags.length ||
       filterAuthor
   );
 
@@ -172,7 +176,7 @@ export function FeedFilterStrip({
     setAppFilter('');
     setFilterTrack('');
     setFilterType('');
-    setFilterTag?.('');
+    setFilterTags?.([]);
     setFilterAuthor?.('');
   });
 
@@ -355,29 +359,23 @@ export function FeedFilterStrip({
                   className="app-input text-sm py-2.5 w-full"
                 />
               </div>
-              {setFilterTag && <div className="space-y-1.5">
-                <label className="text-[11px] font-medium text-[var(--text-subtle)] uppercase tracking-[0.08em]">Tag</label>
-                <AppSelect value={filterTag} onValueChange={setFilterTag}
-                  aria-label="Filter feed by tag" className="app-input text-sm py-2.5 w-full"
-                  options={[
-                    { value: '', label: 'All tags' },
-                    ...tags.filter(tag => !filterTrack || tag.track_id === filterTrack || tag.id === filterTag).map(tag => ({
-                      value: tag.id,
-                      label: `${tag.name} · ${tagTracks.find(track => track.id === tag.track_id)?.title ?? apps.find(app => app.id === tag.app_id)?.name ?? (tag.track_id ? 'Track tag' : 'App tag')}`,
-                    })),
-                    ...(filterTag && !tags.some(tag => tag.id === filterTag) ? [{ value: filterTag, label: 'Selected tag' }] : []),
-                  ]} />
+              {setFilterTags && <div className="space-y-1.5">
+                <div className="text-xs text-[var(--text-subtle)]">Tags · match all selected</div>
+                <div role="group" aria-label="Filter feed by tags" className="max-h-48 space-y-2 overflow-y-auto">
+                  {tagChoices.map(tag => <label key={tag.id} className="flex items-center gap-2 text-sm">
+                    <input type="checkbox" checked={filterTags.includes(tag.id)}
+                      disabled={!filterTags.includes(tag.id) && filterTags.length >= 20}
+                      onChange={() => setFilterTags(filterTags.includes(tag.id) ? filterTags.filter(id => id !== tag.id) : [...filterTags, tag.id])} />
+                    <span>{tag.name} · {tagTracks.find(track => track.id === tag.track_id)?.title ?? apps.find(app => app.id === tag.app_id)?.name ?? (tag.track_id ? 'Track tag' : 'App tag')}</span>
+                  </label>)}
+                </div>
+                {filterTags.length > 0 && <button type="button" onClick={() => setFilterTags([])} className="text-xs underline">Clear tag filters ({filterTags.length})</button>}
                 {tagsError && <p role="status" className="text-xs text-[var(--text-muted)]">Could not load tags. Reopen the page to retry.</p>}
               </div>}
-              {(appIdFromQuery || filterTrack || filterType || filterTag) && (
+              {anyActive && (
                 <button
                   type="button"
-                  onClick={() => {
-                    setAppFilter('');
-                    setFilterTrack('');
-                    setFilterType('');
-                    setFilterTag?.('');
-                  }}
+                  onClick={clearAll}
                   className="text-xs text-[var(--link)] hover:text-[var(--link-hover)] hover:underline"
                 >
                   Reset filters

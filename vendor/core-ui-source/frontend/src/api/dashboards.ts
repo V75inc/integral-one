@@ -1,3 +1,4 @@
+import type { HomeElement } from '../features/app-dashboards/nativeHomeTypes';
 import apiClient from './client';
 import { unwrapResource } from './helpers';
 
@@ -30,11 +31,35 @@ export interface Dashboard {
   updated_at?: string;
 }
 
+export interface HomeComponentWidget {
+  id: string;
+  type: 'native_component';
+  title?: string;
+  grid: DashboardGridPlacement;
+  content: HomeElement;
+}
+export type HomeWidget = (DashboardWidget & { data?: Record<string, unknown> }) | HomeComponentWidget;
+export function isHomeComponentWidget(widget: HomeWidget): widget is HomeComponentWidget {
+  return widget.type === 'native_component' && 'content' in widget;
+}
 export interface AppHome {
   title: string;
-  description: string;
-  actions: Array<{ label: string; draft: string; when?: { widget: string; state: 'empty' | 'has_records' } }>;
-  widgets: Array<DashboardWidget & { data?: Record<string, unknown> }>;
+  description?: string;
+  renderer?: 'widgets' | 'native';
+  content?: HomeElement;
+  actions?: Array<{ label: string; draft: string; when?: { widget: string; state: 'empty' | 'has_records' } }>;
+  widgets?: HomeWidget[];
+}
+export interface AppHomeResponse {
+  home: AppHome | null;
+  home_revision?: string;
+  definition_revision?: number | null;
+  source?: 'instance' | 'package' | 'preview';
+  preview?: boolean;
+  live_data?: boolean;
+  error?: string;
+  bindings?: { queries: Array<Record<string, unknown>>; operations: Array<Record<string, unknown>> };
+  components?: Array<{ key: string; name: string; schema: Record<string, unknown> }>;
 }
 
 export interface DashboardWidgetTypeSpec {
@@ -74,8 +99,16 @@ export interface DashboardDrilldownResult {
 }
 
 export const dashboardsApi = {
-  async home(appId: string, includeData = true): Promise<{ home: AppHome | null; definition_revision?: number }> {
+  async home(appId: string, includeData = true): Promise<AppHomeResponse> {
     const { data } = await apiClient.get(`/apps/${appId}/home`, { params: { include_data: String(includeData) } });
+    return data;
+  },
+  async previewHome(appId: string, home: AppHome | Record<string, never>, includeData = false): Promise<AppHomeResponse> {
+    const { data } = await apiClient.post(`/apps/${appId}/home/preview`, { home, include_data: includeData });
+    return data;
+  },
+  async saveHome(appId: string, home: AppHome | Record<string, never>, expectedRevision: string): Promise<unknown> {
+    const { data } = await apiClient.put(`/apps/${appId}`, { home, expected_home_revision: expectedRevision });
     return data;
   },
   async list(appId: string): Promise<Dashboard[]> {

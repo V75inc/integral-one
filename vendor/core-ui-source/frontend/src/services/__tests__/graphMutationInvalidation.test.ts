@@ -1,11 +1,12 @@
 import { describe, expect, it, vi } from 'vitest';
-import { QueryClient } from '@tanstack/react-query';
+import { QueryClient, QueryObserver } from '@tanstack/react-query';
 import {
   COMMENT_REFETCH_EVENT,
   dispatchEntryRefetch,
   ENTRY_REFETCH_EVENT,
   invalidateAfterAgentWrite,
   invalidateAfterChangeEvent,
+  invalidateAfterChangeEvents,
 } from '../graphMutationInvalidation';
 import type { StagedChange } from '../../features/ai-chat/staging/types';
 
@@ -332,4 +333,58 @@ it('marks a deleted library detail stale without fetching it again', async () =>
   await invalidateAfterChangeEvent(qc, {id:'delete',ts:'2026-01-01T00:00:00Z',actor_kind:'user',actor_id:'user',action:'operational_model.delete',resource_type:'OperationalModel',resource_id:'model'});
   expect(invalidate).toHaveBeenCalledWith({queryKey:['operational-model'],refetchType:'none'});
   expect(invalidate).toHaveBeenCalledWith({queryKey:['operational-models']});
+});
+
+
+it('reconciles a hundred changes with one refetch and one detail notification', async () => {
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } });
+  const read = vi.fn().mockResolvedValue([]);
+  await qc.fetchQuery({ queryKey: ['feed', 'entries'], queryFn: read });
+  const observer = new QueryObserver(qc, { queryKey: ['feed', 'entries'], queryFn: read });
+  const unsubscribe = observer.subscribe(() => {});
+  read.mockClear();
+  const detail = vi.fn();
+  window.addEventListener(ENTRY_REFETCH_EVENT, detail);
+  try {
+    await invalidateAfterChangeEvents(qc, Array.from({ length: 100 }, (_, n) => ({ id: `event-${n}`, ts: '2026-01-01T00:00:00Z', actor_kind: 'agent', actor_id: 'agent', action: 'entry.update', resource_id: 'entry', scope: 'track:track' })));
+    expect(read).toHaveBeenCalledTimes(1);
+    expect(detail).toHaveBeenCalledTimes(1);
+  } finally {
+    unsubscribe(); window.removeEventListener(ENTRY_REFETCH_EVENT, detail); qc.clear();
+  }
+});
+
+it('a deletion withholds deleted detail refetches in a mixed event burst', async () => {
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } });
+  const read = vi.fn().mockResolvedValue({});
+  const queryKey = ['track', 'track'];
+  await qc.fetchQuery({ queryKey, queryFn: read });
+  const observer = new QueryObserver(qc, { queryKey, queryFn: read });
+  const unsubscribe = observer.subscribe(() => {});
+  read.mockClear();
+  try {
+    await invalidateAfterChangeEvents(qc, ['track.update', 'track.delete'].map((action, n) => ({ id: String(n), ts: '2026-01-01T00:00:00Z', actor_kind: 'agent', actor_id: 'agent', action, resource_id: 'track', scope: 'track:track' })));
+    expect(read).not.toHaveBeenCalled();
+    expect(qc.getQueryState(queryKey)?.isInvalidated).toBe(true);
+  } finally { unsubscribe(); qc.clear(); }
+});
+
+it('finishes an older read then refreshes once after a mutation burst', async () => {
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } });
+  const queryKey = ['feed', 'entries'];
+  const read = vi.fn().mockResolvedValue('initial');
+  await qc.fetchQuery({ queryKey, queryFn: read });
+  const observer = new QueryObserver(qc, { queryKey, queryFn: read });
+  const unsubscribe = observer.subscribe(() => {});
+  let finish!: (value: string) => void;
+  read.mockImplementationOnce(() => new Promise(resolve => { finish = resolve; })).mockResolvedValue('latest');
+  read.mockClear();
+  const older = qc.refetchQueries({ queryKey });
+  const applied = invalidateAfterChangeEvents(qc, [{ id: 'event', ts: '2026-01-01T00:00:00Z', actor_kind: 'agent', actor_id: 'agent', action: 'entry.update', resource_id: 'entry', scope: 'track:track' }]);
+  await Promise.resolve();
+  finish('older');
+  await Promise.all([older, applied]);
+  expect(read).toHaveBeenCalledTimes(2);
+  expect(qc.getQueryData(queryKey)).toBe('latest');
+  unsubscribe(); qc.clear();
 });

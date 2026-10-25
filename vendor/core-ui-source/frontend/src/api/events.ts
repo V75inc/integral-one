@@ -26,6 +26,7 @@ import { normalizeChangeEvent, type ActivityEvent } from '../utils/changeEvent';
 export interface EventsPage {
   events: ActivityEvent[];
   next_cursor: string | null;
+  resume_cursor?: string | null;
   has_more: boolean;
   /** Optional — present when the backend pagination knows the total. */
   total?: number;
@@ -107,6 +108,7 @@ export async function fetchEventsPage(params: {
   const response = await apiClient.get<{
     events?: EventStreamRaw[];
     next_cursor?: string | null;
+    resume_cursor?: string | null;
     has_more?: boolean;
     total?: number;
   }>('/events', { params: query });
@@ -115,6 +117,7 @@ export async function fetchEventsPage(params: {
   return {
     events: rawEvents.map(normalizeChangeEvent),
     next_cursor: response.data?.next_cursor ?? null,
+    resume_cursor: response.data?.resume_cursor ?? null,
     has_more: Boolean(response.data?.has_more),
     total: typeof response.data?.total === 'number' ? response.data.total : undefined,
   };

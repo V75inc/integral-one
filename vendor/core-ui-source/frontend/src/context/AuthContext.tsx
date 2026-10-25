@@ -1,6 +1,9 @@
+import { useLocation } from 'react-router-dom';
+import { isPublicAuthPath } from '../api/sessionRoutes';
 import { getHostSession } from '../host/session';
 import '../hooks/useDeployment';
 import { loadSessionPolicy } from '../api/sessionPolicy';
+import { isHostManagedSession } from '../api/sessionRuntime';
 import React, { createContext, useContext, useState, useEffect, useLayoutEffect, useCallback, useMemo, useSyncExternalStore } from 'react';
 import { SessionRenewalDialog } from '../components/system/SessionRenewalDialog';
 import { enableSessionRecovery, finishSessionRecovery, getSessionRecovery, isSessionPaused, subscribeSessionRecovery } from '../api/sessionRecovery';
@@ -10,6 +13,7 @@ import { authApi } from '../api';
 import {
   clearTokens,
   getAccessToken,
+  getSessionGeneration,
   installActivityListeners,
   redirectToLogin,
   refreshAccessToken,
@@ -40,16 +44,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [profileVerified, setProfileVerified] = useState(false);
   const queryClient = useQueryClient();
+  const { pathname } = useLocation();
+  const publicPage = isPublicAuthPath(pathname);
   const recovery = useSyncExternalStore(subscribeSessionRecovery, getSessionRecovery);
 
-  // Register before child polling effects can encounter an already-expired
-  // token during a slow sign-in/hydration commit.
+  // Only a verified private-page session can retain the workspace behind an
+  // inactivity lock. Cached profiles and public routes never enable recovery.
   useLayoutEffect(() => {
-    enableSessionRecovery(user?.id ?? null);
+    enableSessionRecovery(profileVerified && !publicPage && !isHostManagedSession() ? user?.id ?? null : null);
+    if (profileVerified && !publicPage) scheduleProactiveRefresh();
     return () => { enableSessionRecovery(null); };
-  }, [user?.id]);
+  }, [user?.id, profileVerified, publicPage]);
 
   useEffect(() => {
+    let active = true;
     installActivityListeners();
 
     const onLogout = () => {
@@ -64,9 +72,29 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       resetThreadSessions();
     };
     window.addEventListener('integral:logout', onLogout);
+    const onTokensUpdated = () => {
+      const current = getAccessToken();
+      setToken(current);
+      // Also completes cold-start hydration after a temporarily unavailable host recovers.
+      if (current && isHostManagedSession()) {
+        const generation = getSessionGeneration();
+        void authApi.me().then(u => {
+          if (!active || generation !== getSessionGeneration()) return;
+          setUser(u);
+          setProfileVerified(true);
+          localStorage.setItem('t75_user', JSON.stringify(u));
+        }).catch(() => { /* The host lifecycle owns reconnection and recovery. */ });
+      }
+    };
+    window.addEventListener('integral:tokens-updated', onTokensUpdated);
     // An explicit sign-out/account change in another tab must also retire
     // this tab's retained page and invalidate pending renewal responses.
     const onStorage = (event: StorageEvent) => {
+      if (event.key === 't75_token' || event.key === 't75_token_expires_at') {
+        onTokensUpdated();
+        scheduleProactiveRefresh();
+        return;
+      }
       if (event.key !== 't75_user') return;
       if (!event.newValue) {
         clearTokens();
@@ -82,17 +110,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
     window.addEventListener('storage', onStorage);
 
-    let active = true;
     let cleanupHydration = () => {};
     const begin = async () => {
       await loadSessionPolicy();
       if (!active) return;
       const hostSession = getHostSession();
-      if (hostSession) {
+      if (hostSession && isHostManagedSession()) {
         try {
-          const session = await hostSession.session();
+          await refreshAccessToken();
           if (!active) return;
-          setTokens(session);
         } catch {
           if (active) setLoading(false);
           return;
@@ -130,19 +156,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         retryArmed = true;
         for (const ev of retryEvents) window.addEventListener(ev, retry);
       };
-      const hydrate = () =>
-        authApi.me()
+      const hydrate = () => {
+        const generation = getSessionGeneration();
+        return authApi.me()
           .then(u => {
-            if (!active || isSessionPaused() || !getAccessToken()) return;
+            if (!active || generation !== getSessionGeneration() || isSessionPaused() || !getAccessToken()) return;
             disarmRetry();
             setUser(u);
             setProfileVerified(true);
             localStorage.setItem('t75_user', JSON.stringify(u));
           })
           .catch((err: unknown) => {
-            if (!active || isSessionPaused()) return;
+            if (!active || generation !== getSessionGeneration() || isSessionPaused()) return;
             const status = (err as { response?: { status?: number } })?.response?.status;
             if (status === 401) {
+              if (isHostManagedSession()) { armRetry(); return; }
               disarmRetry();
               // Soft-land on login — do not leave a half-auth shell that
               // flashes "Something went wrong" over a dead session.
@@ -161,6 +189,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             armRetry();
           })
           .finally(() => { if (active) setLoading(false); });
+      };
       retry = () => {
         disarmRetry();
         void hydrate();
@@ -173,6 +202,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return () => {
       active = false;
       window.removeEventListener('integral:logout', onLogout);
+      window.removeEventListener('integral:tokens-updated', onTokensUpdated);
       window.removeEventListener('storage', onStorage);
       cleanupHydration();
     };
@@ -235,30 +265,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   );
 
   const logout = useCallback(async () => {
-    try {
-      await getHostSession()?.signOut?.();
-      if (getAccessToken()) {
-        await authApi.logout();
-      }
-    } catch {
-      /* still clear local session if the network fails */
-    } finally {
-      clearTokens();
-      enableSessionRecovery(null);
-      setToken(null);
-      setUser(null);
-      setProfileVerified(false);
-      // Drop every cached query so the next signed-in user can't
-      // inherit the previous user's workspaces / active scope /
-      // notifications / etc. Pairs with the localStorage wipe in
-      // ``clearTokens`` — together they leave a clean per-user slate.
-      queryClient.clear();
-      // Chat stream state lives in a module-level store so it survives
-      // navigation; that means it also survives logout unless dropped here.
-      // Aborts any in-flight turn — the one place where killing a turn is
-      // right, since its owner is leaving.
-      resetThreadSessions();
-    }
+    // Retire local authority immediately, including while the idle lock is open.
+    // Revocation uses the captured token so a late response cannot affect a new login.
+    const accessToken = localStorage.getItem('t75_token');
+    clearTokens();
+    enableSessionRecovery(null);
+    setToken(null);
+    setUser(null);
+    setProfileVerified(false);
+    queryClient.clear();
+    resetThreadSessions();
+    await Promise.allSettled([
+      Promise.resolve().then(() => getHostSession()?.signOut?.()),
+      Promise.resolve().then(() => accessToken ? authApi.logout(accessToken) : undefined),
+    ]);
   }, [queryClient]);
 
   const refreshUser = useCallback(async () => {
@@ -285,7 +305,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   return <Ctx.Provider value={value}>
     {children}
-    {recovery && user && <SessionRenewalDialog mode={recovery} user={user}
+    {!isHostManagedSession() && !publicPage && profileVerified && recovery && user && <SessionRenewalDialog mode={recovery} user={user}
       onSignOut={() => { void logout(); }}
       onResume={(tokens, verifiedUser) => {
         setTokens(tokens);

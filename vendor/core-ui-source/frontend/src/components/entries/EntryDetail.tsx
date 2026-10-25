@@ -1,9 +1,10 @@
+import { tagFilterHref } from '../../utils/tagFilters';
 import { EntryInlineImageGallery } from './AttachmentGallery';
 import { mergeComments } from '../../utils/commentTree';
 import { PostToFeedDialog } from './PostToFeedDialog';
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { entryTypesForTrackQueryKey, invalidateFeedCaches, viewsForTrackQueryKey } from '../../queryKeys';
 import {
   Edit2,
@@ -167,6 +168,7 @@ export function EntryDetail({
   workflowEnumLabels,
   variant
 }: EntryDetailProps) {
+  const location = useLocation();
   const navigateToEntryPage = useNavigate();
   const { user } = useAuth();
   const { activeWorkspace } = useScope();
@@ -1316,7 +1318,7 @@ export function EntryDetail({
       {entry.tags?.map(tag => (
         <Link
           key={tag.id}
-          to={`/feed?tag=${encodeURIComponent(tag.id)}`}
+          to={tagFilterHref(location.pathname, location.search, tag.id)}
           className="text-[var(--text-muted)] hover:text-[var(--text)] transition-colors duration-fast"
           onClick={e => e.stopPropagation()}
         >

@@ -1,9 +1,10 @@
+import { useScopeOptional } from '../context/ScopeContext';
 import { useQueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useRef } from 'react';
 import { fetchEventsPage, openEventStream } from '../api/events';
 import {
   invalidateAfterAgentWrite,
-  invalidateAfterChangeEvent,
+  invalidateAfterChangeEvents,
 } from '../services/graphMutationInvalidation';
 import type { StagedChange } from '../features/ai-chat/staging/types';
 import { useAuth } from '../context/AuthContext';
@@ -30,10 +31,13 @@ export const CHANGE_EVENT_APPLIED = 'integral:change-event-applied';
 export function useChangeEventInvalidation(): void {
   const { token, user } = useAuth();
   const queryClient = useQueryClient();
+  const workspaceId = useScopeOptional()?.scope?.workspaceId;
   const principalId = user?.user_id ?? user?.id;
   const seenIdsRef = useRef(new Set<string>());
   const pollCursorRef = useRef<string | null>(null);
   const pollInFlightRef = useRef(false);
+  const generationRef = useRef(0);
+  const cursorOwnerRef = useRef('');
 
   const rememberEvent = useCallback((id: string): boolean => {
     const seen = seenIdsRef.current;
@@ -46,54 +50,76 @@ export function useChangeEventInvalidation(): void {
     return true;
   }, []);
 
-  const onChangeEvent = useCallback(
-    async (raw: unknown) => {
-      const evt = parseChangeEventWireMessage(raw);
-      if (!evt?.id || !rememberEvent(evt.id)) return;
-      await invalidateAfterChangeEvent(queryClient, evt);
-      window.dispatchEvent(
-        new CustomEvent(CHANGE_EVENT_APPLIED, { detail: evt }),
-      );
-    },
-    [queryClient, rememberEvent],
-  );
+  const applyEvents = useCallback(async (events: import('../utils/changeEvent').ActivityEvent[]) => {
+    const generation = generationRef.current;
+    const fresh = events.filter(event => event.id && rememberEvent(event.id));
+    if (!fresh.length) return;
+    await invalidateAfterChangeEvents(queryClient, fresh);
+    if (generation !== generationRef.current) return;
+    // Legacy list pages need one refresh per resource family, not one per row.
+    const families = new Map(fresh.map(event => [event.action?.split('.')[0], event]));
+    for (const event of families.values()) window.dispatchEvent(
+      new CustomEvent(CHANGE_EVENT_APPLIED, { detail: event }),
+    );
+  }, [queryClient, rememberEvent]);
 
   const pollOnce = useCallback(async () => {
-    if (!principalId || pollInFlightRef.current) return;
+    if (!principalId || pollInFlightRef.current || document.visibilityState === 'hidden') return;
+    const generation = generationRef.current;
     pollInFlightRef.current = true;
     try {
 
-      while (true) {
+      for (let pageNumber = 0; pageNumber < 10; pageNumber += 1) {
+        if (generation !== generationRef.current) return;
+        const previousCursor = pollCursorRef.current;
         const page = await fetchEventsPage({
           since: pollCursorRef.current,
           scope: `user:${principalId}`,
           limit: 50,
         });
-        for (const evt of page.events) {
-          if (!evt.id || !rememberEvent(evt.id)) continue;
-          await invalidateAfterChangeEvent(queryClient, evt);
-          window.dispatchEvent(
-            new CustomEvent(CHANGE_EVENT_APPLIED, { detail: evt }),
-          );
-        }
-        pollCursorRef.current = page.next_cursor;
-        if (!page.has_more || !page.next_cursor) break;
+        if (generation !== generationRef.current) return;
+        await applyEvents(page.events);
+        if (generation !== generationRef.current) return;
+        pollCursorRef.current = page.resume_cursor ?? page.next_cursor ?? previousCursor;
+        if (!page.has_more || !page.next_cursor || page.next_cursor === previousCursor) break;
       }
     } catch {
       /* silent — WS or next poll will retry */
     } finally {
-      pollInFlightRef.current = false;
+      if (generation === generationRef.current) pollInFlightRef.current = false;
     }
-  }, [principalId, queryClient, rememberEvent]);
+  }, [principalId, workspaceId, applyEvents]);
 
   useEffect(() => {
     if (!token || !principalId) return undefined;
 
+    const generation = ++generationRef.current;
+    const cursorOwner = JSON.stringify([principalId, workspaceId]);
+    if (cursorOwnerRef.current !== cursorOwner) {
+      cursorOwnerRef.current = cursorOwner;
+      pollCursorRef.current = null;
+      seenIdsRef.current.clear();
+    }
+    pollInFlightRef.current = false;
     let ws: WebSocket | null = null;
     let cancelled = false;
     let safetyPollTimer: ReturnType<typeof setInterval> | null = null;
     let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
     let reconnectAttempt = 0;
+    let flushTimer: ReturnType<typeof setTimeout> | null = null;
+    let flushing = false;
+    const queued = new Map<string, import('../utils/changeEvent').ActivityEvent>();
+    const isVisible = () => document.visibilityState !== 'hidden';
+    const flush = async () => {
+      flushTimer = null;
+      if (cancelled || flushing || !isVisible()) return;
+      flushing = true;
+      try { const events = [...queued.values()]; queued.clear(); await applyEvents(events); }
+      finally {
+        flushing = false;
+        if (!cancelled && queued.size && isVisible() && flushTimer === null) flushTimer = setTimeout(() => { void flush(); }, 100);
+      }
+    };
 
     const scheduleReconnect = () => {
       if (cancelled || reconnectTimer !== null) return;
@@ -119,7 +145,14 @@ export function useChangeEventInvalidation(): void {
         ws.onmessage = (event: MessageEvent) => {
           try {
             const raw = JSON.parse(String(event.data)) as unknown;
-            void onChangeEvent(raw);
+            const parsedEvent = parseChangeEventWireMessage(raw);
+            if (parsedEvent && !cancelled && generation === generationRef.current) {
+              queued.set(`${parsedEvent.action?.split('.')[0]}:${parsedEvent.resource_id ?? parsedEvent.id}`, parsedEvent);
+              // The durable poll cursor is independent of socket delivery and
+              // catches overflow later; keep only a bounded live burst here.
+              if (queued.size > 500) queued.delete(queued.keys().next().value!);
+              if (flushTimer === null && !flushing && document.visibilityState !== 'hidden') flushTimer = setTimeout(() => { void flush(); }, 100);
+            }
           } catch {
             /* ignore malformed payloads */
           }
@@ -135,6 +168,10 @@ export function useChangeEventInvalidation(): void {
       }
     };
 
+    const onVisibility = () => {
+      if (document.visibilityState !== 'hidden' && queued.size && !flushing && flushTimer === null) void flush();
+    };
+    document.addEventListener('visibilitychange', onVisibility);
     void connect();
 
     safetyPollTimer = setInterval(() => {
@@ -143,6 +180,9 @@ export function useChangeEventInvalidation(): void {
 
     return () => {
       cancelled = true;
+      ++generationRef.current;
+      if (flushTimer !== null) clearTimeout(flushTimer);
+      document.removeEventListener('visibilitychange', onVisibility);
       if (safetyPollTimer !== null) {
         clearInterval(safetyPollTimer);
       }
@@ -157,7 +197,7 @@ export function useChangeEventInvalidation(): void {
         }
       }
     };
-  }, [token, principalId, onChangeEvent, pollOnce]);
+  }, [token, principalId, applyEvents, pollOnce]);
 
   useEffect(() => {
     const handler = (event: Event) => {

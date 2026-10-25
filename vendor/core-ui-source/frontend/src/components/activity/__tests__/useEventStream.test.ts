@@ -176,3 +176,16 @@ describe('useEventStream', () => {
     expect(wsAtMount.close).toHaveBeenCalled();
   });
 });
+
+
+it('bounds the live activity window and keeps newer pushed events during older backfill', async () => {
+  const { result, unmount } = renderHook(() => useEventStream('track:t-1'));
+  await waitFor(() => expect(lastFakeWs).not.toBeNull());
+  act(() => {
+    for (let n = 600; n >= 0; n -= 1) lastFakeWs!.onmessage?.(new MessageEvent('message', { data: JSON.stringify({ id: `event-${n}`, ts: new Date(Date.UTC(2026,0,1,0,0,n)).toISOString(), actor_kind: 'human', actor_id: 'user', action: 'entry.update' }) }));
+  });
+  expect(result.current.events).toHaveLength(500);
+  expect(result.current.events[0].id).toBe('event-101');
+  expect(result.current.events[result.current.events.length - 1]?.id).toBe('event-600');
+  unmount();
+});

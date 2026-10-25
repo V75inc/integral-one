@@ -1,4 +1,5 @@
-import { Link } from 'react-router-dom';
+import { tagFilterHref } from '../../utils/tagFilters';
+import { Link, useLocation } from 'react-router-dom';
 import { Pill } from '../ui/Pill';
 import { TagChip } from '../../ui';
 import type { PillVariant } from '../ui';
@@ -59,6 +60,7 @@ export function EntryMetadataChips({
   showTrackChip = true,
   className = '',
 }: EntryMetadataChipsProps) {
+  const location = useLocation();
   return (
     <div
       className={`flex flex-wrap items-center justify-start gap-1.5 sm:justify-end ${className}`}
@@ -84,7 +86,7 @@ export function EntryMetadataChips({
       {entry.tags?.map(tag => (
         <Link
           key={tag.id}
-          to={`/feed?tag=${encodeURIComponent(tag.id)}`}
+          to={tagFilterHref(location.pathname, location.search, tag.id)}
           className="inline-flex min-w-0 max-w-full rounded-[var(--radius-input)] transition-opacity hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus-ring-color)]"
           onClick={e => e.stopPropagation()}
           title={`Filter feed by ${tagChipLabel(tag)}`}

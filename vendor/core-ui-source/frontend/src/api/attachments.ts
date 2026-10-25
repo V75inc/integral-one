@@ -42,7 +42,7 @@ export interface AttachmentRecord {
   thumb_storage_key?: string;
   preview_storage_key?: string;
   // Phase 1.5 metadata pipeline
-  metadata?: { common?: Record<string, unknown>; type_specific?: Record<string, unknown> };
+  metadata?: import('../types').Attachment['metadata'];
   extracted_text?: string;
   metadata_status?:
     | 'pending'

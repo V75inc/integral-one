@@ -40,6 +40,7 @@ import {
   type EntryComposeSeed
 } from '../components/entries/EntryComposer';
 import { useRetrieve } from '../hooks/useRetrieve';
+import { useSearchResultEntries } from '../hooks/useSearchResultEntries';
 import { useOpenEntryModalRefetch } from '../hooks/useOpenEntryModalRefetch';
 import { EntryDetail } from '../components/entries/EntryDetail';
 import { diffCustomFields } from '../components/entries/entryFormCustomFields';
@@ -128,6 +129,7 @@ export function TrackDetailPage() {
     }
   }, [dashboardFiltersParam]);
   const { user } = useAuth();
+  const { scope, setScope, workspaces } = useScope();
   const { visit: visitRecent } = useRecents();
   useEffect(() => {
     if (id) visitRecent('track', id);
@@ -210,7 +212,7 @@ export function TrackDetailPage() {
     error: retrievalError,
     run: runRetrieval,
     reset: resetRetrieval
-  } = useRetrieve({ scope: id ? `track:${id}` : undefined });
+  } = useRetrieve({ scope: id ? `track:${id}` : undefined, authorityKey: `${scope?.workspaceId}:${user?.id}` });
   const feedFallbackView = useMemo<SavedView | null>(
     () =>
       id
@@ -293,7 +295,6 @@ export function TrackDetailPage() {
     }
   });
 
-  const { scope, setScope, workspaces } = useScope();
   const trackWorkspaceAccentColor = workspaces.find(w => w.id === (
     trackDetailQuery.data?.track.app?.workspace_id || trackDetailQuery.data?.track.workspace_id
   ))?.accent_color;
@@ -535,6 +536,7 @@ export function TrackDetailPage() {
     error: entriesError,
     isPending: entriesPending,
     isFetchingNextPage,
+    isFetchNextPageError,
     hasNextPage,
     fetchNextPage,
     refetch: refetchEntries
@@ -553,6 +555,8 @@ export function TrackDetailPage() {
         ...(pageParam ? { cursor: pageParam } : {})
       });
     },
+    retry: (attempt, error) =>
+      (error as { response?: { status?: number } }).response?.status !== 429 && attempt < 1,
     getNextPageParam: last =>
       last.hasMore && last.nextCursor ? last.nextCursor : undefined
   });
@@ -633,9 +637,32 @@ export function TrackDetailPage() {
   /** Pages view (`view_type` alias: `wiki`). */
   const isPagesView = activeView?.type === 'wiki';
 
+  const semanticMode =
+    retrievalMode === 'semantic' || retrievalMode === 'hybrid';
+  const retrievalIdOrder = useMemo(
+    () => retrievalResults.map(r => r.entry_id),
+    [retrievalResults]
+  );
+  const {
+    data: matchedPage,
+    isLoading: matchesLoading,
+    isError: matchesError,
+    refetch: refetchMatches,
+    patchPage: patchMatchingEntries,
+  } = useSearchResultEntries({
+    entryIds: retrievalIdOrder,
+    workspaceId: scope?.workspaceId,
+    principalId: user?.id,
+    trackId: id,
+    enabled: semanticMode && Boolean(id && trackDetailQuery.data && (!detailTrackWorkspaceId || scope?.workspaceId === detailTrackWorkspaceId)),
+    params: dashboardFilters
+      ? { dashboard_filters: JSON.stringify(dashboardFilters) }
+      : activeView?.id ? { view_id: activeView.id } : {},
+  });
+
   const allEntries = useMemo(
-    () => mergeDedupedTrackEntryPages(entriesData?.pages ?? []),
-    [entriesData]
+    () => mergeDedupedTrackEntryPages([...(matchedPage ? [matchedPage] : []), ...(entriesData?.pages ?? [])]),
+    [entriesData, matchedPage]
   );
   const openModalEntryId = entryModal?.entry.id;
   const openModalEntryIdRef = useRef(openModalEntryId);
@@ -778,7 +805,7 @@ export function TrackDetailPage() {
     if (!el) return;
     const obs = new IntersectionObserver(
       ([first]) => {
-        if (first?.isIntersecting && hasNextPage && !isFetchingNextPage) {
+        if (first?.isIntersecting && hasNextPage && !isFetchingNextPage && !isFetchNextPageError && !(semanticMode && trackSearch.trim())) {
           fetchNextPage();
         }
       },
@@ -786,25 +813,22 @@ export function TrackDetailPage() {
     );
     obs.observe(el);
     return () => obs.disconnect();
-  }, [hasNextPage, isFetchingNextPage, fetchNextPage]);
+  }, [hasNextPage, isFetchingNextPage, isFetchNextPageError, semanticMode, trackSearch, fetchNextPage]);
 
   const metaLoading = trackDetailQuery.isPending;
   const loadedEntryPageCount =
     entriesData == null ? 0 : entriesData.pages.length;
   const entriesBootstrapping =
     Boolean(id) && entriesPending && loadedEntryPageCount === 0;
+  const entryResultsLoading = entriesBootstrapping || retrievalLoading
+    || (semanticMode && retrievalResults.length > 0 && matchesLoading);
   const loading = metaLoading;
 
   // Semantic / hybrid mode replaces the in-memory list with ranker-
   // ordered results from /api/retrieve. Graph mode keeps the existing
   // in-memory search behavior. Type filter still composes on top so
   // the user can refine a retrieval result by entry type.
-  const semanticMode =
-    retrievalMode === 'semantic' || retrievalMode === 'hybrid';
-  const retrievalIdOrder = useMemo(
-    () => retrievalResults.map(r => r.entry_id),
-    [retrievalResults]
-  );
+
 
   const filteredEntries = useMemo(() => {
     let list: Entry[];
@@ -909,28 +933,6 @@ export function TrackDetailPage() {
     return missing;
   }, [semanticMode, retrievalResults, allEntries]);
 
-  // Semantic-mode auto-loader — when the ranker returned IDs the track-
-  // entries cache has not yet caught up to, eagerly pull more pages until
-  // every retrieval match is materialized or the track is exhausted.
-  // Without this, "Showing X of N — scroll to load more" is a lie: the
-  // missing IDs may sit dozens of pages deep and the user has to scroll
-  // manually past every page. ``top_n`` caps semantic results at 20 at
-  // the backend (no offset/cursor yet — follow-up plan), so the loop
-  // terminates quickly. Mirrors FeedPage.
-  useEffect(() => {
-    if (!semanticMode) return;
-    if (retrievalMissingCount === 0) return;
-    if (!hasNextPage) return;
-    if (isFetchingNextPage) return;
-    fetchNextPage();
-  }, [
-    semanticMode,
-    retrievalMissingCount,
-    hasNextPage,
-    isFetchingNextPage,
-    fetchNextPage,
-  ]);
-
   // Empty search field → wipe ranker output so the in-memory list
   // falls back to the unfiltered track entries.
   useEffect(() => {
@@ -989,6 +991,7 @@ export function TrackDetailPage() {
   const patchEntriesCache = useCallback(
     (fn: (page: TrackEntriesPage) => TrackEntriesPage) => {
       if (!id) return;
+      patchMatchingEntries(fn);
       queryClient.setQueryData<InfiniteData<TrackEntriesPage>>(
         trackEntriesInfiniteQueryKey,
         old => {
@@ -1000,7 +1003,7 @@ export function TrackDetailPage() {
         }
       );
     },
-    [id, queryClient, trackEntriesInfiniteQueryKey]
+    [id, queryClient, trackEntriesInfiniteQueryKey, patchMatchingEntries]
   );
 
   /** When composing on a kanban view, default empty workflow field to the first column. */
@@ -1691,7 +1694,7 @@ export function TrackDetailPage() {
       : trackCrumbs
   );
 
-  const emptyStateContent = entriesBootstrapping ? (
+  const emptyStateContent = entryResultsLoading ? (
     <div className="space-y-4">
       {[1, 2, 3].map(i => (
         <CardSkeleton key={i} />
@@ -1875,11 +1878,14 @@ export function TrackDetailPage() {
           onEntryCreatedFromComposer={handleEntryCreatedFromComposer}
           semanticMode={semanticMode}
           retrievalMissingCount={retrievalMissingCount}
+          matchesLoading={matchesLoading}
+          matchesError={matchesError}
+          onRetryMatches={() => { void refetchMatches(); }}
           filteredEntries={filteredEntries}
           retrievalResultsLength={retrievalResults.length}
           entriesListError={entriesListError}
           onRetryEntries={() => refetchEntries()}
-          entriesPending={entriesPending}
+          entriesPending={entryResultsLoading}
           onEntryOpen={handleEntryOpen}
           onEntryDelete={handleEntryDelete}
           onEntryDeleteFailed={invalidateTrackEntries}
@@ -1892,7 +1898,7 @@ export function TrackDetailPage() {
           onEntryCreate={handleEntryCreate}
           entryTypes={(entryTypesQuery.data ?? []) as EntryTypeNode[]}
           trackEntryTypeFields={trackEntryTypeFields}
-          hasNextPage={hasNextPage}
+          hasNextPage={hasNextPage && !(semanticMode && Boolean(trackSearch.trim()))}
           isFetchingNextPage={isFetchingNextPage}
           fetchNextPage={() => {
             void fetchNextPage();
