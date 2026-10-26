@@ -808,6 +808,20 @@ test("a secret, a Clerk field, an unknown field, or another issuer is rejected",
     assert.throws(() => validateConfig({ ...publicConfig(), ...delta }));
 });
 
+test("the checked-in production account config publishes the app id and no secret", () => {
+  const file = path.join(
+    __dirname,
+    "../desktop/accounts/config.production.json",
+  );
+  const raw = JSON.parse(fs.readFileSync(file, "utf8"));
+  const text = fs.readFileSync(file, "utf8");
+  assert.equal(raw.configured, true);
+  assert.equal(raw.environment, "production");
+  assert.equal(raw.appId, "n8k7hws5ydhawj073ksjm");
+  assert.equal(validateConfig(raw).appId, raw.appId);
+  assert.equal(/secret|private|publishableKey|pk_live_|pk_test_/i.test(text), false);
+});
+
 test("the checked-in account config is unconfigured and has no secret", () => {
   const file = path.join(__dirname, "../desktop/accounts/config.json");
   const raw = JSON.parse(fs.readFileSync(file, "utf8"));

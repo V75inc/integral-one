@@ -17,6 +17,15 @@ input,
 textarea {
   font: inherit;
 }
+button,
+a,
+input,
+textarea,
+summary,
+.browser-handoff,
+.help-content {
+  -webkit-app-region: no-drag;
+}
 button {
   cursor: pointer;
 }
@@ -38,9 +47,20 @@ summary:focus-visible {
   padding: 44px 0 24px;
   overflow-wrap: anywhere;
 }
+.account-titlebar {
+  position: fixed;
+  z-index: 2;
+  top: env(titlebar-area-y, 0px);
+  left: env(titlebar-area-x, 0px);
+  width: env(titlebar-area-width, 100%);
+  height: env(titlebar-area-height, 32px);
+  -webkit-app-region: drag;
+}
 .account-header {
   text-align: center;
   margin-bottom: 28px;
+  -webkit-app-region: drag;
+  user-select: none;
 }
 .wordmark {
   display: flex;

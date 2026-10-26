@@ -454,6 +454,10 @@ test("the local account page is a one-column gate and the preload starts the bro
   );
   assert.match(windowSource, /minWidth:\s*360/);
   assert.match(windowSource, /minHeight:\s*560/);
+  assert.match(renderer, /account-titlebar/);
+  assert.match(css, /\.account-titlebar\s*\{[^}]*-webkit-app-region:\s*drag/);
+  assert.match(css, /\.account-header\s*\{[^}]*-webkit-app-region:\s*drag/);
+  assert.match(css, /button,\s*a,\s*input,\s*textarea,\s*summary[\s\S]*-webkit-app-region:\s*no-drag/);
 });
 
 test("the account page keeps accessible controls in one column", () => {

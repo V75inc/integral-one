@@ -14,7 +14,7 @@
  * in-memory filter.
  */
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 import {
   retrieve,
@@ -29,6 +29,8 @@ export interface UseRetrieveOptions {
   /** Scope-string passed to /api/retrieve (e.g. ``"track:t-1"``). Optional —
    *  the workspace gate on the backend will scope by header when absent. */
   scope?: string;
+  /** Invalidate in-flight results when the authenticated workspace changes. */
+  authorityKey?: string;
 }
 
 export interface UseRetrieveResult {
@@ -50,6 +52,7 @@ export interface UseRetrieveResult {
 
 export function useRetrieve({
   scope,
+  authorityKey,
 }: UseRetrieveOptions = {}): UseRetrieveResult {
   const [settings] = useSettings();
   const mode = settings.retrieval.mode as RetrievalMode;
@@ -59,22 +62,25 @@ export function useRetrieve({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const generation = useRef(0);
+
   // Clear results when mode flips to graph — the consumer's in-memory
   // filter takes over and a stale results array would mis-filter the
   // list. Also resets when switching from one retrieval mode to another
   // (semantic ↔ hybrid) so the user doesn't see stale ranker output
   // until they re-submit.
-  useEffect(() => {
-    setResults([]);
-    setDegraded(false);
-    setError(null);
-  }, [mode]);
-
   const reset = useCallback(() => {
+    generation.current += 1;
     setResults([]);
     setDegraded(false);
     setError(null);
+    setLoading(false);
   }, []);
+
+  useEffect(() => {
+    reset();
+    return () => { generation.current += 1; };
+  }, [mode, scope, authorityKey, reset]);
 
   const run = useCallback(
     async (rawQuery: string) => {
@@ -88,6 +94,8 @@ export function useRetrieve({
         reset();
         return;
       }
+      const request = ++generation.current;
+      setResults([]);
       setLoading(true);
       setError(null);
       try {
@@ -96,19 +104,21 @@ export function useRetrieve({
           scope,
           mode,
         });
+        if (request !== generation.current) return;
         setResults(res.results);
         setDegraded(Boolean(res.degraded));
       } catch (err) {
+        if (request !== generation.current) return;
         const msg =
           err instanceof Error ? err.message : 'Retrieval request failed';
         setError(msg);
         setDegraded(false);
         setResults([]);
       } finally {
-        setLoading(false);
+        if (request === generation.current) setLoading(false);
       }
     },
-    [mode, scope, reset],
+    [mode, scope, authorityKey, reset],
   );
 
   return { mode, results, degraded, loading, error, run, reset };

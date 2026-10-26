@@ -12,6 +12,7 @@ export interface SkillSummary {
   kind: string;
   app_id?: string;
   app_slug?: string;
+  app_name?: string;
   namespaced_name?: string;
   origin?: string;
   enabled: boolean;
@@ -52,6 +53,23 @@ export interface ToolCatalogueEntry {
   param_summary: string;
 }
 
+export interface SkillBrowseQuery {
+  page: number;
+  page_size: number;
+  search: string;
+  source: 'all' | SkillSource;
+  app_id: string;
+}
+
+export interface SkillBrowsePage {
+  skills: SkillSummary[];
+  apps: Array<{ id: string; name: string }>;
+  total: number;
+  page: number;
+  page_size: number;
+  total_pages: number;
+}
+
 export interface EffectiveSkillEntry {
   id: string;
   key: string;
@@ -90,6 +108,10 @@ export interface SkillUpdateBody {
 }
 
 export const skillsApi = {
+  async browse(params: SkillBrowseQuery): Promise<SkillBrowsePage> {
+    const res = await api.get('/agentive/skills/browse', { params });
+    return res.data;
+  },
   async list(): Promise<SkillListResponse> {
     const res = await api.get('/agentive/skills');
     return res.data;

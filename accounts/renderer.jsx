@@ -84,6 +84,7 @@ function App() {
   const returning = Boolean(context?.returning);
   return (
     <main className="account-page">
+      <div className="account-titlebar" aria-hidden="true" />
       <header className="account-header">
         <div className="wordmark">
           <img src="/integral-logo.svg" alt="" aria-hidden="true" />

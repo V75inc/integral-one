@@ -1,6 +1,6 @@
 {
   "name": "@integral/desktop-host",
-  "version": "0.1.7-dev.10",
+  "version": "0.1.7-dev.11",
   "description": "Neutral Integral Electron host, origin/permission boundaries and optional local runtime adapter.",
   "license": "Apache-2.0",
   "main": "lib/host.js",

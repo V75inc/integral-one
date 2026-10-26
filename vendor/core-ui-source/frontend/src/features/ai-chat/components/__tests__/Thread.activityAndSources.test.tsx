@@ -55,13 +55,14 @@ describe('liveWorkSynopsis', () => {
   it('uses observable activity and tools, with a neutral fallback', () => {
     expect(liveWorkSynopsis('Filing your content', 'integral_list_apps')).toBe('Filing your content');
     expect(liveWorkSynopsis(undefined, 'integral_describe_substrate')).toBe('Reading the information you can access');
-    expect(liveWorkSynopsis('', '')).toBe('Preparing your response');
+    expect(liveWorkSynopsis('', '')).toBe('Responding…');
+    expect(liveWorkSynopsis('Working on that for you', '')).toBe('Responding…');
     expect(liveWorkSynopsis('Thinking', 'integral_get_index_status')).toBe('Checking search readiness');
     expect(liveWorkSynopsis('Working…', 'integral_query_entries')).toBe('Finding relevant information');
     expect(liveWorkSynopsis(undefined, 'search_capabilities')).toBe('Finding the right way to help');
     expect(liveWorkSynopsis(undefined, 'integral_call_workspace_tool')).toBe('Working in your App');
     expect(liveWorkSynopsis(undefined, '', 2)).toBe('Reviewing the results');
-    expect(liveWorkSynopsis(undefined, '', 2, true)).toBe('Writing your answer');
+    expect(liveWorkSynopsis(undefined, '', 2, true)).toBe('Responding…');
     expect(liveWorkSynopsis('Stopping…', 'integral_query_entries')).toBe('Stopping…');
   });
 
