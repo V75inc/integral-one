@@ -27,6 +27,9 @@ messages for the startup window's `[role="status"]` element. Subprocess logs and
 paths are never forwarded to that window. Reopening reuses completed downloads.
 
 Distributions can supply native `helpMenuItems` and an `onReady` callback.
+An optional trusted `beforeWorkspace({runtime})` hook runs after local startup
+and before the first workspace window reads its profile. It is never called in
+remote mode. Account providers and profile initialization remain product code.
 `runDesktop` returns `stopRuntime({requireExclusive})` for a reviewed updater.
 It waits for the owned Core process to stop using its PID/creation-time binding,
 deduplicates concurrent stop requests and refuses exclusive update preparation

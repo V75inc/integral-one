@@ -5,6 +5,8 @@ const os = require('node:os');
 const path = require('node:path');
 const { invocation, startCore, runCli } = require('@integral/desktop-host/core-runtime');
 const { localSession } = require('@integral/desktop-host/local-session');
+const assert = require('node:assert/strict');
+const { createProfileInitializer } = require('../desktop/accounts/local-profile');
 
 function runtimeDiagnostics(home) {
   let installation;
@@ -33,6 +35,27 @@ async function qualifyRuntime(resources = path.join(__dirname, '../resources')) 
     const session = await localSession(runtime);
     if (!session.access_token || !session.refresh_token) throw new Error('Controller session is incomplete.');
     console.log('Pinned runtime startup, running local contract and controller session: passed.');
+    fs.mkdirSync(path.join(home, 'one-account'), {mode:0o700});
+    const initialize = () => createProfileInitializer({getProfile:()=>({name:'Signup qualification'}),authorize(){}});
+    await initialize()(runtime);
+    const api = async (current, token, method='GET', body) => {
+      const response = await fetch(new URL(method==='GET'?'/api/auth/me':'/api/auth/update-profile',current.web_url), {
+        method, redirect:'error', signal:AbortSignal.timeout(10000),
+        headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},
+        ...(body?{body:JSON.stringify(body)}:{}),
+      });
+      assert.ok(response.ok,'Synthetic profile API must succeed');const data=await response.json();return data.user||data;
+    };
+    const seeded=await api(runtime,session.access_token);
+    assert.equal(seeded.display_name,'Signup qualification','The signed-in name must be saved in Core');
+    await api(runtime,session.access_token,'PUT',{display_name:'Chosen local name'});
+    assert.equal((await runCli(command,['stop','--home',home,'--json','--if-pid',String(runtime.pid),'--if-created',String(runtime.process_created)])).state,'stopped');
+    const restarted=await startCore({home,resources,command});
+    assert.equal(restarted.installation_id,runtime.installation_id);
+    await initialize()(restarted);
+    const renewed=await localSession(restarted),retained=await api(restarted,renewed.access_token);
+    assert.equal(retained.id,seeded.id);assert.equal(retained.display_name,'Chosen local name');
+    console.log('Account display name persisted through the real Core API; local edit and owner identity retained after cold restart: passed.');
   } catch (error) {
     // Read only the new synthetic home's logs; never print installation files.
     console.error(runtimeDiagnostics(home));

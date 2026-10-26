@@ -19,7 +19,7 @@ assert.equal(candidates.length,1,'Expected exactly one packaged directory bundle
 // ASAR lists members using the host OS separator; compare one canonical form.
 const archive=candidates[0],resources=path.dirname(archive),members=asar.listPackage(archive).map(member=>member.replaceAll('\\','/'));
 for(const member of ['desktop/main.js','desktop/loading.html','desktop/accounts/ui/integral-logo.svg','desktop/accounts/controller.js','desktop/accounts/clerk-setup.js','desktop/accounts/preload.js','desktop/accounts/ui/account.js','desktop/accounts/config.runtime.json','distribution.json','node_modules/@integral/desktop-host/lib/host.js'])assert.ok(members.includes('/'+member),`Missing ${member}`);
-assert.ok(!members.some(n=> /\/(setup-key|activation)\.json$/.test(n)), 'Local account state must never enter the app');
+assert.ok(!members.some(n=> /\/(setup-key|activation|profile-initialized)\.json$/.test(n)), 'Local account state must never enter the app');
 assert.ok(!members.some(n=>/\.local|GITHUB-SETUP|packaged-local-proof|github-repository|\.env|core-ui-source|cua-driver/.test(n)),'Internal/source-only resources leaked into the app');
 for(const name of ['LICENSE','NOTICE','LICENSING.md','PRIVACY.md','CODE_SIGNING.md'])assert.equal(hash(path.join(resources,name)),hash(path.join(root,name)),`Packaged ${name} differs from source`);
 assert.equal(hash(path.join(resources,'notices/uv/LICENSE-MIT')),hash(path.join(root,'vendor/licenses/uv/LICENSE-MIT')),'Bundled uv license differs from reviewed source');
@@ -35,7 +35,7 @@ assert.match(asar.extractFile(archive,path.join('desktop','main.js')).toString()
 const accountConfig=JSON.parse(asar.extractFile(archive,path.join('desktop','accounts','config.runtime.json')).toString());
 require('../desktop/accounts/config').validateConfig(accountConfig);
 for (const member of ['desktop/updates.js','desktop/releases.js','desktop/release-contract.js','desktop/update-backup.js','desktop/accounts/logto-setup.js','node_modules/electron-updater/out/main.js']) assert.ok(members.includes('/'+member), `Missing ${member}`);
-for (const file of ['desktop/main.js','desktop/updates.js','desktop/releases.js','desktop/release-contract.js','desktop/update-backup.js','desktop/accounts/controller.js','desktop/accounts/logto-setup.js','desktop/accounts/clerk-setup.js','desktop/accounts/receipt.js','desktop/accounts/config.js','desktop/accounts/ui/account.js','desktop/accounts/ui/account.css','desktop/accounts/preload.js']) {
+for (const file of ['desktop/main.js','desktop/updates.js','desktop/releases.js','desktop/release-contract.js','desktop/update-backup.js','desktop/accounts/controller.js','desktop/accounts/local-profile.js','desktop/accounts/logto-setup.js','desktop/accounts/clerk-setup.js','desktop/accounts/receipt.js','desktop/accounts/config.js','desktop/accounts/ui/account.js','desktop/accounts/ui/account.css','desktop/accounts/preload.js']) {
   const packedHash = require('node:crypto').createHash('sha256').update(asar.extractFile(archive, path.join(...file.split('/')))).digest('hex');
   assert.equal(packedHash, hash(path.join(root, file)), `Packaged source differs: ${file}`);
 }

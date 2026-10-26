@@ -53,13 +53,18 @@ failure or publication outage fails preparation without changing installed apps.
 ## Delivery to machines
 
 The source PR is reviewed and merged. Changes to the Core pins on `main`
-automatically start the protected signed-candidate workflow, which then
-builds the initial Apple Silicon installer for macOS 14+ with production public account settings,
+automatically start the signed-candidate source/target plan. Local Keychain signing
+is the default: hosted build/assembly jobs are skipped with an explicit summary.
+An approved hosted route can be requested by manual dispatch, or enabled for pin
+pushes with repository variable `ONE_CI_SIGNING_ENABLED=true`. That route
+builds the Apple Silicon installer for macOS 14+ with production public account settings,
 Developer ID signing and notarization. It assembles the matching ZIP,
 `install-manifest.json` and a single `latest-mac.yml`. It requires a protected
 `desktop-release` environment with human reviewers and branch restrictions before
 any signing job can start; missing protection fails preparation. The explicit
-manual dispatch remains available for reviewed reruns.
+manual dispatch remains available for reviewed hosted runs. Hosted credential
+presence is checked before dependency setup; the local Mac's Keychain is not a
+credential source for a GitHub-hosted runner.
 
 The read-only plan first resolves the selected Mac runtime dependencies, before
 requesting signing-environment approval. Intel currently fails this check; the

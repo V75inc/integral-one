@@ -90,8 +90,69 @@ The following passed again: startup/manual checks, decline, SDK checksum rejecti
 
 Only unpublished release/feed responses and consent actions were supplied by the fixture. Real TestPyPI metadata, production manifest validation, native SDK checksums, publisher signatures, actual engine shutdown/backup and unmodified candidate bytes were retained. Activation was synthetic; these checks do not establish real Logto sign-in.
 
+## Real account acceptance on the separate Mac
+
+The owner then completed real browser authentication in the exact signed `0.1.6` product, using fresh task-owned user-data and Core homes on the same separate Mac. The earlier synthetic updater profile was preserved. The product ASAR remained `2d010f84fd13ddfadf640b252d594db6bd8d593465ac13a7b5e4a8d3418b86d7`; no account fixture or application patch was used for these checks. Passwords, email addresses and verification codes were entered directly by the owner on that Mac.
+
+### Existing account
+
+The owner confirmed that the first account already existed. Real browser sign-in and the native callback opened the workspace, and the local setup signature and configured Logto issuer were verified. Core rc35 reached ready. A controlled App, Track and entry were created through the ordinary local owner API, with a timezone and pinned App retained for comparison.
+
+The following passed:
+
+1. Cold restart without another sign-in, retaining the entry, account subject, installation identities, setup key, installation secrets, timezone and pinned App.
+2. The real sidebar account menu's Sign out action showed the signed-out screen and prevented a new native session. A second browser sign-in/callback opened the workspace again, with the same account and retained local data/keys. The displayed native profile matched the verified sign-in profile.
+3. A cold launch with an app-scoped denying HTTP(S) proxy opened the workspace and displayed the retained entry. A probe inside the actual application main process confirmed that the configured account service was unreachable while the local Core API remained reachable.
+4. While that outage remained active, Sign out again denied a new native session; the actual Continue offline action reopened the local workspace and its saved entry. Identity, keys, account binding, timezone and pin comparisons passed again. The account service remained unreachable at the end of the check.
+
+The outage was scoped to the app's HTTP(S) traffic; Wi-Fi and the Mac's global networking were not disabled. An earlier OS sandbox wrapper conflicted with Electron child sandbox initialization and exited before opening the workspace. That wrapper was discarded, and no Electron sandbox or application security setting was disabled. The successful proxy rehearsal used the unchanged signed product. Its proxy process was stopped before the next test.
+
+Private task evidence is under `real-signin-0.1.6`: timestamped verification, actual UI actions and main-process network probes. Public reports omit real account details, identifiers, token material and key hashes.
+
+### New account
+
+In a second fresh profile, the owner chose signup with a second email, completed verification in the browser and confirmed that a newly created account opened the workspace. Native Restart sign-in requested the login prompt rather than silently reusing the first browser session. The verified subject differed from the existing-account baseline. Setup completed automatically without a separate activation action, and the displayed native profile matched the verified sign-in profile.
+
+A new controlled entry was visible in the actual workspace. Cold restart retained activation, both installation identities, the local setup key, installation secrets, account binding, saved entry, timezone and pinned App, without requesting sign-in again. Evidence is under `new-signup-0.1.6` in the same remote task directory.
+
+During acceptance the owner reported inconsistent display-name adoption. The native account profile and the canonical Core local profile are separate. The correction and its separate qualification are recorded below; successful browser activation alone did not establish correct display-name initialization.
+
+## Display-name correction `0.1.7`
+
+The new-account diagnostic confirmed that the verified account contained a nonblank name while Core still stored its bootstrap default `Owner`. The UI correctly used Core's saved display name; the missing step was copying the account's name into that local profile.
+
+One now initializes the canonical display name through Core's existing authenticated loopback profile API before opening the workspace. A private installation-bound completion marker prevents later sign-ins or starts from overwriting a local edit, including a deliberate change back to `Owner`. Existing nondefault local names are retained. Empty account names defer initialization; nonblank full name, given/family name and username fallbacks are supported. Initialization failure preserves access to activated local data. No Core wheel, local owner identity, account binding, signing/recovery key or data path is changed.
+
+The neutral host `0.1.7-dev.14` adds only an optional trusted `beforeWorkspace({runtime})` composition hook. Account/provider mapping remains in One. The immutable host tarball is pinned by SHA-256 `5f427122812fe334aa0150eb066397bdfa6d7bed3419627e97456769dbc07416`; earlier tarballs and signed candidate ZIPs are retained.
+
+Under Node 24.19.0, verification passed 188 Node and 16 Python tests, host tests passed 53, the UI built and all 2,246 UI tests passed across 366 files. The actual Core API rehearsal persisted the initial name, accepted a local edit, then retained the edit and owner identity through cold restart. The signed-build preparation also passed actual settings, backup and restart retention checks. These checks use new task-owned homes.
+
+### Fixed signed package and separate-Mac checks
+
+| Item | Verified value |
+| --- | --- |
+| One / Core | `0.1.7` / TestPyPI `0.1.1rc35` |
+| Application source | `d1127f6` (later documentation only) |
+| ZIP | `integral-one-0.1.7-mac-arm64.zip` |
+| ZIP bytes | `151770276` |
+| ZIP SHA-256 | `5cd0ca8a17ceabffc71717796a134869bcbadcbdc82dff546b3f149ca9c5ecdb` |
+| App ASAR SHA-256 | `97fa40b70a77e4e1e660ef274c9e2452e1fd3114a82fffb6723a935260f18d04` |
+| Apple submission | `ff73c8d3-a73d-454f-8d18-be22da6c35d0`, Accepted |
+
+Deep/strict signature, Gatekeeper, stapled-ticket and maintained-source/package inspection passed. Metadata selection, corrupt-download rejection, signed first install and signed reinstall passed with production bootstrap verification and task-owned destinations. The schema-2 manifest and update YAML bind this exact ZIP. These are new fixed bytes; `0.1.5`, `0.1.6` and their original carriers were preserved.
+
+Before installing on the separate Mac, both real-account runtimes were stopped and each received a cold Core backup plus a copy of its One account state. The exact previous `0.1.6` app was retained. On the signed `0.1.7` package, both existing-account and new-account profiles now showed the verified account name in the canonical Core API and the actual sidebar menu. Their original entries, activation, account binding, installation identities/keys, setup key, timezone and pinned App were retained.
+
+The actual Settings → Profile → Save name action saved a controlled local name in the new-account profile. It remained in the API and sidebar after cold restart. The account name was then restored through the same Settings action. A first verification attempt read a stale local origin during restart; the external driver was corrected to follow the current runtime URL, and verification passed without changing application bytes.
+
+### Native update into the exact `0.1.7` package
+
+The separate Mac then ran the original, unchanged signed `0.1.6` product in its preserved synthetic default profile. External main-process instrumentation supplied only unpublished GitHub release/feed responses and deterministic test consent. It invoked the actual native Help → Check for Updates action. Real TestPyPI publication metadata, production release validation, SDK checksums, normal shutdown/backup and Squirrel publisher signature validation remained active. Both product entrypoints and signed app archives were unchanged.
+
+The offered `0.1.7` downloaded, made one additional cold backup with account-key copies, replaced the app through Squirrel and automatically relaunched the exact signed `0.1.7` in the normal default profile. No explicit launch of `0.1.7` was performed during this updater rehearsal. Its ASAR matched the fixed candidate. The original entry, installation identity/keys, One account/setup-key files, timezone and pinned App were retained. Post-update strict signature and Gatekeeper checks passed. The real-account test homes remained stopped and preserved during this synthetic updater check. Private evidence is under `native-update-0.1.7` on the separate Mac and `qualification-0.1.7` in the local task directory.
+
 ## Publication hold
 
-No signing secrets were added to CI. Its waiting candidate was superseded by the approved local Keychain build. No tag, GitHub release, visibility change or deployment was made.
+No signing secrets were added to CI. Hosted candidate run `40396366548` failed before signing because its notarization credentials were absent; the approved local Keychain build supplied the qualified candidate. The explicit local/hosted route correction is documented in [installer release](INSTALLER-RELEASE.md#configuration-failure-found-on-26-october). No tag, GitHub release, visibility change or deployment was made.
 
-Before publication, complete the exact signed package's clean activation and real browser sign-in/callback journey, plus qualification on each advertised platform. The local account used for update retention was synthetic. Windows signing/native update acceptance is not established by this Mac run. Core rc35 requires a development prerelease, with the matching manifest, ZIP, update YAML, fixed bootstrap and notices published together after approval.
+Clean activation, new-account signup and real browser sign-in/callback journeys passed in `0.1.6`; the corrected signed `0.1.7` also passed retained real-account activation and display-name checks as described above. Complete qualification on each advertised platform before publication. The updater-retention fixture used a synthetic account. Windows signing/native update acceptance is not established by this Mac run. Core rc35 requires a development prerelease, with the matching manifest, ZIP, update YAML, fixed bootstrap and notices published together after approval.

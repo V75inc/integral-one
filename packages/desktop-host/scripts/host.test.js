@@ -44,7 +44,7 @@ test('remote host starts no local runtime and exposes no local preload or sessio
     }};
   vm.runInNewContext(fs.readFileSync(path.join(__dirname,'../lib/host.js'),'utf8'),context);
   let onboarded = false;
-  module.exports.runDesktop({mode:'remote',productName:'Test Business', beforeBoot: async ({userData}) => {
+  module.exports.runDesktop({mode:'remote',productName:'Test Business', beforeWorkspace:()=>assert.fail('Remote host must not initialize local preferences'), beforeBoot: async ({userData}) => {
     assert.equal(iconsStarted, true, 'System icon must follow the theme before onboarding');
     assert.equal(windows.length, 0);
     assert.equal(userData, '/tmp/not-created');
@@ -62,7 +62,7 @@ test('remote host starts no local runtime and exposes no local preload or sessio
   assert.equal(event.blocked,true);
 });
 
-async function localFixture({owned = true, stop = async () => ({state:'stopped'}), platform = 'darwin', windowsTitleBar = false, loadingScreen, startupMessage} = {}) {
+async function localFixture({owned = true, stop = async () => ({state:'stopped'}), platform = 'darwin', windowsTitleBar = false, loadingScreen, startupMessage, beforeWorkspace} = {}) {
   const app = new EventEmitter(), stops = [], menus = [], windows = [], handlers = {};
   let boot, quit = 0, ready = 0, builtMenu = null;
   Object.assign(app, {setName(){}, commandLine:{hasSwitch:()=>true}, getPath:()=>'/task/one',
@@ -115,10 +115,19 @@ async function localFixture({owned = true, stop = async () => ({state:'stopped'}
       return require(id.startsWith('./')?path.join(__dirname,'../lib',id):id);
     },
   });
-  const control = module.exports.runDesktop({mode:'local',windowsTitleBar,loadingScreen,helpMenuItems:[{label:'Check for Updates…'}],onReady:()=>{ready++;}});
+  const control = module.exports.runDesktop({mode:'local',windowsTitleBar,loadingScreen,helpMenuItems:[{label:'Check for Updates…'}],onReady:()=>{ready++;},beforeWorkspace:async context=>{await beforeWorkspace?.({...context,windows});}});
   await boot();
   return {control,app,runtime,stops,menus,windows,handlers,ready,quit:()=>quit};
 }
+
+test('trusted product initialization precedes workspace creation', async () => {
+  let called = 0;
+  const f = await localFixture({beforeWorkspace:async ({runtime,windows})=>{
+    called++; assert.equal(runtime.home,'/task/home');
+    assert.equal(windows.length,1,'Only the sandboxed progress window may exist before initialization');
+  }});
+  assert.equal(called,1); assert.equal(f.windows.length,2);
+});
 
 test('startup progress updates the status as text inside a sandboxed window', async () => {
   const message = 'Downloading workspace components...';
