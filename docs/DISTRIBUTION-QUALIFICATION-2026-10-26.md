@@ -47,7 +47,7 @@ Native CI builds the actual Mac ZIP and Windows NSIS targets before package insp
 
 ## Remaining distribution acceptance
 
-Subsequent owner-approved signing, notarization and local native installer/update tests are recorded in [signed qualification](SIGNED-INSTALLER-QUALIFICATION-2026-10-26.md). That record updates the Mac signing status below and identifies the remaining normal-profile, clean-machine and real sign-in acceptance checks. Publication is still held.
+Subsequent owner-approved signing, notarization and local native installer/update tests are recorded in [signed qualification](SIGNED-INSTALLER-QUALIFICATION-2026-10-26.md). That record supersedes the initial Mac signing status below. Corrected One `0.1.6` / desktop host `0.1.7-dev.13` passed an eight-minute empty-cache runtime preparation and native update/automatic restart on a separate Mac. Real sign-in and clean activation remain acceptance checks. Publication is still held.
 
 The source implementation is prepared for distribution. Actual signed/notarized release assets are still required. With approval to use signing material, build and test signed version A and version B on every advertised platform, including download rejection, a real native update, first startup, local account continuity, records and recovery. Complete the real browser sign-in/callback journey in the released package. Windows also requires the approved certificate-store/provider configuration and native installer acceptance.
 

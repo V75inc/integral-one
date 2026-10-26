@@ -1,13 +1,13 @@
 {
   "name": "integral-one",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "private": true,
   "integralOneUpdates": {
     "enabled": true,
     "channel": "development"
   },
   "license": "Apache-2.0",
-  "description": "Integral One — local, single-owner desktop built on Apache-licensed Integral Core",
+  "description": "Integral One \u2014 local, single-owner desktop built on Apache-licensed Integral Core",
   "main": "desktop/main.js",
   "scripts": {
     "setup": "node scripts/setup.js",
@@ -29,7 +29,7 @@
     "qualify:ui:dependencies": "node scripts/qualify-ui-dependencies.js"
   },
   "dependencies": {
-    "@integral/desktop-host": "file:vendor/integral-desktop-host-0.1.7-dev.12.tgz",
+    "@integral/desktop-host": "file:vendor/integral-desktop-host-0.1.7-dev.13.tgz",
     "electron-updater": "6.8.9",
     "js-yaml": "4.3.2",
     "react": "18.3.1",

@@ -39,7 +39,7 @@ for (const file of ['desktop/main.js','desktop/updates.js','desktop/releases.js'
   const packedHash = require('node:crypto').createHash('sha256').update(asar.extractFile(archive, path.join(...file.split('/')))).digest('hex');
   assert.equal(packedHash, hash(path.join(root, file)), `Packaged source differs: ${file}`);
 }
-assert.equal(require('node:crypto').createHash('sha256').update(asar.extractFile(archive, path.join('node_modules','@integral','desktop-host','lib','host.js'))).digest('hex'), hash(path.join(root, 'packages/desktop-host/lib/host.js')), 'Packaged host differs from its maintained source');
+for (const name of ['host.js', 'core-runtime.js']) assert.equal(require('node:crypto').createHash('sha256').update(asar.extractFile(archive, path.join('node_modules','@integral','desktop-host','lib',name))).digest('hex'), hash(path.join(root, 'packages/desktop-host/lib',name)), 'Packaged host differs from its maintained source: '+name);
 const updateConfigFile = path.join(resources, 'app-update.yml');
 const packagedProduct = JSON.parse(asar.extractFile(archive, 'package.json').toString());
 if (fs.existsSync(updateConfigFile)) {
