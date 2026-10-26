@@ -30,7 +30,7 @@ The installer downloads the Windows installer, checks its checksum and Authentic
 
 ## Finish in the app
 
-Choose **Sign up** or **Sign in**, then complete email verification or your social provider's prompts. Everything else is prepared automatically. Initial runtime downloads need internet and may take a few minutes; no separate runtime installation or activation step is needed. Local work continues offline after setup.
+Choose **Sign up** or **Sign in**, then complete email verification or your social provider's prompts. Everything else is prepared automatically. First-time setup needs internet and may take several minutes. The startup window shows download/setup progress, and reopening resumes completed downloads. No separate runtime installation or activation step is needed. Local work continues offline after setup.
 
 Your files and records stay on your computer. Hosted AI requests send the necessary prompts/context to your selected provider. Account sign-in goes to the configured Logto service.
 
