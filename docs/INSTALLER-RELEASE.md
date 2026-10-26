@@ -31,7 +31,7 @@ The Node/Python/uv source prerequisites are build tools, not end-user requiremen
 
 ## 2. Prepare signing and the protected CI environment
 
-The local V75 Inc. Developer ID certificate is verified; Apple agreement and notarization-credential checks passed on 20 October; no Integral One candidate has yet been accepted by notarization. Follow the [macOS signing walkthrough](MACOS-SIGNING.md). No Windows certificate is currently available; follow the [Windows signing walkthrough](WINDOWS-SIGNING.md) and leave Windows disabled in this signed workflow until the chosen provider adapter is qualified. A separate unsigned Windows development workflow permits native engineering independently of Apple.
+The local V75 Inc. Developer ID certificate and Keychain notarization profile are verified. The owner-approved `0.1.5` Mac candidate was accepted by Apple on 26 October; [signed qualification](SIGNED-INSTALLER-QUALIFICATION-2026-10-26.md) records its exact bytes, tests and publication hold. Follow the [macOS signing walkthrough](MACOS-SIGNING.md). No Windows certificate is currently available; follow the [Windows signing walkthrough](WINDOWS-SIGNING.md) and leave Windows disabled in this signed workflow until the chosen provider adapter is qualified. A separate unsigned Windows development workflow permits native engineering independently of Apple.
 
 Configure the GitHub environment **desktop-release** with required reviewers and appropriate branch restrictions **before** adding signing secrets. The workflow checks this protection before entering signing jobs. It builds candidates automatically after Core pin changes land on main, or by explicit manual dispatch; it cannot publish a release.
 

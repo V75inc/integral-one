@@ -97,7 +97,7 @@ main() {
   size=$(read_value "artifacts.$platform.bytes") || fail 'Missing download size.'
   [[ "$size" =~ ^[1-9][0-9]*$ ]] || fail 'Invalid download size.'
   if [ "$check" -eq 1 ]; then echo "Integral One $version with Core $core_version is available for $platform ($channel). No files installed."; return; fi
-  echo "Downloading Integral One $version…"
+  printf 'Downloading Integral One %s...\n' "$version"
   fetch "$base/download/v$version/$file" "$work/$file" || fail 'Installer download failed. Please retry.'
   [ "$(stat -f %z "$work/$file")" = "$size" ] || fail 'The installer download is incomplete.'
   [ "$(/usr/bin/shasum -a 256 "$work/$file" | /usr/bin/awk '{print $1}')" = "$expected" ] || fail 'Installer checksum mismatch. Nothing was installed.'
