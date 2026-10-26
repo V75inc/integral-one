@@ -64,7 +64,10 @@ async function normalizeEntriesWithTypes(raw: unknown[]): Promise<Entry[]> {
   await hydrateEntryTagsForList(raw as any[]);
   const trackIds = [
     ...new Set(
-      raw.map((e: any) => e.track_id).filter(Boolean)
+      raw
+        .filter((e: any) => e.type_id && !e.type)
+        .map((e: any) => e.track_id)
+        .filter(Boolean)
     ),
   ] as string[];
   const maps: Record<string, Record<string, string>> = {};
@@ -93,7 +96,11 @@ export const feedApi = {
     const merged = { limit: FEED_PAGE_LIMIT, ...params };
     try {
       return await fetchFeedEntriesPageFromPath('/feed_entries', merged);
-    } catch {
+    } catch (error) {
+      const status = (error as { response?: { status?: number } }).response?.status;
+      // Compatibility fallback is only for an absent route. Retrying a 429
+      // against a second endpoint amplifies overload and hides its cause.
+      if ((status !== 404 && status !== 405) || params?.entry_ids !== undefined) throw error;
       return await fetchFeedEntriesPageFromPath('/entries', merged);
     }
   },
@@ -111,7 +118,9 @@ export const feedApi = {
       return normalizeEntriesWithTypes(
         await fetchAllByCursor('/feed_entries', params)
       );
-    } catch {
+    } catch (error) {
+      const status = (error as { response?: { status?: number } }).response?.status;
+      if (status !== 404 && status !== 405) throw error;
       if (hasExplicitPaging(params)) {
         const data = (await apiClient.get('/entries', { params })).data;
         const inner = unwrapApiDataEnvelope(data);

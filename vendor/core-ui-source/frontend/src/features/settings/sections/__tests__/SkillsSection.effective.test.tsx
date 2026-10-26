@@ -1,201 +1,89 @@
-import React from 'react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
+import { beforeEach, expect, it, vi } from "vitest";
+import { SkillsSection } from "../SkillsSection";
 
-const { listMock, effectiveMock, updateMock, scopeState } = vi.hoisted(() => ({
-  listMock: vi.fn(),
-  effectiveMock: vi.fn(),
-  updateMock: vi.fn(),
-  scopeState: { workspaceId: 'workspace-1' },
+const { browse, effective } = vi.hoisted(() => ({
+  browse: vi.fn(),
+  effective: vi.fn(),
 }));
-
-let activeSkillEnabled = true;
-
-vi.mock('../../../../api/skills', () => ({
-  skillsApi: {
-    list: listMock,
-    effective: effectiveMock,
-    update: updateMock,
-  },
+vi.mock("../../../../api/skills", () => ({ skillsApi: { browse, effective } }));
+vi.mock("../../../../context/ScopeContext", () => ({
+  useScope: () => ({ scope: { workspaceId: "workspace" }, isPersonal: true }),
 }));
-
-vi.mock('../../../../context/ScopeContext', () => ({
-  useScope: () => ({
-    scope: { workspaceId: scopeState.workspaceId },
-    activeWorkspace: { your_role: 'owner' },
-    isPersonal: true,
-  }),
-}));
-
-vi.mock('../../../../context/ToastContext', () => ({
+vi.mock("../../../../context/ToastContext", () => ({
   useToast: () => ({ showToast: vi.fn() }),
 }));
-
-vi.mock('../../../../components/skills/SkillEditorModal', () => ({
+vi.mock("../../../../components/skills/SkillEditorModal", () => ({
   SkillEditorModal: () => null,
-  skillBadges: () => [],
 }));
-
-import { SkillsSection } from '../SkillsSection';
-
-function renderSection() {
-  const queryClient = new QueryClient({
+beforeEach(() => {
+  vi.clearAllMocks();
+  browse.mockResolvedValue({
+    skills: [],
+    apps: [],
+    total: 0,
+    page: 1,
+    page_size: 10,
+    total_pages: 1,
+  });
+  effective.mockResolvedValue({
+    apps: [{ id: "app-1", name: "Operations" }],
+    skills: Array.from({ length: 13 }, (_, i) => ({
+      id: `skill-${i}`,
+      name: `Runtime skill ${i}`,
+      source: "workspace",
+      state: i === 0 ? "paused" : "available",
+      reason: i === 0 ? "Disabled by workspace owner" : "",
+      tools_required: [],
+    })),
+    tools: [
+      {
+        name: "integral_get_entry",
+        description: "Read an Entry",
+        source: "core",
+      },
+    ],
+  });
+});
+it("loads agent context only when the inspector is opened and pages it independently from skills", async () => {
+  const client = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
-  const view = render(
-    <QueryClientProvider client={queryClient}>
+  render(
+    <QueryClientProvider client={client}>
       <SkillsSection />
     </QueryClientProvider>,
   );
-  return { ...view, queryClient };
-}
-
-describe('SkillsSection effective turn catalogue', () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    activeSkillEnabled = true;
-    scopeState.workspaceId = 'workspace-1';
-    listMock.mockResolvedValue({
-      core: [],
-      apps: [],
-      workspace: [
-        {
-          id: 'skill-mutable',
-          source: 'workspace',
-          read_only: false,
-          key: 'mutable',
-          name: 'Mutable skill',
-          description: 'Can be paused',
-          kind: 'skill',
-          enabled: true,
-          customized: false,
-          stale_default: false,
-          tools_required: [],
-        },
-      ],
-      total: 1,
-    });
-    updateMock.mockImplementation(async (_id: string, body: { enabled?: boolean }) => {
-      activeSkillEnabled = Boolean(body.enabled);
-      return { enabled: activeSkillEnabled };
-    });
-    effectiveMock.mockImplementation(async () => ({
-      workspace_id: 'workspace-1',
-      focused_app_id: null,
-      apps:
-        scopeState.workspaceId === 'workspace-1'
-          ? [{ id: 'app-1', name: 'Operations' }]
-          : [{ id: 'app-2', name: 'Finance' }],
-      skills: [
-        {
-          id: 'skill-available',
-          key: 'review',
-          name: 'Review',
-          description: 'Reviews a record',
-          source: 'core',
-          state: 'available',
-          tools_required: ['integral_get_entry'],
-        },
-        {
-          id: 'skill-paused',
-          key: 'draft',
-          name: 'Draft',
-          description: 'Paused in this workspace',
-          source: 'workspace',
-          state: 'paused',
-          reason: 'Disabled by workspace owner',
-          tools_required: [],
-        },
-        {
-          id: 'skill-mutable',
-          key: 'mutable',
-          name: 'Mutable skill',
-          description: 'Can be paused',
-          source: 'workspace',
-          state: activeSkillEnabled ? 'available' : 'paused',
-          reason: activeSkillEnabled ? null : 'Disabled by workspace owner',
-          tools_required: [],
-        },
-        {
-          id: 'skill-unavailable',
-          key: 'locked',
-          name: 'Locked',
-          description: 'Not loaded for this turn',
-          source: 'app',
-          state: 'unavailable',
-          tools_required: [],
-        },
-      ],
-      tools: [
-        {
-          name: 'integral_get_entry',
-          description: 'Read an Entry',
-          source: 'core',
-        },
-      ],
-    }));
+  await screen.findByText("No skills yet");
+  expect(effective).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole("button", { name: "Inspect agent access" }));
+  expect(
+    screen.getByRole("dialog", { name: "Agent access" }),
+  ).toBeInTheDocument();
+  await screen.findByText("Runtime skill 0");
+  expect(
+    within(screen.getByRole("list", { name: "Agent context" })).getAllByRole(
+      "listitem",
+    ),
+  ).toHaveLength(10);
+  expect(screen.getByText("Paused")).toBeInTheDocument();
+  expect(screen.queryByText("integral_get_entry")).not.toBeInTheDocument();
+  fireEvent.click(
+    screen.getByRole("button", { name: "Next agent context pages" }),
+  );
+  expect(screen.queryByText("Runtime skill 0")).not.toBeInTheDocument();
+  expect(screen.getByText("Runtime skill 12")).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Tools (1)" }));
+  expect(screen.getByText("integral_get_entry")).toBeInTheDocument();
+  fireEvent.change(screen.getByLabelText("App focus for agent context"), {
+    target: { value: "app-1" },
   });
-
-  it('shows runtime availability, tools, reasons, and refreshes when App focus changes', async () => {
-    renderSection();
-
-    expect(await screen.findByText('Skills and tools available here')).toBeInTheDocument();
-    expect(screen.getAllByText('Available').length).toBeGreaterThan(0);
-    expect(screen.getByText('Paused')).toBeInTheDocument();
-    expect(screen.getByText('Not loaded')).toBeInTheDocument();
-    expect(screen.getByText('Disabled by workspace owner')).toBeInTheDocument();
-    expect(screen.getByText('integral_get_entry')).toBeInTheDocument();
-
-    fireEvent.change(screen.getByLabelText('App focus for available skills'), {
-      target: { value: 'app-1' },
-    });
-    await waitFor(() => expect(effectiveMock).toHaveBeenLastCalledWith('app-1'));
-  });
-
-  it('refreshes the effective catalogue when a workspace skill is paused', async () => {
-    renderSection();
-
-    expect(await screen.findByText('Skills and tools available here')).toBeInTheDocument();
-    expect(screen.getAllByText('Paused')).toHaveLength(1);
-
-    fireEvent.click(screen.getByRole('switch', { name: /^Disable skill / }));
-
-    await waitFor(() => {
-      expect(updateMock).toHaveBeenCalledWith('skill-mutable', { enabled: false });
-      expect(screen.getAllByText('Paused')).toHaveLength(2);
-    });
-  });
-
-  it('loads a workspace-specific effective catalogue after scope changes', async () => {
-    const view = renderSection();
-
-    await waitFor(() => {
-      expect(
-        view.queryClient.getQueryData(['effective-skills', 'workspace-1', '']),
-      ).toBeDefined();
-    });
-
-    fireEvent.change(screen.getByLabelText('App focus for available skills'), {
-      target: { value: 'app-1' },
-    });
-    await waitFor(() => expect(effectiveMock).toHaveBeenLastCalledWith('app-1'));
-
-    scopeState.workspaceId = 'workspace-2';
-    view.rerender(
-      <QueryClientProvider client={view.queryClient}>
-        <SkillsSection />
-      </QueryClientProvider>,
-    );
-
-    await waitFor(() => {
-      expect(
-        view.queryClient.getQueryData(['effective-skills', 'workspace-2', '']),
-      ).toBeDefined();
-      expect(effectiveMock).toHaveBeenLastCalledWith(null);
-    });
-    expect(
-      (screen.getByLabelText('App focus for available skills') as HTMLSelectElement).value,
-    ).toBe('');
-  });
+  await waitFor(() => expect(effective).toHaveBeenLastCalledWith("app-1"));
 });

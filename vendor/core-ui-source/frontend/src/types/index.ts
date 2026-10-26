@@ -606,6 +606,14 @@ export interface Attachment {
   metadata?: {
     common?: Record<string, unknown>;
     type_specific?: Record<string, unknown>;
+    semantic?: {
+      description?: string;
+      visible_text?: string;
+      keywords?: string[];
+      source_hash?: string;
+      model?: string;
+      version?: number;
+    };
   };
   extracted_text?: string;
   metadata_status?: string;

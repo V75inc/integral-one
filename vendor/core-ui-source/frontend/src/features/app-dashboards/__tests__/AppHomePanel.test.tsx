@@ -7,7 +7,7 @@ import { dashboardsApi } from '../../../api/dashboards';
 import { requestOpenCompanionChat } from '../../ai-chat/chatHandoff';
 
 vi.mock('../../../context/ScopeContext', () => ({ useScope: () => ({ scope: { workspaceId: 'ws1' } }) }));
-vi.mock('../../../api/dashboards', () => ({ dashboardsApi: { home: vi.fn() } }));
+vi.mock('../../../api/dashboards', async importOriginal => ({ ...await importOriginal<typeof import('../../../api/dashboards')>(), dashboardsApi: { home: vi.fn() } }));
 vi.mock('../../ai-chat/chatHandoff', () => ({ requestOpenCompanionChat: vi.fn() }));
 
 const home = {
@@ -80,4 +80,14 @@ it('keeps loaded content and open details mounted throughout background refresh 
   expect(screen.queryByText('This home could not be loaded.')).not.toBeInTheDocument();
   // Query cache settlement precedes the observer's scheduled React update.
   await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('Showing the last loaded information.'));
+});
+
+it('refreshes Home immediately after an App update event', async () => {
+  const { invalidateAfterChangeEvent } = await import('../../../services/graphMutationInvalidation');
+  vi.mocked(dashboardsApi.home).mockResolvedValue({ home } as never);
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  mount(client); await screen.findByText('Current work');
+  vi.mocked(dashboardsApi.home).mockResolvedValue({ home: { ...home, title: 'Updated Home' } } as never);
+  await act(() => invalidateAfterChangeEvent(client, { id: 'event', action: 'app.update', scope: 'app:a1' } as never));
+  expect(await screen.findByText('Updated Home')).toBeInTheDocument();
 });

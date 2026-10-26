@@ -1,3 +1,5 @@
+import { useSingleFlight } from '../../hooks/useSingleFlight';
+import { useSerialPolling } from '../../hooks/useSerialPolling';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { RefreshCw } from 'lucide-react';
 import { Button, LINE_ICON_STROKE } from '../ui';
@@ -44,7 +46,7 @@ export function WorkItemsSection({ workspaceId }: { workspaceId: string }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const generation = useRef(0);
-  const load = useCallback(async (after?: string) => {
+  const load = useSingleFlight(useCallback(async (after?: string) => {
     const current = ++generation.current;
     setLoading(true);
     setError(null);
@@ -60,16 +62,14 @@ export function WorkItemsSection({ workspaceId }: { workspaceId: string }) {
     } finally {
       if (current === generation.current) setLoading(false);
     }
-  }, [workspaceId]);
+  }, [workspaceId]));
   useEffect(() => {
     void load();
     return () => { generation.current += 1; };
   }, [load]);
-  useEffect(() => {
-    if (!items.some(item => item.kind !== 'routine_turn' && item.kind !== 'chat_turn' && !terminal.has(item.status))) return;
-    const timer = window.setInterval(() => { void load(); }, 5000);
-    return () => window.clearInterval(timer);
-  }, [items, load]);
+  useSerialPolling(load, 5000, items.some(item =>
+    item.kind !== 'routine_turn' && item.kind !== 'chat_turn' && !terminal.has(item.status)));
+
 
   // This panel is an operational monitor, not a history feed. Routine runs
   // and chat turns have dedicated activity views; successful/cancelled work

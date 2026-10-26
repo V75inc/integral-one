@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
-import { Check, Search, Layers, LayoutGrid } from 'lucide-react';
+import { Check, Search, Layers, LayoutGrid, Trash2 } from 'lucide-react';
+import { Button } from '../ui';
 import { summarizeLibraryManifest } from '../../lib/operationalModelManifest';
 import type { OperationalModelNode } from '../../types';
 
@@ -27,6 +28,9 @@ interface Props {
   libraryPackages: OperationalModelNode[];
   /** Filter library to only 'track' or 'app' scope packages */
   scopeFilter?: 'track' | 'app';
+  onDetails?: (model: OperationalModelNode) => void;
+  onDelete?: (model: OperationalModelNode) => void;
+  deletingIds?: ReadonlySet<string>;
 }
 
 const LINE_STROKE = 1.5;
@@ -49,10 +53,13 @@ export function OperationalModelPicker({
   value,
   onChange,
   defaultLabel = 'None / Default',
-  defaultDescription = 'No operational model applied — use base content schema.',
+  defaultDescription = 'Start with standard fields and views.',
   appSources = [],
   libraryPackages,
   scopeFilter,
+  onDelete,
+  onDetails,
+  deletingIds,
 }: Props) {
   const [search, setSearch] = useState('');
 
@@ -70,7 +77,7 @@ export function OperationalModelPicker({
         const { entryTypeCount, viewCount } = summarizeLibraryManifest(manifest);
         return {
           value: `library:${pkg.id}`,
-          name: pkg.name || 'Untitled model',
+          name: pkg.name || 'Untitled template',
           description: pkg.description || undefined,
           entryTypeCount,
           viewCount,
@@ -96,14 +103,14 @@ export function OperationalModelPicker({
     );
   }, [libraryItems, q]);
 
-  function PickerRow({ item }: { item: OperationalModelPickerItem }) {
+  function PickerRow({ item, hasAction = false }: { item: OperationalModelPickerItem; hasAction?: boolean }) {
     const selected = value === item.value;
     return (
       <button
         type="button"
         onClick={() => onChange(item.value)}
         className={`
-          w-full text-left rounded-[var(--radius-card)] border px-3 py-2.5
+          w-full text-left rounded-[var(--radius-card)] border px-3 py-2.5 ${hasAction ? 'pb-14'  : ''}
           flex items-start gap-3 transition-colors duration-fast
           ${selected
             ? 'border-[var(--brand-accent-line)] bg-[var(--brand-accent-soft)]'
@@ -173,10 +180,10 @@ export function OperationalModelPicker({
         />
         <input
           type="search"
-          aria-label="Filter operational models"
+          aria-label="Filter templates"
           value={search}
           onChange={e => setSearch(e.target.value)}
-          placeholder="Filter operational models…"
+          placeholder="Filter templates…"
           className="
             w-full rounded-[var(--radius-input)] border border-[var(--panel-border)]
             bg-[var(--panel)] pl-9 pr-3 py-2 text-sm text-[var(--text)]
@@ -189,7 +196,7 @@ export function OperationalModelPicker({
       </div>
 
       {/* Scrollable list */}
-      <div role="radiogroup" aria-label="Operational Model options" className="flex flex-col gap-2 max-h-96 overflow-y-auto px-2" style={{ scrollbarGutter: 'stable' }}>
+      <div role="radiogroup" aria-label={scopeFilter === 'app' ? 'App template options' : 'Track template options'} className="flex flex-col gap-2 max-h-96 overflow-y-auto px-2" style={{ scrollbarGutter: 'stable' }}>
         {/* Default option — always shown, not filtered */}
         <PickerRow item={defaultItem} />
 
@@ -211,18 +218,29 @@ export function OperationalModelPicker({
             <p className="text-xs uppercase tracking-wide font-semibold text-[var(--text-subtle)] mt-1 px-0.5">
               Library
             </p>
-            {filteredLib.map(item => (
-              <div key={item.value} className="space-y-1">
-                <PickerRow item={item} />
-              </div>
-            ))}
+            {filteredLib.map(item => {
+              const model = libraryPackages.find(pkg => item.value === `library:${pkg.id}`);
+              const canDelete = !!onDelete && !!model?.workspace_id && model.can_delete !== false;
+              return <div key={item.value} className="relative min-w-0">
+                <PickerRow item={item} hasAction={canDelete || !!onDetails} />
+                <div className="absolute bottom-1 right-2 flex items-center gap-1">
+                {onDetails && model && <Button variant="ghost" size="sm" className="min-h-11" aria-label={`View details for ${item.name}`} onClick={() => onDetails(model)}>View details</Button>}
+                {canDelete && model && (
+                  <Button variant="ghost" size="sm" className="h-11 w-11 p-0" aria-label={`Delete ${item.name} template`}
+                    title="Delete template" disabled={deletingIds?.has(model.id)} onClick={() => onDelete?.(model)}>
+                    <Trash2 size={16} strokeWidth={LINE_STROKE} aria-hidden="true" />
+                  </Button>
+                )}
+                </div>
+              </div>;
+            })}
           </>
         )}
 
         {/* No results */}
         {hasNoResults && (
           <p className="text-sm text-[var(--text-subtle)] py-2 text-center">
-            No operational models match.{' '}
+            No templates match.{' '}
             <button
               type="button"
               className="underline text-[var(--link)] hover:no-underline"

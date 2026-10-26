@@ -8,19 +8,26 @@ export interface ModelPreset {
 
 export const RECOMMENDED_MODELS: Record<ModelProvider, ModelPreset[]> = {
   openai: [
-    { id: 'gpt-4.1', label: 'GPT-4.1', recommended: true },
+    { id: 'gpt-5.4-mini', label: 'GPT-5.4 mini', recommended: true },
+    { id: 'gpt-4.1', label: 'GPT-4.1' },
     { id: 'gpt-4o', label: 'GPT-4o' },
+    { id: 'gpt-5', label: 'GPT-5 (reasoning)' },
+    { id: 'gpt-5.4', label: 'GPT-5.4 (reasoning)' },
   ],
   anthropic: [
     {
       id: 'claude-sonnet-4-20250514',
       label: 'Claude Sonnet 4',
-      recommended: true,
     },
+    { id: 'claude-sonnet-4-6', label: 'Claude Sonnet 4.6', recommended: true },
     { id: 'claude-3-7-sonnet-latest', label: 'Claude 3.7 Sonnet' },
+    { id: 'claude-opus-4-6', label: 'Claude Opus 4.6' },
   ],
   openrouter: [
-    { id: 'openai/gpt-4.1', label: 'OpenAI GPT-4.1', recommended: true },
+    { id: 'openai/gpt-5.4-mini', label: 'GPT-5.4 mini', recommended: true },
+    { id: 'openai/gpt-4.1', label: 'OpenAI GPT-4.1' },
+    { id: 'openai/gpt-5', label: 'OpenAI GPT-5 (reasoning)' },
+    { id: 'anthropic/claude-sonnet-4.6', label: 'Claude Sonnet 4.6' },
   ],
   ollama: [
     {

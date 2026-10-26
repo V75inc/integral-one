@@ -1,4 +1,4 @@
-import { act, render, screen } from '@testing-library/react';
+import { act, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter } from 'react-router-dom';
 import { describe, expect, it, vi } from 'vitest';
@@ -40,5 +40,39 @@ describe('Workspace list refresh recovery', () => {
     await act(async () => rejectLoad(new Error('Unavailable')));
     expect(await screen.findByRole('alert')).toHaveTextContent('Unavailable');
     expect(screen.queryByText('No workspaces yet')).toBeNull();
+  });
+});
+
+
+describe('Workspace identity colors', () => {
+  it('keeps each row independent of the active workspace accent and refreshes only its saved color', async () => {
+    const workspaces = [
+      { id: 'ws-red', name: 'Red Workspace', kind: 'organization' as const, accent_color: '#cc3344' },
+      { id: 'ws-blue', name: 'Blue Workspace', kind: 'organization' as const, accent_color: '#2255aa' },
+      { id: 'ws-default', name: 'Default Workspace', kind: 'organization' as const },
+      { id: 'ws-empty', name: 'Empty Workspace', kind: 'organization' as const, accent_color: '  ' },
+    ];
+    vi.mocked(workspacesApi.list).mockResolvedValueOnce(workspaces);
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const previous = document.documentElement.style.getPropertyValue('--brand-accent');
+    try {
+      document.documentElement.style.setProperty('--brand-accent', '#cc3344');
+      render(page(client));
+      await screen.findByText('Red Workspace');
+      const assertColors = (red = '#cc3344') => {
+        expect(screen.getByTitle('Red Workspace')).toHaveStyle({ backgroundColor: red });
+        expect(screen.getByTitle('Blue Workspace')).toHaveStyle({ backgroundColor: '#2255aa' });
+        expect(screen.getByTitle('Default Workspace').style.backgroundColor).toBe('var(--brand-accent-default)');
+        expect(screen.getByTitle('Empty Workspace').style.backgroundColor).toBe('var(--brand-accent-default)');
+      };
+      assertColors();
+      document.documentElement.style.setProperty('--brand-accent', '#2255aa');
+      assertColors();
+      act(() => client.setQueryData(['workspaces'], workspaces.map(w => w.id === 'ws-red' ? { ...w, accent_color: '#228844' } : w)));
+      await waitFor(() => assertColors('#228844'));
+    } finally {
+      if (previous) document.documentElement.style.setProperty('--brand-accent', previous);
+      else document.documentElement.style.removeProperty('--brand-accent');
+    }
   });
 });

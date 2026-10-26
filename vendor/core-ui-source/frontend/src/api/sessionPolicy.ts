@@ -1,5 +1,6 @@
 import axios from 'axios';
 import { getApiBaseURL } from '../config';
+import { configureSessionRuntime } from './sessionRuntime';
 
 /** Public runtime policy; token validity is always decided by the API. */
 export interface SessionPolicy {
@@ -55,7 +56,10 @@ export function loadSessionPolicy(): Promise<void> {
   // enter the authenticated client's refresh/recovery interceptors.
   pending ??= Promise.resolve()
     .then(() => axios.get(`${getApiBaseURL()}/meta/deployment`, { timeout: 5000 }))
-    .then(response => { applySessionPolicy(response.data?.session_policy); })
+    .then(response => {
+      configureSessionRuntime(response.data);
+      applySessionPolicy(response.data?.session_policy);
+    })
     .catch(() => { /* Defaults keep login and offline recovery available. */ });
   return pending;
 }

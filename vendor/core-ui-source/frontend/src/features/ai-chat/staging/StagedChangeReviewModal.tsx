@@ -4,6 +4,8 @@ import { Modal } from '../../../components/ui/Modal';
 import JsonViewer from '../../../components/ui/JsonViewer';
 import { MarkdownContent } from '../../../components/ui/MarkdownContent';
 import { Text } from '../../../ui';
+import { AppHomePreview } from '../../app-dashboards/AppHomePreview';
+import type { AppHome } from '../../../api/dashboards';
 import { diffBodyWithoutSummary } from './diffBodyWithoutSummary';
 import { operationInput, StagedOperationInputs } from './StagedOperationInputs';
 import type { StagedChange } from './types';
@@ -93,6 +95,7 @@ export function StagedChangeReviewModal({
             </div>
           </div>
 
+          {staged.kind === 'update_app' && typeof staged.diff_machine?.app_id === 'string' && staged.diff_machine.home && typeof staged.diff_machine.home === 'object' ? <AppHomePreview appId={staged.diff_machine.app_id} home={staged.diff_machine.home as AppHome} /> : null}
           <details>
             <summary className="cursor-pointer">
               <Text variant="meta" tone="subtle">Technical details</Text>
