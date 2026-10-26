@@ -2,13 +2,23 @@
 const path = require("node:path");
 const fs = require("node:fs");
 const electron = require("electron");
-const { app } = electron;
+const { app, protocol } = electron;
+protocol.registerSchemesAsPrivileged([
+  {
+    scheme: "integral-one",
+    privileges: {
+      standard: true,
+      secure: true,
+      supportFetchAPI: true,
+      corsEnabled: true,
+    },
+  },
+]);
 const config = require("./accounts/config").loadConfig();
 const { createController } = require("./accounts/controller");
 const controller = createController({
   electron,
   config,
-  createBridge: require("@clerk/electron").createClerkBridge,
 });
 const resources = app.isPackaged
   ? process.resourcesPath
@@ -27,9 +37,11 @@ const updates = require("./updates").createUpdates({
   dialog: electron.dialog,
   Menu: electron.Menu,
   autoUpdater: require("electron-updater").autoUpdater,
-  production: config.configured && config.environment === "production" &&
-    require("../package.json").integralOneUpdates?.enabled === true,
-  prepareForInstall: () => host.stopRuntime({ requireExclusive: true }),
+  enabled: require("../package.json").integralOneUpdates?.enabled === true,
+  channel: require("../package.json").integralOneUpdates.channel,
+  currentCore: require("../distribution.json").core,
+  request: (url, options) => electron.net.fetch(url, options),
+  prepareForInstall: () => require("./update-backup").prepareUpdate(host, app.getPath("userData")),
 });
 host = require("@integral/desktop-host").runDesktop({
   productName: "Integral One",
@@ -37,6 +49,7 @@ host = require("@integral/desktop-host").runDesktop({
   mode: "local",
   userDataName: "Integral",
   iconRoot: path.join(__dirname, "icons"),
+  windowsTitleBar: true,
   resources,
   helpMenuItems: updates.menuItems,
   onReady: updates.start,

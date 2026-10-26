@@ -3,41 +3,14 @@ import path from 'node:path';
 import type { Connect } from 'vite';
 import type { Plugin } from 'vite';
 
-/** Root-level *.html shipped with Integral app bundles (e.g. recruitment-apply.html). */
+/** Root-level *.html from explicitly configured Integral app bundles. */
 function discoverPublicRoots(cwd: string, envPaths: string): string[] {
   const fromEnv = envPaths
     .split(/[,;]/)
     .map((s) => s.trim())
     .filter(Boolean)
-    .map((p) => path.resolve(p));
-
-  if (fromEnv.length) {
-    return [...new Set(fromEnv)];
-  }
-
-  const candidates: string[] = [];
-  const businessRoots = [
-    path.resolve(cwd, '../../../../integral v2/integral-business/integral-apps'),
-    path.resolve(cwd, '../../../integral-business/integral-apps'),
-    path.resolve(cwd, '../../integral-business/integral-apps'),
-  ];
-  for (const appsRoot of businessRoots) {
-    if (!fs.existsSync(appsRoot)) continue;
-    let entries: fs.Dirent[] = [];
-    try {
-      entries = fs.readdirSync(appsRoot, { withFileTypes: true });
-    } catch {
-      continue;
-    }
-    for (const ent of entries) {
-      if (!ent.isDirectory()) continue;
-      const pub = path.join(appsRoot, ent.name, 'public');
-      if (fs.existsSync(pub) && fs.statSync(pub).isDirectory()) {
-        candidates.push(pub);
-      }
-    }
-  }
-  return [...new Set(candidates)];
+    .map((p) => path.resolve(cwd, p));
+  return [...new Set(fromEnv)];
 }
 
 function serveAppPublicHtml(roots: string[]): Connect.NextHandleFunction {
@@ -81,12 +54,13 @@ function serveAppPublicHtml(roots: string[]): Connect.NextHandleFunction {
 /**
  * Dev/preview: serve bundle public pages before SPA fallback.
  * Set VITE_INTEGRAL_APP_PUBLIC_PATHS to comma-separated directories (each may contain *.html at root).
- * When unset, auto-discovers each app public/ folder under integral-business/integral-apps.
+ * When unset, no app pages are served. Never inspect neighboring repositories.
  */
 export function integralAppPublicPages(envPaths: string): Plugin {
   let roots: string[] = [];
   return {
     name: 'integral-app-public-pages',
+    apply: 'serve',
     configResolved(config) {
       roots = discoverPublicRoots(config.root, envPaths);
       if (roots.length) {

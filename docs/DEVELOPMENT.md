@@ -33,9 +33,9 @@ To build and launch in one command, use `npm run setup -- --launch`. To check pr
 
 ### Account configuration
 
-The checked-in `desktop/accounts/config.json` is unconfigured. This permits source builds without distributing a maintainer's keys or implying a live production service. A fresh official account flow needs a maintainer-provided **public JSON configuration**. Existing local recovery is handled separately by the account controller.
+`desktop/accounts/config.json` stays unconfigured. `desktop/accounts/config.production.json` is the public production account file checked into the repo: the Logto app id and issuer only, with no client secret. Account builds and Mac installer builds use that file automatically, so another machine can build the Mac app without a private config. Set `INTEGRAL_ACCOUNT_CONFIG` only when a build must use a different public file. Existing local recovery is handled separately by the account controller.
 
-Set `INTEGRAL_ACCOUNT_CONFIG` to that JSON file before setup. For example, on macOS/Linux:
+For example, on macOS/Linux:
 
 ```sh
 INTEGRAL_ACCOUNT_CONFIG=/absolute/path/public-account-config.json npm run setup
@@ -48,9 +48,9 @@ $env:INTEGRAL_ACCOUNT_CONFIG = 'C:\absolute\path\public-account-config.json'
 npm run setup
 ```
 
-Keep the variable set when running `npm start` or packaging: those commands rebuild account assets. It contains only the publishable key, exact issuer/service origins, environment and named public verification keys accepted by `desktop/accounts/config.js`. Never put a Clerk secret key or signing private key in One. Account configuration is a maintainer task, not an installer user's setup step.
+Keep that variable set for the commands that rebuild account assets. The file may contain only the public app id, issuer, and environment accepted by `desktop/accounts/config.js`. Never put a client secret or signing private key in One. Account configuration is a maintainer task, not an installer user's setup step.
 
-The current implementation uses a small registration service for signed offline receipts. Clerk-only signup/user counting is under review as a launch simplification; see the [production walkthrough](CLERK-CLOUDFLARE-SETUP.md). Do not remove the existing receipt verification or pretend production signup works before the replacement is implemented and qualified.
+Sign-in uses the Logto issuer in that file. The desktop keeps the setup record on this computer, and an existing workspace can reopen without contacting Logto.
 
 ### Isolate development data
 

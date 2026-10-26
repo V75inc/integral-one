@@ -9,7 +9,7 @@ Integral One brings Apps, records and an AI coworker together in a personal desk
 - **One Integral account.** Simple signup today, with shared account identity planned for Integral Business.
 - **Open source.** Apache-2.0, built on [Integral Core](https://github.com/V75inc/integral-core).
 
-> **Release status:** development preview. Signed public installers are not available yet. The macOS development candidate has passed the [documented installation and local-use checks](docs/FIRST-RELEASE-QUALIFICATION.md); signed production-package and release qualification remain open.
+> **Release status:** development preview. Signed public installers are not available yet. The current [rc35 distribution qualification](docs/DISTRIBUTION-QUALIFICATION-2026-10-26.md) covers the menu, Logto, updater and local upgrade checks; signed native installation/update acceptance remains open.
 
 ## Get started
 
@@ -31,6 +31,8 @@ irm https://github.com/V75inc/integral-one/releases/latest/download/install.ps1 
 
 The initial release targets Apple Silicon Macs running macOS 14 or newer; Intel Mac support is blocked by Core runtime compatibility. See [platform readiness](docs/PLATFORM-READINESS.md). For this initial release, a Windows certificate is not required to publish the Mac installers. The command downloads the matching signed release, verifies it, installs it for your OS account and opens Integral One. Complete signup in the app; first-run runtime setup is automatic. Apple/Windows security checks stay enabled. Linux and Windows ARM64 are not yet qualified.
 
+Development builds use TestPyPI and GitHub prereleases. The [development one-line commands](docs/INSTALL.md#development-release-candidates) select that channel without bypassing publisher verification. Installed builds check their channel automatically and provide **Help → Check for Updates…**; downloading and restarting each require your approval.
+
 See [installation and troubleshooting](docs/INSTALL.md), or download directly from [GitHub Releases](https://github.com/V75inc/integral-one/releases) when the signed release is available.
 
 ### For contributors
@@ -41,7 +43,7 @@ See [installation and troubleshooting](docs/INSTALL.md), or download directly fr
 
 Create an App to group related work, add a Track, then create your first record. AI setup is optional. [Getting started](docs/GETTING-STARTED.md) walks through the essentials.
 
-Files and records stay local. If you choose a hosted AI provider, the prompts and context needed for that request are sent to that provider. Account signup sends account information to Clerk. See [accounts and offline access](docs/GETTING-STARTED.md#accounts-and-offline-access).
+Files and records stay local. If you choose a hosted AI provider, the prompts and context needed for that request are sent to that provider. Account signup for this gate uses Logto at https://auth.saas.apps.trueselph.com/oidc; local files stay local, and this tenant’s user list includes dev signups. See [accounts and offline access](docs/GETTING-STARTED.md#accounts-and-offline-access).
 
 ## Help and contribute
 

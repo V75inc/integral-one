@@ -39,7 +39,7 @@ up this environment.
    Require timezone and App pin writes/readback and model-credential validation
    admission before the candidate can proceed.
 5. Only after all three native jobs pass, open a draft source PR on
-   `codex/core-<version>`. Existing candidate branches are left intact. Explicitly
+   `core-<version>`. Existing candidate branches are left intact. Explicitly
    dispatch ordinary PR verification, since a bot-token PR does not itself start
    normal GitHub Actions PR workflows.
 
@@ -72,10 +72,10 @@ release containing #165 is published and composed; its actual consumer journey
 is required before signing.
 
 After the exact installers and a signed version-A-to-version-B update are approved,
-publish those assets together as the next stable **Integral One** release. The
+publish those assets together as the next **Integral One** release in its matching channel: ordinary releases for PyPI and prereleases for TestPyPI. The
 installed One updater discovers it, asks before download and restart, stops its
 owned Core process, and installs the complete distribution. Automatic checks stay
-opt-in. Network/account outages do not invalidate existing local access.
+enabled by default and can be turned off. Network/account outages do not invalidate existing local access.
 
 This workflow prepares tested source updates; it does not automatically merge,
 use signing keys, publish installers or bypass native platform security. Windows

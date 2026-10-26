@@ -12,7 +12,7 @@ Run `npm run setup -- --check` to check Node, Python, uv and public account conf
 
 ## Signup says it is unavailable
 
-The checked-in account configuration is intentionally unconfigured. Ask the maintainer for the build's **public** configuration, set `INTEGRAL_ACCOUNT_CONFIG`, then rebuild using `npm run setup`. Never put a Clerk secret key or receipt-signing private key in the desktop project.
+A source build uses `desktop/accounts/config.production.json` when that file is configured. If signup still says it is unavailable, that file is unconfigured or `INTEGRAL_ACCOUNT_CONFIG` points at an unconfigured file. The production file may contain only the public app id and issuer. Never put a client secret or signing private key in the desktop project.
 
 For an already configured build, check your internet connection and try again. An existing configured workspace can still be opened offline.
 

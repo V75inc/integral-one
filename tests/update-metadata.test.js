@@ -7,7 +7,8 @@ const { generate } = require("../scripts/update-metadata");
 function fixture(t) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "one-feed-"));
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
-  const manifest = { schemaVersion: 1, version: "0.1.0", artifacts: {} };
+  const manifest = { schemaVersion: 2, version: "0.1.0", channel: 'stable',
+    core: { version: '0.1.1', registry: 'pypi', wheelSha256: 'a'.repeat(64) }, artifacts: {} };
   for (const arch of ["arm64", "x64"]) {
     const file = `integral-one-0.1.0-mac-${arch}.zip`, data = Buffer.from(arch);
     fs.writeFileSync(path.join(dir, file), data);
@@ -62,7 +63,7 @@ test('Apple Silicon-only feed resolves its native asset and offers no Intel down
 
 test('public manifest assembly permits Apple Silicon alone and refuses Intel assets', t => {
   const f = fixture(t), { merge } = require('../scripts/installer-manifest');
-  const part = arch => ({ schemaVersion: 1, version: f.manifest.version,
+  const part = arch => ({ schemaVersion: 2, version: f.manifest.version, channel: f.manifest.channel, core: f.manifest.core,
     artifacts: { [`darwin-${arch}`]: f.manifest.artifacts[`darwin-${arch}`] } });
   fs.writeFileSync(path.join(f.dir, 'install-manifest-darwin-arm64.json'), JSON.stringify(part('arm64')));
   const output = path.join(f.dir, 'assembled.json');
@@ -70,4 +71,30 @@ test('public manifest assembly permits Apple Silicon alone and refuses Intel ass
   assert.deepEqual(Object.keys(JSON.parse(fs.readFileSync(output)).artifacts), ['darwin-arm64']);
   fs.writeFileSync(path.join(f.dir, 'install-manifest-darwin-x64.json'), JSON.stringify(part('x64')));
   assert.throws(() => merge(f.dir, output), /Intel Mac release is blocked/);
+});
+
+test('release metadata binds One installers to the exact Core wheel and development channel', t => {
+  const f = fixture(t);
+  f.manifest.channel = 'development'; f.manifest.core.registry = 'testpypi'; f.manifest.core.version = '0.1.1rc35';
+  const data = Buffer.from('windows fixture'), file = 'integral-one-0.1.0-win-x64.exe';
+  fs.writeFileSync(path.join(f.dir, file), data);
+  f.manifest.artifacts['win32-x64'] = { file, bytes: data.length, sha256: crypto.createHash('sha256').update(data).digest('hex'), signerThumbprint: 'A'.repeat(40), publisherName: 'V75 Inc.' };
+  f.save(); generate(f.dir, '0.1.0');
+  for (const name of ['latest-mac.yml', 'latest.yml']) {
+    const feed = yaml.load(fs.readFileSync(path.join(f.dir, name), 'utf8'));
+    assert.equal(feed.releaseChannel, 'development'); assert.deepEqual(feed.integralCore, f.manifest.core);
+  }
+  fs.appendFileSync(path.join(f.dir, file), 'changed');
+  assert.throws(() => generate(f.dir, '0.1.0'), /Windows update artifact differs/);
+});
+
+test('native Windows updater delegates signature checks to the configured V75 publisher verifier', async () => {
+  const { NsisUpdater } = require('electron-updater/out/NsisUpdater');
+  let publishers;
+  const result = await NsisUpdater.prototype.verifySignature.call({
+    configOnDisk: { value: Promise.resolve({ publisherName: 'V75 Inc.' }) },
+    _verifyUpdateCodeSignature: async (names, file) => { publishers = names; assert.equal(file, 'download.exe'); return 'invalid publisher'; },
+  }, 'download.exe');
+  assert.deepEqual(publishers, ['V75 Inc.']); assert.equal(result, 'invalid publisher');
+  assert.equal(require('../package.json').build.win.signtoolOptions.publisherName, 'V75 Inc.');
 });

@@ -1,79 +1,29 @@
 # Integral One updates
 
-Candidate implementation, 21 October 2026. The first release must include and
-qualify the updater before launch. No public update channel is qualified yet.
+Integral One checks for Core releases automatically after the workspace opens and every six hours while it remains open. **Help → Check for Updates…** runs the same check on demand. **Automatically Check for Updates** can be turned off; an existing saved opt-out remains in effect. The menu shows the build's release channel.
 
-New Core package publications are followed by the [Core release-preparation
-workflow](CORE-RELEASE-UPDATES.md). It qualifies a complete One update before the
-desktop feed can offer it. The desktop never hot-swaps an unreviewed Core wheel.
+Stable builds query the public PyPI JSON API for `integral-core` and exclude prereleases. Development builds query TestPyPI and include release candidates. Checks include newer Core series and accept only non-yanked universal wheels. Installation still requires a matching qualified One release. The rc35 candidate uses the development channel.
 
-## User controls
+A Core publication is delivered through a complete Integral One installer that has passed consumer qualification. One finds a published release in the fixed V75 GitHub repository, checks its channel and exact Core version/wheel hash against the package index, then checks the native installer metadata. If Core is published before an installer is ready, the app reports that preparation is pending. It does not offer an unusable download or replace its engine with a bare wheel.
 
-**Help → Check for Updates…** checks the public V75inc/integral-one GitHub
-release feed. **Automatically Check for Updates** is opt-in, stored locally,
-and checks after startup and every six hours while open. It is independent of
-account sign-in. Update requests attach no account token, installation ID,
-workspace content or model credential. GitHub receives ordinary connection and
-request information; automatic checks can be turned off.
+## User decisions
 
-An available stable release prompts **Download Update / Later**. Downloading
-requires approval; **Restart and Install / Later** is a separate decision.
-Ordinary quit does not install an update. A downloaded update can be installed
-through Check for Updates during the same session. After a later launch the SDK
-rechecks the feed and cached download. Prereleases and downgrades are excluded;
-concurrent checks share one operation. Background connection failures stay quiet.
-Requested-operation failures show a generic error without remote response bodies.
-An install failure after stopping Core offers to reopen the installed version;
-that recovery action does not promise a database rollback.
+An available update prompts **Download Update / Later**. **Restart and Install / Later** is a separate decision after the download. Normal quit does not install it. A downloaded update can be installed through Check for Updates during the same session. Automatic notices for a version are shown once per session; a manual check always reports its result. Concurrent checks share one operation. Background connection failures stay quiet, while manual and approved operations show a generic failure message.
 
-## Integrity and local continuity
+Before installation, One confirms that it owns the local runtime, stops it, creates a cold Core backup outside the store, and copies the One account record and local integrity key into the same backup directory. Backups are retained under the stable Integral user-data directory in `update-backups`. A failed stop, backup or account copy prevents installation. Failure after shutdown offers to reopen the installed version. Restoring a backup remains an explicit recovery action.
 
-The initial supported automatic-update target is **Apple Silicon on macOS 14+**. Intel is blocked by Core runtime compatibility; see [platform readiness](PLATFORM-READINESS.md). Source launches,
-unsigned development candidates, prerelease product versions and other platforms
-leave the updater disabled. Signed installer preparation enables it after the
-existing production-account, signing and notarization preflight. Windows signing
-and updater qualification remain separate gates.
+## Installer and network integrity
 
-The exact electron-updater 6.8.9 client uses the public GitHub provider generated
-by electron-builder 26.15.3. There is no packaged GitHub credential, remote feed
-override, renderer updater IPC or custom signature verifier. Full ZIP downloads
-retain SDK SHA-512 verification and native Squirrel.Mac signature validation;
-differential download is disabled. This SDK generation does not cryptographically
-sign update metadata. HTTPS, protected source/release access and native code
-signature checks are required. Do not describe its YAML as a signed manifest or
-disable OS validation to test an unsigned build.
+Automatic installation is implemented for Apple Silicon macOS 14+ and Windows x64. Source previews and unsupported platforms do not contact release services. Signed native installation and two-version update acceptance must be completed before advertising a platform for public distribution. Intel Mac remains blocked by Core's runtime dependency compatibility.
 
-The desktop host stops its owned Core process using both PID and creation time
-and requires a confirmed `state: stopped` response before invoking installation.
-A different owner/process identity or failed stop prevents installation. App
-replacement does not rename or remove the Integral data directory, account state,
-owner identity or recovery keys. Core compatibility/migrations still need testing
-for every pin; preventing downgrades does not replace a verified backup.
+The release client sends no account token, cookie, installation identifier, workspace record or model credential. It reads only the fixed PyPI/TestPyPI and V75 GitHub endpoints. Metadata is bounded and times out; asset redirects are restricted to GitHub's release hosts. The application does not accept an arbitrary feed URL.
+
+The official electron-updater SDK receives the exact selected GitHub release URL through its generic provider. SDK SHA-512 and native macOS/Windows signature checks remain enabled. One additionally checks the downloaded file's SHA-256 and size against the selected installer manifest. Windows packages pin `V75 Inc.` as the SDK publisher name. The manifest and update YAML are not described as cryptographically signed metadata; the trust boundary includes HTTPS, protected release access and the native publisher signature.
 
 ## Release assets
 
-After native ZIPs pass signature, notarization, identity and account checks, the
-signed candidate workflow assembles install-manifest.json, then runs:
+Verified native installers produce schema-2 `install-manifest.json` with the One version, channel, Core version, package index and source wheel hash. Platform parts must agree on all of those fields. `scripts/update-metadata.js` derives `latest-mac.yml` and, when Windows is present, `latest.yml` from those exact bytes. Both feeds carry the Core and channel binding.
 
-```sh
-node scripts/update-metadata.js release-assets
-```
+Publish stable/PyPI builds as ordinary GitHub releases and development/TestPyPI builds as GitHub prereleases. The updater and one-line bootstraps filter those channels independently. Publish the manifest, matching installers, update YAML and bootstrap scripts together. Signing, notarization and publication require the protected release process described in [the installer runbook](INSTALLER-RELEASE.md).
 
-The script checks the supplied Mac artifacts against their verified SHA-256, byte
-size and approved V75 Apple Team ID. The initial **latest-mac.yml** contains the
-Apple Silicon ZIP and its SHA-512. The generator retains multi-architecture
-selection tests, but current public manifest assembly rejects Intel assets. The actual SDK architecture selector is tested against this
-combined feed. Do not overwrite the YAML with runner-specific files. Publish the
-exact matching ZIPs and metadata together in a stable release; metadata must not
-point to missing, draft-only or differently signed assets.
-
-Local tests cover consent, duplicate checks, disabled builds, settings, version
-rejection, stop/download/install failures, architecture selection and changed
-artifact rejection. They do not prove native update installation. Before release,
-install signed version A and update to signed version B on the supported Apple
-Silicon/macOS 14+ target. Exercise offline/error behavior, declined download/restart, invalid
-signature/checksum rejection, retained records, account continuity and first
-startup after a Core upgrade. No public two-version qualification is claimed.
-
-References: [electron-builder v26 update flow](https://www.electron.build/v26/docs/features/auto-update/),
-[Electron native updater](https://www.electronjs.org/docs/latest/api/auto-updater).
+Tests exercise channel selection, Core version ordering, yanked packages, missing installers, invalid metadata, untrusted redirects, consent, downloaded-byte tampering, backup failure, offline behavior and retention. Before public release, install signed version A and update to signed version B on each advertised native platform, then verify first startup, records, account continuity and recovery. Unit tests and unsigned packaging do not establish that final acceptance.

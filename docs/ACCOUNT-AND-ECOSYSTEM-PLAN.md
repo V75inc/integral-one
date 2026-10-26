@@ -1,4 +1,6 @@
-# Integral Account — Clerk, One activation and Business continuity
+# Integral Account — native sign-in, local activation and Business continuity
+
+**26 October update:** The One desktop now adopts [the Logto PKCE gate](SPEC-logto-account-gate.md), with browser sign-in, fixed issuer/JWKS endpoints and an offline version-3 local setup record. This supersedes the Clerk provider and SDK choices in the historical plan below. Existing Clerk records and keys remain intact; the local recovery action preserves access without importing or relinking an account. One does not upload operational data during registration.
 
 **21 October update:** [Clerk-only setup](CLERK-ONLY-SETUP.md) implements the proposed launch simplification in configuration v2. The service-backed flow below remains the legacy v1 contract. Production qualification is still required.
 

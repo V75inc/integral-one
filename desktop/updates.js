@@ -1,26 +1,41 @@
 "use strict";
 const fs = require("node:fs");
 const path = require("node:path");
-const semver = require("semver");
+const { randomUUID } = require("node:crypto");
+const { APP_VERSION, compareCore, channelPolicy } = require("./release-contract");
+const { discoverUpdates, verifyUpdateInfo, verifyDownload } = require("./releases");
 
 function createUpdates({ app, dialog, Menu, autoUpdater, prepareForInstall,
-  platform = process.platform, production = false, interval = setInterval,
-  clear = clearInterval, preferences }) {
-  const enabled = app.isPackaged && production && platform === "darwin" &&
-    /^\d+\.\d+\.\d+$/.test(app.getVersion());
-  let automatic = false, task = null, timer = null, downloaded = null;
-  let installing = false, disposed = false, ready = false, approved = false, failureTask = null;
+  platform = process.platform, arch = process.arch, enabled = false, channel = "stable",
+  currentCore, request = fetch, discover = discoverUpdates, verifyDownloaded = verifyDownload,
+  interval = setInterval, clear = clearInterval, preferences }) {
+  const policy = channelPolicy(channel);
+  const available = app.isPackaged && enabled && APP_VERSION.test(app.getVersion()) &&
+    ((platform === "darwin" && arch === "arm64") || (platform === "win32" && arch === "x64"));
+  let automatic = true, task = null, timer = null, downloaded = null;
+  let installing = false, disposed = false, ready = false, approved = false, failureTask = null, manualRequested = false;
+  const notices = new Set();
   const preferenceFile = () => preferences || path.join(app.getPath("userData"), "one-updates.json");
   function loadPreferences() {
     try {
-      const file = preferenceFile();
-      if (fs.lstatSync(file).isFile() && !fs.lstatSync(file).isSymbolicLink() && fs.statSync(file).size < 1024)
-        automatic = JSON.parse(fs.readFileSync(file, "utf8")).automaticChecks === true;
-    } catch { /* Missing or damaged preferences never opt a user into requests. */ }
+      const file = preferenceFile(), stat = fs.lstatSync(file);
+      if (stat.isFile() && !stat.isSymbolicLink() && stat.size < 1024) {
+        const saved = JSON.parse(fs.readFileSync(file, "utf8"));
+        if (typeof saved.automaticChecks === "boolean") automatic = saved.automaticChecks;
+      }
+    } catch { /* A first launch checks automatically; a saved opt-out is retained. */ }
   }
-  function newer(version) {
-    return typeof version === "string" && /^\d+\.\d+\.\d+$/.test(version) &&
-      semver.valid(version) && semver.gt(version, app.getVersion());
+  function savePreferences(value) {
+    const file = preferenceFile(), parent = path.dirname(file);
+    fs.mkdirSync(parent, { recursive: true, mode: 0o700 });
+    if (fs.lstatSync(parent).isSymbolicLink()) throw new Error("Invalid preferences directory.");
+    try { if (fs.lstatSync(file).isSymbolicLink()) throw new Error("Invalid preferences."); }
+    catch (error) { if (error.code !== "ENOENT") throw error; }
+    const temporary = path.join(parent, `.one-updates-${randomUUID()}.tmp`);
+    try {
+      fs.writeFileSync(temporary, JSON.stringify({ automaticChecks: value }) + "\n", { mode: 0o600, flag: "wx" });
+      fs.renameSync(temporary, file);
+    } finally { if (fs.existsSync(temporary)) fs.unlinkSync(temporary); }
   }
   async function message(options) {
     if (disposed) return { response: 1 };
@@ -37,9 +52,9 @@ function createUpdates({ app, dialog, Menu, autoUpdater, prepareForInstall,
       .finally(() => { failureTask = null; });
     return failureTask;
   }
-  // These controls deliberately retain the SDK's checksum and macOS code-signature
-  // verification. No custom feed, credential, renderer IPC or verifier override.
-  if (enabled) {
+  if (available) {
+    // The SDK retains its checksum and native signature verification. A Core
+    // publication is offered only through the matching complete One installer.
     autoUpdater.autoDownload = false;
     autoUpdater.autoInstallOnAppQuit = false;
     autoUpdater.allowPrerelease = false;
@@ -48,89 +63,101 @@ function createUpdates({ app, dialog, Menu, autoUpdater, prepareForInstall,
     autoUpdater.logger = null;
     autoUpdater.on("error", onError);
   }
-  function onError() {
-    // Check/download promises report their own failure. Native install errors can
-    // arrive later, after quitAndInstall has returned, and must also be handled.
-    if (installing) void failure(true);
-  }
+  function onError() { if (installing) void failure(true); }
   async function offerRestart() {
-    const result = await message({ type: "info", message: `Integral One ${downloaded} is ready to install.`,
+    const result = await message({ type: "info", message: `Integral One ${downloaded.version} is ready to install.`,
       detail: "Finish your work before restarting. Integral One will stop its local engine before installing the update.",
       buttons: ["Restart and Install", "Later"], defaultId: 1, cancelId: 1 });
     if (result.response !== 0 || disposed) return;
-    // Do not replace a running installation or proceed after a failed engine stop.
-    await prepareForInstall();
     installing = true;
+    await prepareForInstall();
+    if (disposed) return;
     autoUpdater.quitAndInstall();
   }
-  async function performCheck(manual) {
-    if (!enabled) {
-      if (manual) await message({ type: "info", message: "Automatic updates are unavailable in this build.",
-        detail: "Use an official macOS release installed in Applications. Other platforms remain under qualification.", buttons: ["OK"] });
+  async function performCheck() {
+    if (!available) {
+      if (manualRequested) await message({ type: "info", message: "Installer updates are unavailable in this build.",
+        detail: "Install a released Integral One build for Apple Silicon macOS or Windows x64 to use the updater.", buttons: ["OK"] });
       return;
     }
     if (installing || disposed) return;
-    if (downloaded) { if (manual) await offerRestart(); return; }
-    const result = await autoUpdater.checkForUpdates();
-    const version = result?.updateInfo?.version;
-    if (!newer(version)) {
-      if (manual) await message({ type: "info", message: "Integral One is up to date.", buttons: ["OK"] });
+    if (downloaded) { if (manualRequested) await offerRestart(); return; }
+    const result = await discover({ currentCore: currentCore.version, currentVersion: app.getVersion(), channel, platform, arch, request });
+    if (disposed) return;
+    const candidate = result.candidate;
+    if (!candidate) {
+      const newerCore = result.latestCore && compareCore(result.latestCore, currentCore.version) > 0;
+      if (newerCore && (manualRequested || !notices.has(`core:${result.latestCore}`))) {
+        notices.add(`core:${result.latestCore}`);
+        await message({ type: "info", message: `Integral Core ${result.latestCore} has been published.`,
+          detail: "A compatible Integral One installer is being prepared. Check for updates again later; your current workspace is ready to use.", buttons: ["OK"] });
+      } else if (manualRequested) await message({ type: "info", message: "Integral One is up to date.",
+        detail: `Checked ${policy.registry === "pypi" ? "PyPI stable releases" : "TestPyPI development releases"} and matching Integral One installers.`, buttons: ["OK"] });
       return;
     }
-    const choice = await message({ type: "info", message: `Integral One ${version} is available.`,
-      detail: "Download this update from Integral One’s public GitHub releases? You will choose when to restart and install it.",
+    const { manifest, asset, feedUrl } = candidate;
+    if (!manualRequested && notices.has(`one:${manifest.version}`)) return;
+    // Feed URLs are constructed exclusively from a validated release tag in the
+    // fixed V75 repository. No remote/user-supplied provider override is accepted.
+    autoUpdater.setFeedURL({ provider: "generic", url: feedUrl, useMultipleRangeRequest: false });
+    const update = await autoUpdater.checkForUpdates();
+    verifyUpdateInfo(update?.updateInfo, candidate);
+    if (disposed) return;
+    notices.add(`one:${manifest.version}`);
+    const choice = await message({ type: "info", message: `Integral One ${manifest.version} with Core ${manifest.core.version} is available.`,
+      detail: `Download this ${channel === "development" ? "development" : "stable"} update? You will choose when to restart and install it.`,
       buttons: ["Download Update", "Later"], defaultId: 1, cancelId: 1 });
     if (choice.response !== 0 || disposed) return;
     approved = true;
-    await autoUpdater.downloadUpdate();
-    downloaded = version;
+    const files = await autoUpdater.downloadUpdate();
+    await verifyDownloaded(files, asset);
+    if (disposed) return;
+    downloaded = { version: manifest.version };
     await offerRestart();
   }
   function check(manual = true) {
-    if (!task) {
-      task = performCheck(manual).catch(async () => { if (manual || approved || downloaded || installing) await failure(); })
-        .finally(() => { task = null; approved = false; });
-    }
+    if (disposed) return Promise.resolve();
+    manualRequested ||= manual;
+    if (!task) task = performCheck().catch(async () => {
+      if (manualRequested || approved || downloaded || installing) await failure();
+    }).finally(() => { task = null; approved = false; manualRequested = false; });
     return task;
   }
   function schedule() {
     if (timer) clear(timer);
     timer = null;
-    if (!enabled || !automatic || !ready || disposed) return;
+    if (!available || !automatic || !ready || disposed) return;
     timer = interval(() => { void check(false); }, 6 * 60 * 60 * 1000);
     timer.unref?.();
   }
   const menuItems = [
     { label: "Check for Updates…", click: () => { void check(true); } },
-    { id: "one-automatic-update-checks", label: "Automatically Check for Updates", type: "checkbox", checked: automatic, enabled,
-      click: (item) => {
+    { id: "one-automatic-update-checks", label: "Automatically Check for Updates", type: "checkbox", checked: automatic, enabled: available,
+      click: item => {
         try {
-          const file = preferenceFile();
-          fs.mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 });
-          if (fs.existsSync(file) && fs.lstatSync(file).isSymbolicLink()) throw new Error("Invalid preferences");
-          fs.writeFileSync(file, JSON.stringify({ automaticChecks: item.checked }) + "\n", { mode: 0o600 });
+          savePreferences(item.checked);
           automatic = item.checked;
           schedule();
           if (automatic && ready) void check(false);
         } catch { item.checked = automatic; void failure(); }
       } },
+    { label: `Update channel: ${channel === "development" ? "Development (TestPyPI)" : "Stable (PyPI)"}`, enabled: false },
   ];
   function start() {
     if (ready || disposed) return;
     ready = true;
-    // runDesktop establishes the stable Integral userData path before onReady.
-    // Reading earlier would lose the user's choice across branded app launches.
     loadPreferences();
     menuItems[1].checked = automatic;
     const item = Menu?.getApplicationMenu()?.getMenuItemById("one-automatic-update-checks");
     if (item) item.checked = automatic;
     schedule();
-    if (automatic && enabled) void check(false);
+    if (automatic && available) return check(false);
   }
   function dispose() {
     disposed = true;
     if (timer) clear(timer);
-    if (enabled) autoUpdater.removeListener("error", onError);
+    timer = null;
+    if (available) autoUpdater.removeListener("error", onError);
   }
   app.once("will-quit", dispose);
   return { menuItems, start, check, dispose };

@@ -29,17 +29,39 @@ jobs:
       - run: npm run qualify:ui
       - if: runner.os == 'Linux'
         run: npm run test:ui
+      - name: Retain the base release wheel for an actual Core upgrade check
+        shell: bash
+        env:
+          BASE_REF: ${{ github.event.pull_request.base.sha || github.event.repository.default_branch }}
+        run: |
+          git fetch --no-tags --depth=1 origin "$BASE_REF"
+          python - <<'PY'
+          import hashlib, json, os, pathlib, re, subprocess
+          pins = json.loads(subprocess.check_output(['git', 'show', 'FETCH_HEAD:distribution.json']))
+          wheel = pins['core']['base_wheel']
+          assert re.fullmatch(r'vendor/core-runtime/integral_core-\d+\.\d+\.\d+(?:(?:a|b|rc)\d+)?-py3-none-any\.whl', wheel), 'Invalid baseline artifact path'
+          target = pathlib.Path(os.environ['RUNNER_TEMP']) / 'previous-core'
+          target.mkdir(exist_ok=True)
+          data = subprocess.check_output(['git', 'show', 'FETCH_HEAD:' + wheel])
+          assert hashlib.sha256(data).hexdigest() == pins['core']['wheel_sha256'], 'Baseline wheel integrity mismatch'
+          (target / pathlib.PurePosixPath(wheel).name).write_bytes(data)
+          PY
       - run: npm run build:runtime
       - run: npm run build:accounts
       - run: npm run qualify:runtime
-      - run: node scripts/qualify-upgrade.js resources/core --require-settings
-      - run: npx electron-builder --dir --publish never
+      - run: node scripts/qualify-upgrade.js "$RUNNER_TEMP/previous-core" --require-settings
+        shell: bash
+      - name: Package Linux directory
+        if: runner.os == 'Linux'
+        run: npx electron-builder --dir --publish never
+      # Directory-only Mac/Windows builds omit app-update.yml. Exercise the
+      # actual installer targets so inspection checks the shipped updater feed.
+      - name: Build unsigned native development installer
+        if: runner.os != 'Linux'
+        run: npm run build:installers
       - if: runner.os == 'macOS'
         run: node scripts/qualify-mac-signing.js release
       - run: node scripts/inspect-package.js
-      - name: Build unsigned Windows development installer
-        if: runner.os == 'Windows'
-        run: npm run build:installers
       - uses: actions/upload-artifact@v4
         if: runner.os == 'Windows'
         with:

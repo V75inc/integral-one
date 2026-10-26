@@ -1,12 +1,13 @@
 {
   "name": "integral-one",
-  "version": "0.1.3",
+  "version": "0.1.5",
   "private": true,
   "integralOneUpdates": {
-    "enabled": false
+    "enabled": true,
+    "channel": "development"
   },
   "license": "Apache-2.0",
-  "description": "Integral One \u2014 local, single-owner desktop built on Apache-licensed Integral Core",
+  "description": "Integral One — local, single-owner desktop built on Apache-licensed Integral Core",
   "main": "desktop/main.js",
   "scripts": {
     "setup": "node scripts/setup.js",
@@ -28,8 +29,7 @@
     "qualify:ui:dependencies": "node scripts/qualify-ui-dependencies.js"
   },
   "dependencies": {
-    "@clerk/electron": "0.1.1",
-    "@integral/desktop-host": "file:vendor/integral-desktop-host-0.1.7-dev.5.tgz",
+    "@integral/desktop-host": "file:vendor/integral-desktop-host-0.1.7-dev.12.tgz",
     "electron-updater": "6.8.9",
     "js-yaml": "4.3.2",
     "react": "18.3.1",
@@ -38,7 +38,7 @@
   },
   "devDependencies": {
     "@electron/asar": "3.4.1",
-    "electron": "44.9.0",
+    "electron": "44.9.3",
     "electron-builder": "26.15.3",
     "esbuild": "0.25.12"
   },
@@ -113,6 +113,9 @@
       "minimumSystemVersion": "14.0"
     },
     "win": {
+      "signtoolOptions": {
+        "publisherName": "V75 Inc."
+      },
       "target": [
         "nsis"
       ],

@@ -13,9 +13,9 @@ The owner-selected initial launch targets Apple Silicon Macs on macOS 14+. Intel
 
 Windows is optional: add `integral-one-X.Y.Z-win-x64.exe` and its manifest entry only after Windows signing and clean-machine qualification. A missing Windows certificate does not block the macOS release.
 
-After adding the updater requirement, signed Windows build preparation explicitly
-refuses release until its signing and update implementation/qualification are
-completed. The unsigned Windows development workflow remains available.
+Windows build preparation requires its approved publisher certificate. Signed
+installation and two-version updater acceptance remain release gates. The
+unsigned Windows development workflow remains available.
 
 Use exact filenames; the bootstrap rejects unexpected names/versions. Each manifest entry contains its SHA-256, byte length and verified Apple Team ID or Windows signing-certificate thumbprint. Downloads use the specific version from the manifest, so a later latest-release change cannot silently mix versions. Normal HTTPS, OS signatures and notarization acceptance remain required; no unsigned-install override exists.
 
@@ -26,7 +26,7 @@ The Node/Python/uv source prerequisites are build tools, not end-user requiremen
 1. Complete the [release gates](RELEASE-GATES.md), including production account configuration, dependency/component review and supported-platform qualification.
 2. Set matching **stable** `package.json.version` and `distribution.json.product_version`. Development suffixes cannot generate a public bootstrap manifest.
 3. Keep the app ID, user-data name and existing local identities/keys unchanged.
-4. Configure production accounts using a public configuration file. Use the reviewed configuration-v2 Clerk-only flow in [Clerk-only setup](CLERK-ONLY-SETUP.md). Retain legacy receipt verification origins/keys when upgrading existing receipts. Never package service secret keys.
+4. Configure production accounts using a public configuration file. Use the configuration-v3 [Logto PKCE gate](SPEC-logto-account-gate.md). Retain existing local account records and recovery keys. Never package service secret keys.
 5. Review bootstrap scripts and release provenance together with the actual source being signed.
 
 ## 2. Prepare signing and the protected CI environment
@@ -37,7 +37,7 @@ Configure the GitHub environment **desktop-release** with required reviewers and
 
 | Setting | Purpose |
 | --- | --- |
-| Variable `ONE_PRODUCTION_ACCOUNT_CONFIG` | Public JSON accepted by `desktop/accounts/config.js`; configured production Clerk issuer/key, plus any retained legacy receipt verification keys |
+| Variable `ONE_PRODUCTION_ACCOUNT_CONFIG` | Public JSON accepted by `desktop/accounts/config.js`; configured production Logto issuer and public client ID |
 | Secrets `MACOS_CSC_LINK`, `MACOS_CSC_KEY_PASSWORD` | Developer ID Application certificate/P12 and its password |
 | Secrets `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD`, `APPLE_TEAM_ID` | Apple notarization credentials/team |
 | Legacy Windows fields `WINDOWS_CSC_LINK`, `WINDOWS_CSC_KEY_PASSWORD` | Do not populate as a new-cert enrollment recipe; the Windows provider adapter still needs qualification |
@@ -80,8 +80,8 @@ must pass the complete journey before signing. See [Core publication updates](CO
 Then run `node scripts/update-metadata.js release-assets` to generate the
 Mac update feed from those verified artifacts. Include it with the matching ZIPs;
 never overwrite it with a runner-specific YAML. Signed Mac preparation enables the
-updater; development candidates keep it disabled. See [auto-updates](AUTO-UPDATES.md)
-for opt-in checks, download/restart approvals and required two-version native QA.
+updater. Development candidates use TestPyPI and GitHub prereleases; stable builds use PyPI and ordinary GitHub releases. See [auto-updates](AUTO-UPDATES.md)
+for automatic checks, download/restart approvals and required two-version native QA.
 
 ## 4. Qualify the real installation path
 
@@ -102,7 +102,7 @@ Windows PowerShell execution and clean-machine Windows install have not been qua
 
 Create a **draft** GitHub release for the verified `vX.Y.Z` tag and upload all matching assets. Complete signing/installer/account readback and review checksums before publishing it as the stable latest release. Do not publish the bootstrap separately against incomplete assets. Publication is a separate authorized operation; this runbook does not execute it.
 
-The one-line commands initially use GitHub Releases directly. A short `onintegral.ai` install URL can be added later as an HTTPS redirect once its DNS/site deployment is approved. Domain setup is not required for the GitHub download channel itself; production Clerk still has its own domain requirements.
+The one-line commands initially use GitHub Releases directly. A short `onintegral.ai` install URL can be added later as an HTTPS redirect once its DNS/site deployment is approved. Domain setup is not required for the GitHub download channel itself; account sign-in uses the configured Logto issuer.
 
 If a release is broken, stop promoting it as latest and point new installs to a known-good complete signed release. Installed workspace data must be preserved. Retain signing-key history and old receipt verification keys according to the release/key-custody policy.
 
@@ -120,3 +120,5 @@ If a release is broken, stop promoting it as latest and point new installs to a 
 - The public-release metadata check returned a clear unavailable-release error against the currently unpublished assets; no application was installed by that check.
 - Public manifest creation rejected the current development version. No signing identity was used, no signing credentials were created and no release was published.
 - Signed macOS/Intel/Windows clean-machine installation and the full public download-to-signup path remain unqualified until their actual production assets exist.
+
+Release manifests use schema 2 and bind each installer to its Core version, package index, source wheel hash and channel. Publish TestPyPI candidates as GitHub prereleases, with `install-manifest.json`, bootstrap scripts, `latest-mac.yml` and (when present) `latest.yml` alongside the exact installer files. The workflow prepares this bundle; public release publication remains an explicit action.

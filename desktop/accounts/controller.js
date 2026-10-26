@@ -1,8 +1,14 @@
 "use strict";
 const fs = require("node:fs");
 const path = require("node:path");
-const { loadState, saveReceipt, privateFile } = require("./receipt");
-const { verifyAccount, saveClerkSetup } = require("./clerk-setup");
+const { loadState, privateFile } = require("./receipt");
+const {
+  authorizationUrl,
+  createAttempt,
+  LINKED_ACCOUNT,
+  saveLogtoSetup,
+  verifyLogtoSetup,
+} = require("./logto-setup");
 const ACCOUNT_ORIGIN = "integral-one://account";
 function isAccountUrl(raw) {
   try {
@@ -44,9 +50,26 @@ function asset(requestUrl, root) {
     throw new Error("Account assets must not be symlinks.");
   return file;
 }
-function contentPolicy(config) {
-  const api = config.configured ? config.clerkIssuer : "";
-  return `default-src 'none'; script-src 'self' ${api} https://challenges.cloudflare.com https://*.protect.clerk.com; connect-src 'self' ${api} https://*.protect.clerk.com; style-src 'self' 'unsafe-inline'; img-src 'self' https://img.clerk.com data:; font-src 'self' data:; frame-src https://challenges.cloudflare.com https://*.protect.clerk.com; worker-src 'self' blob:; form-action 'none'; base-uri 'none'; object-src 'none'; frame-ancestors 'none'`;
+function contentPolicy() {
+  return "default-src 'none'; script-src 'self'; connect-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; form-action 'none'; base-uri 'none'; object-src 'none'; frame-ancestors 'none'";
+}
+function callbackUrl(raw) {
+  try {
+    const cleaned =
+      typeof raw === "string" ? raw.trim().replace(/^["']|["']$/g, "") : raw;
+    const url = new URL(cleaned);
+    if (
+      url.protocol !== "integral-one:" ||
+      url.host !== "account" ||
+      url.username ||
+      url.password ||
+      (url.pathname !== "/callback" && url.pathname !== "/callback/")
+    )
+      return null;
+    return url;
+  } catch {
+    return null;
+  }
 }
 async function requestReceipt(token, installationId, config, request = fetch) {
   if (typeof token !== "string" || token.length < 20 || token.length > 16000)
@@ -76,11 +99,10 @@ async function requestReceipt(token, installationId, config, request = fetch) {
 function createController({
   electron,
   config,
-  createBridge,
   accountRoot = __dirname,
   request = fetch,
 }) {
-  const { app, BrowserWindow, session, ipcMain, clipboard } = electron;
+  const { app, BrowserWindow, session, ipcMain, shell } = electron;
   let accountSession = null;
   let window = null,
     resolveGate = null,
@@ -89,31 +111,24 @@ function createController({
     home = null,
     existingData = false,
     stateError = false,
-    receiptValid = false;
-  const memory = new Map();
-  // No refresh/session tokens need survive first activation. Avoid a second
-  // credential store or dependence on the platform keychain for local access.
-  const bridge = createBridge({
-    manageSingleInstanceLock: false,
-    renderer: { scheme: "integral-one", host: "account" },
-    storage: {
-      getItem: (key) => memory.get(key) || null,
-      setItem: (key, value) => {
-        if (
-          typeof key !== "string" ||
-          key.length > 100 ||
-          typeof value !== "string" ||
-          value.length > 20000
-        )
-          throw new Error("Invalid account token cache entry.");
-        memory.set(key, value);
-      },
-      removeItem: (key) => {
-        memory.delete(key);
-      },
-    },
-  });
+    receiptValid = false,
+    attempt = null;
   const channels = [];
+  // A callback is accepted only from open-url or a later second-instance.
+  // The launch command line is ignored so a stale URL cannot exchange a code.
+  function onOpenUrl(event, url) {
+    if (!callbackUrl(url)) return;
+    event?.preventDefault?.();
+    void receiveCallback(url);
+  }
+  function onSecondInstance(_event, commandLine = []) {
+    const raw = [...commandLine].reverse().find((item) => callbackUrl(item));
+    if (raw) void receiveCallback(raw);
+  }
+  if (typeof app.setAsDefaultProtocolClient === "function")
+    app.setAsDefaultProtocolClient("integral-one");
+  app.on("open-url", onOpenUrl);
+  app.on("second-instance", onSecondInstance);
   function handle(channel, callback) {
     channels.push(channel);
     ipcMain.handle(channel, async (event, ...args) => {
@@ -125,20 +140,53 @@ function createController({
   function complete() {
     const resolve = resolveGate;
     resolveGate = null;
-    memory.clear();
+    rejectGate = null;
+    attempt = null;
     window?.close();
     resolve?.();
   }
+  async function beginSignIn({ prompt } = {}) {
+    if (!config.configured)
+      throw new Error("Account service is not configured.");
+    attempt = createAttempt();
+    await shell.openExternal(
+      authorizationUrl(config.appId, attempt, prompt ? { prompt } : {}),
+    );
+    return true;
+  }
+  async function receiveCallback(raw) {
+    const url = callbackUrl(raw);
+    if (!url || !attempt) return;
+    if (url.searchParams.get("state") !== attempt.state) return;
+    if (url.searchParams.has("error")) {
+      const message = "Sign-in was cancelled or encountered an error in your browser. Try again.";
+      if (window && !window.isDestroyed())
+        window.webContents?.send?.("integral-one:account-status", { message });
+      return;
+    }
+    const code = url.searchParams.get("code");
+    if (url.searchParams.get("state") !== attempt.state || !code) return;
+    const proof = { code, attempt, appId: config.appId };
+    attempt = null;
+    try {
+      await saveLogtoSetup(home, state, proof, request);
+      state = loadState(home);
+      complete();
+    } catch (error) {
+      if (window && !window.isDestroyed())
+        window.webContents?.send?.("integral-one:account-status", {
+          message:
+            error?.message === LINKED_ACCOUNT
+              ? LINKED_ACCOUNT
+              : error?.message || "Sign-in exchange failed. Try again.",
+        });
+    }
+  }
   handle("integral-one:activation-context", () => ({
     configured: config.configured,
-    publishableKey: config.publishableKey,
     installationId: state.installationId,
-    portal: config.activationUrl || null,
     environment: config.environment || "development",
-    offlineImport: Boolean(
-      config.activationUrl && Object.keys(config.publicKeys || {}).length,
-    ),
-    setupMode: config.setupMode || "service",
+    setupMode: config.setupMode || "logto",
     existingData,
     stateError,
     returning: Boolean(state.receipt || state.localSetup),
@@ -147,41 +195,9 @@ function createController({
       stateError ||
       Boolean((state.receipt || state.localSetup) && !receiptValid),
   }));
-  handle("integral-one:activation-copy", () => {
-    if (stateError) throw new Error("Activation identity needs recovery.");
-    clipboard.writeText(state.installationId);
-    return true;
-  });
-  handle("integral-one:activation-import", (code) => {
-    if (stateError) throw new Error("Activation identity needs recovery.");
-    saveReceipt(home, state, code, config);
-    state = loadState(home);
-    complete();
-    return true;
-  });
-  handle("integral-one:activate", async (token) => {
-    if (stateError) throw new Error("Activation identity needs recovery.");
-    if (!config.configured)
-      throw new Error("Account service is not configured.");
-    if (config.setupMode === "clerk") {
-      await saveClerkSetup(home, state, token, config, request);
-    } else {
-      const code = await requestReceipt(
-        token,
-        state.installationId,
-        config,
-        request,
-      );
-      saveReceipt(home, state, code, config);
-    }
-    state = loadState(home);
-    complete();
-    return true;
-  });
   handle("integral-one:activation-recovery", () => {
     if (!existingData) throw new Error("No existing local installation.");
     // Explicit local recovery is not a receipt repair or a new account binding.
-    // Preserve the damaged file and permit this process to open existing data.
     state = { ...state, signedOut: false };
     complete();
     return true;
@@ -191,15 +207,10 @@ function createController({
     complete();
     return true;
   });
-  handle("integral-one:account-restart", () => {
-    // The pinned SDK has no per-flow cancel API. Restarting the app tears down
-    // its pending OAuth callback and starts a clean bridge without bypassing it.
-    resolveGate = null;
-    rejectGate = null;
-    app.relaunch();
-    app.quit();
-    return true;
-  });
+  handle("integral-one:account-start", () => beginSignIn());
+  handle("integral-one:account-restart", () =>
+    beginSignIn({ prompt: "login" }),
+  );
   let registered = false;
   async function beforeBoot({ userData, forceSignIn = false }) {
     const homeFlag = process.argv
@@ -218,11 +229,11 @@ function createController({
     }
     if (state.receipt || state.localSetup) {
       try {
-        verifyAccount(home, state, config);
+        verifyLogtoSetup(home, state);
         receiptValid = true;
         if (!forceSignIn && !state.signedOut) return;
       } catch {
-        /* Preserve local data and receipt; offer reactivation/recovery. */
+        /* Preserve local data; offer recovery. A Clerk record is not converted. */
       }
     }
     if (!registered) {
@@ -231,9 +242,9 @@ function createController({
         (_contents, _permission, callback) => callback(false),
       );
       accountSession.setPermissionCheckHandler(() => false);
-      accountSession.protocol.handle("integral-one", (request) => {
+      accountSession.protocol.handle("integral-one", (protocolRequest) => {
         try {
-          const file = asset(request.url, path.join(accountRoot, "ui"));
+          const file = asset(protocolRequest.url, path.join(accountRoot, "ui"));
           const type = file.endsWith(".js")
             ? "text/javascript"
             : file.endsWith(".css")
@@ -244,7 +255,7 @@ function createController({
           return new Response(fs.readFileSync(file), {
             headers: {
               "Content-Type": `${type}; charset=utf-8`,
-              "Content-Security-Policy": contentPolicy(config),
+              "Content-Security-Policy": contentPolicy(),
               "Cache-Control": "no-store",
               "X-Content-Type-Options": "nosniff",
             },
@@ -265,6 +276,17 @@ function createController({
         minHeight: 560,
         title: "Integral Account",
         backgroundColor: "#171717",
+        ...(process.platform === "win32"
+          ? {
+              titleBarStyle: "hidden",
+              titleBarOverlay: {
+                color: "#171717",
+                symbolColor: "#ededed",
+                height: 32,
+              },
+              autoHideMenuBar: true,
+            }
+          : {}),
         webPreferences: {
           preload: path.join(accountRoot, "preload.js"),
           sandbox: true,
@@ -273,6 +295,7 @@ function createController({
           partition: "integral-one-activation",
         },
       });
+      if (process.platform === "win32") window.setMenu?.(null);
       const block = (event, url) => {
         if (!isAccountUrl(url)) event.preventDefault();
       };
@@ -284,7 +307,7 @@ function createController({
       window.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
       window.on("closed", () => {
         window = null;
-        memory.clear();
+        attempt = null;
         if (resolveGate) {
           const reject = rejectGate;
           resolveGate = null;
@@ -302,11 +325,10 @@ function createController({
     });
   }
   function accountProfile() {
-    if (!state?.receipt && !state?.localSetup) return null;
+    if (!state?.localSetup) return null;
     try {
-      return verifyAccount(home, state, config).profile || null;
+      return verifyLogtoSetup(home, state).profile || null;
     } catch {
-      // Recovery can open local data without trusting a damaged account profile.
       return null;
     }
   }
@@ -316,7 +338,7 @@ function createController({
   }
   function signOut() {
     writeSignedOut(true);
-    memory.clear();
+    attempt = null;
   }
   async function signIn() {
     if (resolveGate) throw new Error("Account sign-in is already open.");
@@ -324,7 +346,7 @@ function createController({
     return beforeBoot({ userData: app.getPath("userData"), forceSignIn: true });
   }
   function resumeOffline() {
-    verifyAccount(home, state, config);
+    verifyLogtoSetup(home, state);
     writeSignedOut(false);
   }
   function authorizeSession() {
@@ -334,12 +356,13 @@ function createController({
       );
   }
   function cleanup() {
-    // Quitting an unfinished signup is normal, not a failed Core boot.
     resolveGate = null;
     rejectGate = null;
-    bridge.cleanup();
-    memory.clear();
+    attempt = null;
+    app.removeListener("open-url", onOpenUrl);
+    app.removeListener("second-instance", onSecondInstance);
     for (const channel of channels) ipcMain.removeHandler(channel);
+    channels.length = 0;
   }
   app.on("before-quit", cleanup);
   return {

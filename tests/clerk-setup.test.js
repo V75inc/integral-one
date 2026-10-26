@@ -5,7 +5,6 @@ const crypto = require("node:crypto");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
-const { validateConfig } = require("../desktop/accounts/config");
 const {
   loadState,
   readState,
@@ -28,7 +27,7 @@ const jwk = {
 function fixture(t) {
   const home = fs.mkdtempSync(path.join(os.tmpdir(), "one-clerk-setup-"));
   t.after(() => fs.rmSync(home, { recursive: true, force: true }));
-  const config = validateConfig({
+  const config = {
     contractVersion: 2,
     setupMode: "clerk",
     provider: "clerk",
@@ -37,7 +36,7 @@ function fixture(t) {
     clerkIssuer: "https://auth.example.com",
     publishableKey:
       "pk_live_" + Buffer.from("auth.example.com$").toString("base64"),
-  });
+  };
   const state = loadState(home),
     now = Date.now();
   const claims = {
@@ -73,21 +72,6 @@ function fixture(t) {
   };
   return { home, config, state, now, claims, token, request, calls };
 }
-test("Clerk-only public configuration needs no service or secret; legacy mode remains explicit", (t) => {
-  const f = fixture(t);
-  assert.equal(f.config.activationUrl, undefined);
-  assert.throws(
-    () => validateConfig({ ...f.config, contractVersion: 1 }),
-    /v2/,
-  );
-  for (const delta of [
-    { setupMode: "unknown" },
-    { secretKey: "forbidden" },
-    { clerkIssuer: "https://auth.example.com/path" },
-    { publicKeys: { missingOrigin: "key" } },
-  ])
-    assert.throws(() => validateConfig({ ...f.config, ...delta }));
-});
 test("verified signup requests only fixed public JWKS and persists no reusable cloud credentials", async (t) => {
   const f = fixture(t),
     token = f.token();
@@ -321,29 +305,46 @@ test("tampered, transplanted or missing-key setup needs recovery without regener
     false,
   );
 });
-test("cold restart, sign-out and offline re-entry need no cloud session or network", async (t) => {
+test("a Clerk version 2 setup is not an offline Logto session and recovery writes no binding", async (t) => {
   const f = fixture(t);
   await saveClerkSetup(f.home, f.state, f.token(), f.config, f.request);
-  const { EventEmitter } = require("node:events"),
-    handlers = new Map();
+  fs.writeFileSync(path.join(f.home, "installation.json"), "{}");
+  const file = path.join(f.home, "one-account/activation.json");
+  const original = fs.readFileSync(file);
+  const { EventEmitter } = require("node:events");
+  const handlers = new Map();
+  let win;
   const controller = createController({
     config: f.config,
-    createBridge: () => ({ cleanup() {} }),
-    request: () => assert.fail("Offline access must not call Clerk"),
+    request: () => assert.fail("Recovery must not contact Logto or Clerk"),
     electron: {
       app: new EventEmitter(),
       clipboard: {},
       session: {
-        fromPartition: () =>
-          assert.fail("Offline access must not create an account session"),
+        fromPartition: () => ({
+          setPermissionRequestHandler() {},
+          setPermissionCheckHandler() {},
+          protocol: { handle() {} },
+        }),
       },
       ipcMain: {
         handle: (n, fn) => handlers.set(n, fn),
         removeHandler: (n) => handlers.delete(n),
       },
-      BrowserWindow: class {
+      BrowserWindow: class extends EventEmitter {
         constructor() {
-          assert.fail("No account window on offline boot");
+          super();
+          win = this;
+          this.webContents = new EventEmitter();
+          this.webContents.mainFrame = { url: "integral-one://account/" };
+          this.webContents.setWindowOpenHandler = () => {};
+        }
+        isDestroyed() {
+          return false;
+        }
+        async loadURL() {}
+        close() {
+          this.emit("closed");
         }
       },
     },
@@ -355,11 +356,24 @@ test("cold restart, sign-out and offline re-entry need no cloud session or netwo
     if (previous === undefined) delete process.env.INTEGRAL_HOME;
     else process.env.INTEGRAL_HOME = previous;
   });
-  await controller.beforeBoot({ userData: f.home });
-  assert.equal(controller.accountProfile().email, "owner@example.com");
-  controller.signOut();
-  assert.throws(() => controller.authorizeSession(), /Sign in/);
-  controller.resumeOffline();
+  const pending = controller.beforeBoot({ userData: f.home });
+  const event = {
+    sender: win.webContents,
+    senderFrame: win.webContents.mainFrame,
+  };
+  assert.equal(controller.accountProfile(), null);
+  const context = await handlers.get("integral-one:activation-context")(event);
+  assert.equal(context.canContinueOffline, false);
+  assert.equal(context.recoveryNeeded, true);
+  await handlers.get("integral-one:activation-recovery")(event);
+  await pending;
   controller.authorizeSession();
-  assert.equal(readState(f.home).installationId, f.state.installationId);
+  assert.equal(fs.readFileSync(file).equals(original), true);
+  assert.equal(readState(f.home).localSetup !== undefined, true);
+  assert.equal(
+    JSON.parse(
+      Buffer.from(readState(f.home).localSetup.payload, "base64url"),
+    ).v,
+    2,
+  );
 });

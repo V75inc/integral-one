@@ -12,7 +12,7 @@ on:
         required: true
         type: string
       include_windows:
-        description: Reserved for Windows x64 after signing, installer and automatic-update qualification; currently blocked
+        description: Include Windows x64 using the approved certificate-store signing provider
         required: true
         type: boolean
         default: false
@@ -93,6 +93,7 @@ jobs:
     runs-on: ${{ matrix.runner }}
     env:
       INTEGRAL_ACCOUNT_CONFIG: ${{ github.workspace }}/.local/public-production.json
+      ONE_WINDOWS_CERT_SHA1: ${{ vars.ONE_WINDOWS_CERT_SHA1 }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
