@@ -4,7 +4,8 @@ Preserve Apache LICENSE/NOTICE, component provenance, stable app IDs, local data
 paths and recovery keys. Generic engine/editor/agent changes belong upstream in
 Integral Core; One composes pinned artifacts and host contracts.
 
-Use a codex/ feature branch and task-owned homes for runtime checks. Run npm run
+Use a descriptive feature branch without the codex/ prefix and task-owned homes
+for runtime checks. Run npm run
 verify, UI build/tests and applicable package qualification before a commit.
 Push/PR publication requires explicit user authorization in the current session.
 No deployment, signing-key use, remote visibility change or production data

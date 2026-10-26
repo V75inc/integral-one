@@ -39,7 +39,7 @@ up this environment.
    Require timezone and App pin writes/readback and model-credential validation
    admission before the candidate can proceed.
 5. Only after all three native jobs pass, open a draft source PR on
-   `codex/core-<version>`. Existing candidate branches are left intact. Explicitly
+   `core-<version>`. Existing candidate branches are left intact. Explicitly
    dispatch ordinary PR verification, since a bot-token PR does not itself start
    normal GitHub Actions PR workflows.
 
