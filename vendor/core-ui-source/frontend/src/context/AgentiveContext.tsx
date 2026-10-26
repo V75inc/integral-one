@@ -1,3 +1,5 @@
+import { useSingleFlight } from '../hooks/useSingleFlight';
+import { useSerialPolling } from '../hooks/useSerialPolling';
 import {
   createContext,
   useCallback,
@@ -5,6 +7,7 @@ import {
   useEffect,
   useMemo,
   useState,
+  useRef,
   type ReactNode,
 } from 'react';
 import { getAgentiveStatus, type AgentiveStatus } from '../api/agentive';
@@ -37,15 +40,27 @@ export function AgentiveProvider({ children }: { children: ReactNode }) {
   const { user, loading } = useAuth();
   const [status, setStatus] = useState<AgentiveStatus>(IDLE_STATUS);
 
-  const refresh = useCallback(() => {
-    if (!user) {
+  const principalId = user?.user_id ?? user?.id;
+  const owner = useRef(principalId);
+  const mounted = useRef(true);
+  owner.current = principalId;
+  useEffect(() => {
+    mounted.current = true;
+    return () => { mounted.current = false; };
+  }, []);
+
+  const refresh = useSingleFlight(useCallback(async () => {
+    if (!principalId) {
       setStatus(IDLE_STATUS);
       return;
     }
-    getAgentiveStatus()
-      .then(setStatus)
-      .catch(() => setStatus(IDLE_STATUS));
-  }, [user]);
+    try {
+      const next = await getAgentiveStatus();
+      if (mounted.current && owner.current === principalId) setStatus(next);
+    } catch {
+      if (mounted.current && owner.current === principalId) setStatus(IDLE_STATUS);
+    }
+  }, [principalId]));
 
   // Status is auth-scoped — skip until session is resolved so we never hit
   // /agentive/status without a JWT (401 responses omit CORS headers and
@@ -55,41 +70,8 @@ export function AgentiveProvider({ children }: { children: ReactNode }) {
     refresh();
   }, [loading, refresh]);
 
-  // Poll while agentive is on but no agent is connected yet (native provider may register after page load).
-  //
-  // Skipped while the tab is hidden. A background tab cannot show the result,
-  // and this interval runs until native provider registers -- which, if it never does,
-  // is forever. `visibilitychange` re-runs the effect so a returning user gets
-  // a fresh value immediately rather than waiting out the remaining interval.
-  useEffect(() => {
-    if (loading || !user || !status.enabled || status.agent_connected) return undefined;
-
-    let id: number | undefined;
-    const stop = () => {
-      if (id !== undefined) {
-        window.clearInterval(id);
-        id = undefined;
-      }
-    };
-    const start = () => {
-      if (id === undefined) id = window.setInterval(refresh, 12000);
-    };
-    const onVisibility = () => {
-      if (document.visibilityState === 'hidden') {
-        stop();
-      } else {
-        refresh();
-        start();
-      }
-    };
-
-    if (document.visibilityState !== 'hidden') start();
-    document.addEventListener('visibilitychange', onVisibility);
-    return () => {
-      stop();
-      document.removeEventListener('visibilitychange', onVisibility);
-    };
-  }, [loading, user, status.enabled, status.agent_connected, refresh]);
+  useSerialPolling(refresh, 12_000,
+    !loading && Boolean(principalId) && status.enabled && !status.agent_connected);
 
   // Memoized for the same reason as AuthContext: an object literal here makes a
   // new context value on every provider render, re-rendering every useAgentive()

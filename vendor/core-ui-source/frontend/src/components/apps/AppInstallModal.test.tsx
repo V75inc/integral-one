@@ -235,7 +235,7 @@ describe('AppInstallModal', () => {
     });
     await waitFor(() =>
       expect(
-        screen.getByText(/Settings were accepted and finishing installation has been queued/),
+        screen.getByText(/Your settings are saved/),
       ).toBeInTheDocument(),
     );
     expect(onInstalled).not.toHaveBeenCalled();

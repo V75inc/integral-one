@@ -83,3 +83,18 @@ describe('native visual upload admission', () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 });
+
+describe('native browser latency markers', () => {
+  it('keeps committed timing and adds delivery timing once work settles', async () => {
+    const finish = 'id: 2\nevent: message-finish\ndata: {"type":"message-finish","timing":{"firstTokenMs":120,"totalMs":250}}\n\n';
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(response(frame(1, 'Hello') + finish + settled, true)));
+    const events = await drain();
+    expect(events).toHaveLength(3);
+    expect(events[1]).toMatchObject({type:'message-finish', timing:{firstTokenMs:120,totalMs:250,clientFirstTextMs:expect.any(Number)}});
+    expect(events[2]).toMatchObject({type:'message-finish', timing:{clientCompletionMs:expect.any(Number)}});
+  });
+  it('does not invent a completion metric when no finish was committed', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(response('id: 1\nevent: error\ndata: {"type":"error","code":"failed","message":"Failed"}\n\n' + 'event: turn-settled\ndata: {"status":"failed"}\n\n', true)));
+    expect(await drain()).toEqual([{type:'error',code:'failed',message:'Failed'}]);
+  });
+});

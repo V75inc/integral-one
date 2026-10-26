@@ -22,3 +22,15 @@ it('forwards the existing bridge without changing identity or offline behavior',
   expect(resumeOffline).toHaveBeenCalledOnce();
   expect(signOut).toHaveBeenCalledOnce();
 });
+
+
+it('keeps local renewal independent of account sign-in and allows recovery after a runtime failure', async () => {
+  const session = vi.fn().mockRejectedValueOnce(new Error('runtime restarting')).mockResolvedValueOnce({ access_token: 'fresh-owner', expires_in: 60 });
+  const signIn = vi.fn();
+  const resumeOffline = vi.fn();
+  window.integralDesktop = { session, signIn, resumeOffline };
+  await expect(getHostSession()!.session()).rejects.toThrow('runtime restarting');
+  await expect(getHostSession()!.session()).resolves.toMatchObject({ access_token: 'fresh-owner', expires_in: 60 });
+  expect(signIn).not.toHaveBeenCalled();
+  expect(resumeOffline).not.toHaveBeenCalled();
+});

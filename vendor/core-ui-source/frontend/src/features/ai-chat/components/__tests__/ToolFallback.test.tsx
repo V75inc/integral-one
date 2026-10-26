@@ -10,7 +10,7 @@
  * collapsible mount state.
  */
 import { describe, it, expect } from "vitest";
-import { render } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
 import { ToolFallbackArgs, ToolFallbackResult } from "../ToolFallback";
 
 const PRETTY = [
@@ -74,5 +74,19 @@ describe("plain-language tool failures", () => {
     expect(container.textContent).toBe("I couldn't prepare this step correctly.");
     expect(container.textContent).not.toContain("private-sentinel");
     expect(container.querySelector("pre")).toBeNull();
+  });
+});
+
+
+describe('public tool summaries', () => {
+  it('shows a useful bounded result without a raw payload dump', () => {
+    render(<ToolFallbackResult result={{publicSummary: {outcome: 'returned', returned_count: 3, duration_ms: 1200}}} />);
+    expect(screen.getByText('Returned 3 results.')).toBeVisible();
+    expect(screen.getByText('1.2 seconds')).toBeVisible();
+    expect(screen.queryByText('Result:')).not.toBeInTheDocument();
+  });
+  it('does not crash on an invalid legacy summary', () => {
+    const {container} = render(<ToolFallbackResult result={{publicSummary: null}} />);
+    expect(container).toBeEmptyDOMElement();
   });
 });

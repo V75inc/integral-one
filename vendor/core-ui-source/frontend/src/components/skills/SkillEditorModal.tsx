@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { Lock, Plus, SlidersHorizontal, Wrench, X } from 'lucide-react';
 
 import {
@@ -82,7 +83,6 @@ export function SkillEditorModal({
   const confirm = useConfirm();
   const toast = useToast();
   const [detail, setDetail] = useState<SkillDetail | null>(null);
-  const [tools, setTools] = useState<ToolCatalogueEntry[]>([]);
   const [loading, setLoading] = useState(false);
   const [tab, setTab] = useState<'view' | 'edit'>('view');
   const [hoveredTab, setHoveredTab] = useState<'view' | 'edit' | null>(null);
@@ -111,6 +111,16 @@ export function SkillEditorModal({
 
   const readOnly = !canManage || detail?.read_only === true;
   const isCreate = skillId === '__new__';
+  const toolQuery = useQuery({
+    queryKey: ['skill-tools'],
+    queryFn: () => skillsApi.toolCatalogue(),
+    enabled: open && canManage && (isCreate || (detail?.id === skillId && tab === 'edit' && !readOnly)),
+    staleTime: 60_000,
+  });
+  const tools = useMemo(() => toolQuery.data?.tools ?? [], [toolQuery.data]);
+  useEffect(() => {
+    if (toolQuery.isError) toast.showToast('Could not load tools. Reopen the editor to try again.', 'error');
+  }, [toolQuery.isError, toast]);
 
   useEffect(() => {
     if (!open) return;
@@ -120,8 +130,6 @@ export function SkillEditorModal({
     (async () => {
       setLoading(true);
       try {
-        const catalogue = await skillsApi.toolCatalogue();
-        if (!cancelled) setTools(catalogue.tools);
         if (isCreate) {
           setDetail(null);
           setName('');
@@ -176,9 +184,10 @@ export function SkillEditorModal({
   }, [open, skillId, isCreate, onClose, toast]);
 
   const unknownTools = useMemo(() => {
+    if (!toolQuery.data) return [];
     const known = new Set(tools.map(t => t.name));
     return toolsRequired.filter(t => !known.has(t));
-  }, [tools, toolsRequired]);
+  }, [tools, toolsRequired, toolQuery.data]);
 
   const addTool = (tool: ToolCatalogueEntry) => {
     setToolsRequired(prev => (prev.includes(tool.name) ? prev : [...prev, tool.name]));

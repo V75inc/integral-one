@@ -1,531 +1,407 @@
-import { useEffect, useMemo, useState } from 'react';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ChevronDown, Lock, Search } from 'lucide-react';
-
-import { skillsApi, type SkillSummary, type ToolCatalogueEntry } from '../../../api/skills';
-import type { EffectiveSkillEntry } from '../../../api/skills';
-import { useScope } from '../../../context/ScopeContext';
-import { Badge } from '../../../components/ui/Badge';
-import { Button } from '../../../components/ui/Button';
-import { EmptyState } from '../../../components/ui/EmptyState';
-import { Skeleton } from '../../../components/ui/Skeleton';
+import { useCallback, useEffect, useState } from "react";
 import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from '../../../components/ui/collapsible';
-import { Input, Select, Stack, Surface, Text } from '../../../ui';
-import { SettingsSection } from '../components/Field';
-import { SkillEditorModal, skillBadges } from '../../../components/skills/SkillEditorModal';
-import { useToast } from '../../../context/ToastContext';
+  keepPreviousData,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
+import {
+  ChevronRight,
+  Lock,
+  Plus,
+  Search,
+  SlidersHorizontal,
+} from "lucide-react";
 
-function skillsQueryKey(workspaceId: string | undefined) {
-  return ['skills', workspaceId] as const;
-}
+import {
+  skillsApi,
+  type SkillBrowseQuery,
+  type SkillSummary,
+} from "../../../api/skills";
+import { useScope } from "../../../context/ScopeContext";
+import { useToast } from "../../../context/ToastContext";
+import { Badge } from "../../../components/ui/Badge";
+import { Button } from "../../../components/ui/Button";
+import { EmptyState } from "../../../components/ui/EmptyState";
+import { Skeleton } from "../../../components/ui/Skeleton";
+import { SkillEditorModal } from "../../../components/skills/SkillEditorModal";
+import { Modal } from "../../../components/ui/Modal";
+import { Section } from "../../../patterns";
+import { Input, Select, Stack, Surface, Text } from "../../../ui";
+import {
+  SkillPagination,
+  SkillContextInspector,
+} from "./SkillContextInspector";
 
-const BADGE_VARIANT: Record<string, string> = {
-  Core: 'info',
-  Customized: 'ai',
-  'Default updated': 'warning',
-  Disabled: 'default',
-  'Code skill': 'default',
+const PAGE_SIZE = 10;
+const INITIAL_FILTERS: SkillBrowseQuery = {
+  page: 1,
+  page_size: PAGE_SIZE,
+  search: "",
+  source: "all",
+  app_id: "",
 };
-
-function matchesQuery(skill: SkillSummary, q: string): boolean {
-  if (!q) return true;
-  const hay = [skill.name, skill.description, skill.key, skill.namespaced_name]
-    .filter(Boolean)
-    .join(' ')
-    .toLowerCase();
-  return hay.includes(q);
-}
-
-function matchesToolQuery(tool: ToolCatalogueEntry, q: string): boolean {
-  if (!q) return true;
-  return [tool.name, tool.friendly_label, tool.description, tool.param_summary]
-    .filter(Boolean)
-    .join(' ')
-    .toLowerCase()
-    .includes(q);
-}
-
-function SkillRow({
-  skill,
-  onOpen,
-  onToggle,
-  canManage,
-}: {
-  skill: SkillSummary;
-  onOpen: () => void;
-  onToggle?: () => void;
-  canManage: boolean;
-}) {
-  const badges = skillBadges(skill);
-  return (
-    <Surface
-      tone="panel-2"
-      border="subtle"
-      radius="card"
-      className="flex items-center justify-between gap-3 px-4 py-3 transition hover:border-[var(--panel-border)]"
-    >
-      <button
-        type="button"
-        className="min-w-0 flex-1 text-left"
-        onClick={onOpen}
-      >
-        <div className="flex flex-wrap items-center gap-2">
-          <Text as="span" variant="body" weight="medium" truncate>
-            {skill.name}
-          </Text>
-          {skill.source === 'workspace' && skill.app_id ? (
-            <Badge variant="info">{skill.app_slug || 'app-scoped'}</Badge>
-          ) : null}
-          {badges.map(b => (
-            <Badge key={b} variant={BADGE_VARIANT[b] ?? 'default'}>
-              {b === 'Core' ? <Lock size={10} className="mr-1" /> : null}
-              {b}
-            </Badge>
-          ))}
-        </div>
-        <Text as="p" variant="body-sm" tone="muted" className="mt-1 line-clamp-1">
-          {skill.description || skill.namespaced_name || skill.key}
-        </Text>
-      </button>
-      {canManage && skill.source !== 'core' && onToggle ? (
-        <button
-          type="button"
-          role="switch"
-          aria-checked={skill.enabled}
-          aria-label={`${skill.enabled ? 'Disable' : 'Enable'} skill ${skill.name}`}
-          onClick={onToggle}
-          className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors duration-fast focus:outline-none focus:ring-2 focus:ring-[var(--focus-ring-color)] ${
-            skill.enabled ? 'bg-[var(--brand-accent)]' : 'bg-[var(--badge-muted-bg)]'
-          }`}
-        >
-          <span
-            aria-hidden
-            className={`inline-block h-4 w-4 rounded-full bg-white shadow-[var(--shadow-sm)] transition-transform duration-fast ${
-              skill.enabled ? 'translate-x-[18px]' : 'translate-x-[2px]'
-            }`}
-          />
-        </button>
-      ) : null}
-    </Surface>
-  );
-}
-
-function GroupHeading({ title, count }: { title: string; count: number }) {
-  return (
-    <div className="flex items-center gap-2">
-      <Text as="h3" variant="meta" weight="semibold" className="uppercase tracking-wide">
-        {title}
-      </Text>
-      <Badge variant="default">{count}</Badge>
-    </div>
-  );
-}
-
-function SkillGroup({
-  title,
-  skills,
-  onOpen,
-  onToggle,
-  canManage,
-}: {
-  title: string;
-  skills: SkillSummary[];
-  onOpen: (id: string) => void;
-  onToggle: (skill: SkillSummary) => void;
-  canManage: boolean;
-}) {
-  if (skills.length === 0) return null;
-  return (
-    <div className="flex flex-col gap-2">
-      <GroupHeading title={title} count={skills.length} />
-      <Stack gap="sm">
-        {skills.map(skill => (
-          <SkillRow
-            key={skill.id}
-            skill={skill}
-            onOpen={() => onOpen(skill.id)}
-            onToggle={() => onToggle(skill)}
-            canManage={canManage}
-          />
-        ))}
-      </Stack>
-    </div>
-  );
-}
 
 export function SkillsSection() {
   const { scope, activeWorkspace, isPersonal } = useScope();
   const workspaceId = scope?.workspaceId;
+  const canManage =
+    isPersonal ||
+    activeWorkspace?.your_role === "admin" ||
+    activeWorkspace?.your_role === "owner";
+  // Reset all browse/editor state on a workspace change. Never retain another
+  // workspace's rows while the next page is loading.
+  return (
+    <SkillsBrowser
+      key={workspaceId ?? "none"}
+      workspaceId={workspaceId}
+      canManage={canManage}
+    />
+  );
+}
+
+function SkillsBrowser({
+  workspaceId,
+  canManage,
+}: {
+  workspaceId?: string;
+  canManage: boolean;
+}) {
   const toast = useToast();
   const qc = useQueryClient();
+  const [filters, setFilters] = useState(INITIAL_FILTERS);
+  const [search, setSearch] = useState("");
   const [editorId, setEditorId] = useState<string | null>(null);
-  const [query, setQuery] = useState('');
-  const [advancedOpen, setAdvancedOpen] = useState(false);
-  const [focusedAppId, setFocusedAppId] = useState('');
+  const [contextOpen, setContextOpen] = useState(false);
+  const closeEditor = useCallback(() => setEditorId(null), []);
+
   useEffect(() => {
-    setFocusedAppId('');
-  }, [workspaceId]);
-  // Personal workspace = owner. Org workspace = admin/owner only (mirrors the
-  // backend workspace-admin gate on skill writes).
-  const canManage =
-    isPersonal || activeWorkspace?.your_role === 'admin' || activeWorkspace?.your_role === 'owner';
+    const timer = setTimeout(
+      () =>
+        setFilters((current) =>
+          current.search === search.trim()
+            ? current
+            : { ...current, search: search.trim(), page: 1 },
+        ),
+      300,
+    );
+    return () => clearTimeout(timer);
+  }, [search]);
 
-  const { data, isLoading, isError } = useQuery({
-    queryKey: skillsQueryKey(workspaceId),
-    queryFn: () => skillsApi.list(),
+  const pageQuery = useQuery({
+    queryKey: ["skills", workspaceId, "browse", filters],
+    queryFn: () => skillsApi.browse(filters),
     enabled: Boolean(workspaceId),
+    staleTime: 30_000,
+    placeholderData: keepPreviousData,
   });
-  const { data: toolData, isLoading: toolsLoading } = useQuery({
-    queryKey: ['skill-tools', workspaceId],
-    queryFn: () => skillsApi.toolCatalogue(),
-    enabled: Boolean(workspaceId),
-    staleTime: 60_000,
-  });
-  const effectiveQuery = useQuery({
-    queryKey: ['effective-skills', workspaceId, focusedAppId],
-    queryFn: () => skillsApi.effective(focusedAppId || null),
-    enabled: Boolean(workspaceId),
-  });
+  const data = pageQuery.data;
+  useEffect(() => {
+    if (data && !pageQuery.isPlaceholderData && data.page !== filters.page)
+      setFilters((current) => ({ ...current, page: data.page }));
+  }, [data, filters.page, pageQuery.isPlaceholderData]);
 
-  const invalidateSkillQueries = () =>
-    Promise.all([
-      qc.invalidateQueries({ queryKey: skillsQueryKey(workspaceId) }),
-      qc.invalidateQueries({ queryKey: ['effective-skills', workspaceId] }),
+  const invalidateSkills = useCallback(async () => {
+    await Promise.all([
+      qc.invalidateQueries({ queryKey: ["skills", workspaceId] }),
+      qc.invalidateQueries({ queryKey: ["effective-skills", workspaceId] }),
     ]);
-
-  const toggleMutation = useMutation({
-    mutationFn: ({ id, enabled }: { id: string; enabled: boolean }) =>
-      skillsApi.update(id, { enabled }),
-    onSuccess: invalidateSkillQueries,
-    onError: () => toast.showToast('Failed to update skill', 'error'),
-  });
-
-  const onToggle = (skill: SkillSummary) =>
-    toggleMutation.mutate({ id: skill.id, enabled: !skill.enabled });
-
-  const q = query.trim().toLowerCase();
-
-  const workspaceSkills = useMemo(
-    () => (data?.workspace || []).filter(s => matchesQuery(s, q)),
-    [data?.workspace, q],
-  );
-
-  const coreSkills = useMemo(
-    () => (data?.core || []).filter(s => matchesQuery(s, q)),
-    [data?.core, q],
-  );
-
-  const tools = useMemo(
-    () => (toolData?.tools || []).filter(tool => matchesToolQuery(tool, q)),
-    [toolData?.tools, q],
-  );
-
-  const appGroups = useMemo(() => {
-    const byApp = new Map<string, SkillSummary[]>();
-    for (const skill of data?.apps || []) {
-      if (!matchesQuery(skill, q)) continue;
-      const slug = skill.app_slug || 'app';
-      const list = byApp.get(slug) || [];
-      list.push(skill);
-      byApp.set(slug, list);
+  }, [qc, workspaceId]);
+  const savedSkill = useCallback(async () => {
+    if (editorId === "__new__") {
+      setSearch("");
+      setFilters({ ...INITIAL_FILTERS, source: "workspace" });
     }
-    return [...byApp.entries()].sort(([a], [b]) => a.localeCompare(b));
-  }, [data?.apps, q]);
-
-  const appMatchCount = appGroups.reduce((n, [, s]) => n + s.length, 0);
-  const filteredTotal = workspaceSkills.length + appMatchCount + coreSkills.length + tools.length;
-  // A live search auto-reveals matching core skills so hits aren't hidden
-  // behind the collapsed Advanced section.
-  const coreOpen = advancedOpen || (q.length > 0 && coreSkills.length > 0);
+    await invalidateSkills();
+  }, [editorId, invalidateSkills]);
+  const toggle = useMutation({
+    mutationFn: (skill: SkillSummary) =>
+      skillsApi.update(skill.id, { enabled: !skill.enabled }),
+    onSuccess: async (_, skill) => {
+      toast.showToast(
+        `Skill ${skill.enabled ? "disabled" : "enabled"}`,
+        "success",
+      );
+      await invalidateSkills();
+    },
+    onError: () => toast.showToast("Could not update this skill", "error"),
+  });
+  const changeSource = (source: SkillBrowseQuery["source"]) =>
+    setFilters((current) => ({ ...current, source, app_id: "", page: 1 }));
+  const filtered = Boolean(
+    search || filters.source !== "all" || filters.app_id,
+  );
+  const reset = () => {
+    setSearch("");
+    setFilters(INITIAL_FILTERS);
+  };
+  const busy = pageQuery.isFetching || search.trim() !== filters.search;
 
   return (
-    <SettingsSection
+    <Section
       title="AI Skills"
-      description="View and customize the skills your workspace agent can use. Core skills are built in and read-only; app and workspace skills can be tailored to your workspace."
+      description="Skills guide how Integral handles tasks in this workspace."
       actions={
-        canManage ? (
-          <Button onClick={() => setEditorId('__new__')}>New skill</Button>
-        ) : undefined
+        <div className="flex flex-wrap items-center gap-2">
+          <Button
+            variant="ghost"
+            size="sm"
+            icon={<SlidersHorizontal size={15} />}
+            onClick={() => setContextOpen(true)}
+            disabled={!workspaceId}
+          >
+            Inspect agent access
+          </Button>
+          {canManage ? (
+            <Button
+              size="sm"
+              icon={<Plus size={15} />}
+              onClick={() => setEditorId("__new__")}
+            >
+              New skill
+            </Button>
+          ) : null}
+        </div>
       }
     >
-      {isLoading || toolsLoading ? (
-        <Skeleton className="h-24 w-full" />
-      ) : isError ? (
-        <EmptyState title="Could not load skills" />
-      ) : (
-        <Stack gap="lg">
-          <div className="relative">
-            <Text
-              as="span"
-              tone="muted"
-              className="pointer-events-none absolute left-3 top-1/2 flex -translate-y-1/2"
-            >
-              <Search size={15} />
-            </Text>
-            <Input
-              value={query}
-              onChange={e => setQuery(e.target.value)}
-              placeholder="Search skills and tools…"
-              aria-label="Search skills and tools"
-              style={{ paddingLeft: '2.25rem' }}
-            />
-          </div>
-
-          <EffectiveSkillsPanel
-            data={effectiveQuery.data}
-            loading={effectiveQuery.isLoading}
-            focusedAppId={focusedAppId}
-            onFocusChange={setFocusedAppId}
-            query={q}
+      <div className="flex flex-wrap items-end gap-3">
+        <div className="relative min-w-0 flex-1 basis-64">
+          <Text
+            as="span"
+            tone="subtle"
+            className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2"
+          >
+            <Search size={16} aria-hidden />
+          </Text>
+          <Input
+            value={search}
+            maxLength={120}
+            onChange={(event) => setSearch(event.target.value)}
+            placeholder="Search skill names…"
+            aria-label="Search skill names"
+            style={{ paddingLeft: "2.25rem" }}
           />
+        </div>
+        <Select
+          aria-label="Skill source"
+          className="w-full sm:w-auto"
+          value={filters.source}
+          onChange={(event) =>
+            changeSource(event.target.value as SkillBrowseQuery["source"])
+          }
+        >
+          <option value="all">All skills</option>
+          <option value="app">App skills</option>
+          <option value="workspace">Workspace skills</option>
+          <option value="core">Built-in skills</option>
+        </Select>
+        {filters.source !== "core" &&
+        filters.source !== "workspace" &&
+        Boolean(data?.apps.length) ? (
+          <Select
+            aria-label="Filter by App"
+            className="w-full sm:max-w-48 sm:w-auto"
+            value={filters.app_id}
+            onChange={(event) =>
+              setFilters((current) => ({
+                ...current,
+                app_id: event.target.value,
+                page: 1,
+              }))
+            }
+          >
+            <option value="">All Apps</option>
+            {data?.apps.map((app) => (
+              <option key={app.id} value={app.id}>
+                {app.name}
+              </option>
+            ))}
+          </Select>
+        ) : null}
+        {filtered ? (
+          <Button variant="ghost" size="sm" onClick={reset}>
+            Clear filters
+          </Button>
+        ) : null}
+      </div>
 
-          {(data?.total || 0) === 0 && (toolData?.total || 0) === 0 ? (
-            <EmptyState title="No skills or tools are available here" />
-          ) : filteredTotal === 0 ? (
-            <EmptyState title={`No skills match “${query.trim()}”`} />
-          ) : (
-            <Stack gap="lg">
-              <SkillGroup
-                title="Workspace skills"
-                skills={workspaceSkills}
-                onOpen={setEditorId}
-                onToggle={onToggle}
-                canManage={canManage}
-              />
-              {appGroups.map(([slug, skills]) => (
-                <SkillGroup
-                  key={slug}
-                  title={slug}
-                  skills={skills}
-                  onOpen={setEditorId}
-                  onToggle={onToggle}
-                  canManage={canManage}
-                />
-              ))}
-
-              {coreSkills.length > 0 ? (
-                <Collapsible open={coreOpen} onOpenChange={setAdvancedOpen}>
-                  {/* CollapsibleTrigger is a real Radix button — routing it
-                      through <Surface as="button"> would drop the onClick/
-                      aria-expanded/data-state props Radix's asChild clones
-                      onto the child, since Surface doesn't forward rest
-                      props. Nesting the trigger inside a Surface instead
-                      keeps Radix's native wiring intact and still gets the
-                      typed background/border. */}
-                  <Surface
-                    tone="panel-2"
-                    border="subtle"
-                    radius="card"
-                    className="transition hover:border-[var(--panel-border)]"
-                  >
-                    <CollapsibleTrigger className="group flex w-full items-center justify-between gap-2 px-4 py-3 text-left">
-                      <span className="flex items-center gap-2">
-                        <Text as="span" tone="muted">
-                          <Lock size={14} />
-                        </Text>
-                        <Text as="span" variant="body" weight="medium">
-                          Advanced · Core skills
-                        </Text>
-                        <Badge variant="default">{coreSkills.length}</Badge>
-                      </span>
-                      <Text
-                        as="span"
-                        tone="muted"
-                        className="flex transition-transform group-data-[state=open]:rotate-180"
+      <div aria-busy={busy}>
+        {pageQuery.isPending ? (
+          <Stack gap="sm">
+            <Skeleton className="h-20 w-full" />
+            <Skeleton className="h-20 w-full" />
+            <Skeleton className="h-20 w-full" />
+          </Stack>
+        ) : pageQuery.isError ? (
+          <EmptyState
+            title="Could not load skills"
+            description="Try loading this page again."
+            action={
+              <Button
+                variant="secondary"
+                onClick={() => void pageQuery.refetch()}
+              >
+                Try again
+              </Button>
+            }
+          />
+        ) : data ? (
+          <Stack gap="sm">
+            <div role="status">
+              <Text
+                as="p"
+                variant="meta"
+                tone="muted"
+                className="flex items-center justify-between gap-2"
+              >
+                <span>
+                  {data.total} {data.total === 1 ? "skill" : "skills"}
+                  {filtered ? " matching your filters" : " in this workspace"}
+                </span>
+                {busy ? <span>Updating…</span> : null}
+              </Text>
+            </div>
+            {data.skills.length ? (
+              <Surface
+                border="subtle"
+                radius="card"
+                className="overflow-hidden"
+              >
+                <ul
+                  aria-label="Skills"
+                  className="divide-y divide-[var(--border-subtle)]"
+                >
+                  {data.skills.map((skill) => (
+                    <Surface
+                      as="li"
+                      key={skill.id}
+                      tone="transparent"
+                      border="none"
+                      radius="none"
+                      hoverTone="panel-2"
+                      className="flex items-center gap-3 px-4 py-3"
+                    >
+                      <button
+                        type="button"
+                        disabled={busy}
+                        onClick={() => setEditorId(skill.id)}
+                        aria-label={`View skill ${skill.name}`}
+                        className="group min-w-0 flex-1 rounded-sm text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus-ring-color)]"
                       >
-                        <ChevronDown size={16} />
-                      </Text>
-                    </CollapsibleTrigger>
-                  </Surface>
-                  <CollapsibleContent className="pt-2">
-                    <Stack gap="sm">
-                      <Text as="p" variant="body-sm" tone="muted" className="px-1">
-                        Built-in skills that power the agent. These are read-only.
-                      </Text>
-                      {coreSkills.map(skill => (
-                        <SkillRow
-                          key={skill.id}
-                          skill={skill}
-                          onOpen={() => setEditorId(skill.id)}
-                          canManage={canManage}
-                        />
-                      ))}
-                    </Stack>
-                  </CollapsibleContent>
-                </Collapsible>
-              ) : null}
-              {tools.length > 0 ? (
-                <details key={q ? 'filtered-tools' : 'all-tools'} open={Boolean(q)} className="flex flex-col gap-2">
-                  <summary className="cursor-pointer py-3"><Text as="span" variant="body-sm" weight="medium">Advanced · Available tools ({tools.length})</Text></summary>
-                  <Surface
-                    tone="panel-2"
-                    border="subtle"
-                    radius="card"
-                    className="divide-y divide-[var(--panel-border)] overflow-hidden"
-                  >
-                    {tools.map(tool => (
-                      <div
-                        key={tool.name}
-                        className="grid gap-1 px-4 py-3 sm:grid-cols-[minmax(9rem,0.8fr)_minmax(0,2fr)] sm:gap-4"
-                      >
-                        <div className="min-w-0">
-                          <Text as="p" variant="body-sm" weight="medium" className="truncate">
-                            {tool.friendly_label || tool.name}
+                        <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                          <Text as="span" variant="body" weight="medium">
+                            {skill.name}
                           </Text>
-                          <Text as="p" variant="meta" tone="muted" className="truncate">
-                            {tool.name}
-                          </Text>
+                          {skill.customized ? (
+                            <Badge variant="ai">Customized</Badge>
+                          ) : null}
+                          {skill.stale_default ? (
+                            <Badge variant="warning">Update available</Badge>
+                          ) : null}
                         </div>
-                        <Text as="p" variant="body-sm" tone="muted">
-                          {tool.description || tool.param_summary}
+                        <Text
+                          as="p"
+                          variant="body-sm"
+                          tone="muted"
+                          className="mt-0.5 line-clamp-2"
+                        >
+                          {skill.description ||
+                            "Open to read this skill’s instructions."}
                         </Text>
-                      </div>
-                    ))}
-                  </Surface>
-                </details>
-              ) : null}
-            </Stack>
-          )}
-        </Stack>
-      )}
+                        <Text
+                          as="p"
+                          variant="meta"
+                          tone="subtle"
+                          className="mt-1 flex flex-wrap items-center gap-1"
+                        >
+                          {skill.source === "core" ? (
+                            <>
+                              <Lock size={11} aria-hidden />
+                              Built-in · Read only
+                            </>
+                          ) : skill.source === "workspace" ? (
+                            "Workspace skill"
+                          ) : (
+                            skill.app_name || skill.app_slug || "App skill"
+                          )}
+                          {skill.private ? <span>· App only</span> : null}
+                        </Text>
+                      </button>
+                      {canManage && skill.source !== "core" ? (
+                        <button
+                          type="button"
+                          role="switch"
+                          aria-checked={skill.enabled}
+                          aria-label={`${skill.enabled ? "Disable" : "Enable"} skill ${skill.name}`}
+                          disabled={toggle.isPending || busy}
+                          onClick={() => toggle.mutate(skill)}
+                          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus-ring-color)] disabled:opacity-50"
+                        >
+                          <span
+                            aria-hidden
+                            className={`inline-flex h-5 w-9 items-center rounded-full transition-colors ${skill.enabled ? "bg-[var(--brand-accent)]" : "bg-[var(--badge-muted-bg)]"}`}
+                          >
+                            <span
+                              className={`h-4 w-4 rounded-full bg-white shadow-[var(--shadow-sm)] transition-transform ${skill.enabled ? "translate-x-[18px]" : "translate-x-[2px]"}`}
+                            />
+                          </span>
+                        </button>
+                      ) : skill.source !== "core" ? (
+                        <Text variant="meta" tone="muted">
+                          {skill.enabled ? "Enabled" : "Disabled"}
+                        </Text>
+                      ) : null}
+                      <Text as="span" tone="subtle" className="shrink-0">
+                        <ChevronRight size={15} aria-hidden />
+                      </Text>
+                    </Surface>
+                  ))}
+                </ul>
+              </Surface>
+            ) : (
+              <EmptyState
+                title={filtered ? "No matching skills" : "No skills yet"}
+                description={
+                  filtered
+                    ? "Try another name or clear the filters."
+                    : "Skills from installed Apps will appear here."
+                }
+              />
+            )}
+            {data.total > 0 ? (
+              <SkillPagination
+                page={data.page}
+                pages={data.total_pages}
+                total={data.total}
+                pageSize={data.page_size}
+                busy={busy}
+                onPage={(page) =>
+                  setFilters((current) => ({ ...current, page }))
+                }
+                label="Skills pages"
+              />
+            ) : null}
+          </Stack>
+        ) : null}
+      </div>
 
+      <Modal
+        open={contextOpen}
+        onClose={() => setContextOpen(false)}
+        title="Agent access"
+        titleIcon={<SlidersHorizontal size={18} />}
+      >
+        {contextOpen && workspaceId ? (
+          <SkillContextInspector workspaceId={workspaceId} />
+        ) : null}
+      </Modal>
       <SkillEditorModal
         open={editorId !== null}
         skillId={editorId}
         canManage={canManage}
-        onClose={() => setEditorId(null)}
-        onSaved={() => {
-          void invalidateSkillQueries();
-        }}
+        onClose={closeEditor}
+        onSaved={savedSkill}
       />
-    </SettingsSection>
-  );
-}
-
-function matchesEffectiveSkill(skill: EffectiveSkillEntry, q: string): boolean {
-  if (!q) return true;
-  const hay = [skill.name, skill.description, skill.key, skill.app_name, skill.reason]
-    .filter(Boolean)
-    .join(' ')
-    .toLowerCase();
-  return hay.includes(q);
-}
-
-function matchesEffectiveTool(
-  tool: { name: string; description: string },
-  q: string,
-): boolean {
-  if (!q) return true;
-  return [tool.name, tool.description]
-    .filter(Boolean)
-    .join(' ')
-    .toLowerCase()
-    .includes(q);
-}
-
-function EffectiveSkillsPanel({
-  data,
-  loading,
-  focusedAppId,
-  onFocusChange,
-  query,
-}: {
-  data?: Awaited<ReturnType<typeof skillsApi.effective>>;
-  loading: boolean;
-  focusedAppId: string;
-  onFocusChange: (id: string) => void;
-  query: string;
-}) {
-  const stateLabel: Record<EffectiveSkillEntry['state'], string> = {
-    available: 'Available',
-    offer_first: 'Ask first',
-    paused: 'Paused',
-    unavailable: 'Not loaded',
-  };
-  const skills = useMemo(
-    () => (data?.skills || []).filter(s => matchesEffectiveSkill(s, query)),
-    [data?.skills, query],
-  );
-  const tools = useMemo(
-    () => (data?.tools || []).filter(t => matchesEffectiveTool(t, query)),
-    [data?.tools, query],
-  );
-  const noMatch = Boolean(query) && skills.length === 0 && tools.length === 0;
-
-  return (
-    <Surface tone="panel-2" border="subtle" radius="card" className="p-4">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <Text as="h3" variant="body" weight="semibold">Skills and tools available here</Text>
-          <Text as="p" variant="meta" tone="muted" className="mt-1">
-            Permission-filtered for this workspace and App focus. Private skills you cannot access are not listed.
-          </Text>
-        </div>
-        <label className="flex items-center gap-2 text-sm">
-          <Text as="span" variant="label">App focus</Text>
-          <Select
-            aria-label="App focus for available skills"
-            value={focusedAppId}
-            onChange={event => onFocusChange(event.target.value)}
-          >
-            <option value="">Workspace</option>
-            {(data?.apps ?? []).map(app => (
-              <option key={app.id} value={app.id}>{app.name}</option>
-            ))}
-          </Select>
-        </label>
-      </div>
-      {loading ? (
-        <Skeleton className="mt-4 h-16 w-full" />
-      ) : data ? (
-        noMatch ? (
-          <Text as="p" variant="body-sm" tone="muted" className="mt-4">
-            No available skills or tools match “{query}”.
-          </Text>
-        ) : (
-          <div className="mt-4 grid gap-5 lg:grid-cols-2">
-            <div>
-              <Text as="h4" variant="meta" weight="semibold" tone="subtle" className="mb-2 block uppercase tracking-[0.08em]">
-                Skills ({skills.length})
-              </Text>
-              <ul className="space-y-2">
-                {skills.map(skill => (
-                  <li key={skill.id} className="flex items-start justify-between gap-3 text-sm">
-                    <span className="min-w-0">
-                      <Text variant="body" weight="medium">{skill.name}</Text>
-                      {skill.app_name ? <Text className="ml-2" variant="body" tone="subtle">· {skill.app_name}</Text> : null}
-                      {skill.reason ? <Text as="span" className="mt-0.5 block" variant="body-sm" tone="muted">{skill.reason}</Text> : null}
-                    </span>
-                    <Text className="shrink-0" variant="body-sm" tone="muted">{stateLabel[skill.state]}</Text>
-                  </li>
-                ))}
-                {skills.length === 0 ? <li><Text variant="body" tone="muted">No skills available.</Text></li> : null}
-              </ul>
-            </div>
-            <Surface as="details" tone="panel" border="default" radius="card" padding="md" className="min-w-0 self-start">
-              <Text as="summary" variant="body-sm" weight="medium" className="cursor-pointer">
-                Tools Integral can use ({tools.length})
-              </Text>
-              <Text as="p" variant="body-sm" tone="muted" className="mt-2">
-                For advanced setup and troubleshooting.
-              </Text>
-              <ul className="mt-3 grid gap-x-3 gap-y-1 border-t border-[var(--panel-border)] pt-3 sm:grid-cols-2">
-                {tools.map(tool => (
-                  <li key={`${tool.source}:${tool.name}`} className="truncate" title={tool.description}>
-                    <Text variant="body-sm" tone="muted">{tool.name}</Text>
-                  </li>
-                ))}
-              </ul>
-            </Surface>
-          </div>
-        )
-      ) : (
-        <Text as="p" variant="body-sm" tone="muted" className="mt-4">Could not load the effective turn catalogue.</Text>
-      )}
-    </Surface>
+    </Section>
   );
 }

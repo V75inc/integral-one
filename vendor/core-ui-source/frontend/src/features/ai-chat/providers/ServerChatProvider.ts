@@ -1,3 +1,4 @@
+import { isHostManagedSession } from '../../../api/sessionRuntime';
 import { isModelSetupFailure } from "../components/assistantMessagePresentation";
 import { aiChatApi } from "../../../api/aiChat";
 import { getActiveScopeHeader } from "../../../api/client";
@@ -109,7 +110,15 @@ export function createServerChatProvider({
   },
 
   async *streamTurn(ctx: TurnContext): AsyncIterable<NormalizedEvent> {
-    checkSessionDeadline();
+    const clientStarted = performance.now();
+    let clientFirstTextMs: number | undefined;
+    let clientFirstToolMs: number | undefined;
+    let lastTiming: import('./types').ChatLatency | undefined;
+    await checkSessionDeadline();
+    if (isHostManagedSession() && !getAccessToken()) {
+      yield { type: "error", code: "runtime_unavailable", message: "Your local workspace is reconnecting. Try again when it is ready." };
+      return;
+    }
     if (isSessionPaused()) {
       yield { type: "error", code: "session_renewal_required",
         message: "Renew your session, then send your message again." };
@@ -300,7 +309,10 @@ export function createServerChatProvider({
       try {
         for await (const ev of readSseEvents(response, ctx.abortSignal)) {
           if (ctx.abortSignal.aborted) return;
-          if (ev.event === "turn-settled") return;
+          if (ev.event === "turn-settled") {
+            if (workItemId && lastTiming) yield {type: 'message-finish', timing: {...lastTiming, clientCompletionMs: performance.now() - clientStarted}};
+            return;
+          }
           if (ev.event === "turn-accepted") continue;
           if (workItemId && ev.id === undefined && ev.event !== "error") {
             yield { type: "error", code: "chat_event_sequence_invalid",
@@ -323,7 +335,16 @@ export function createServerChatProvider({
             committedCursor = sequence;
           }
           const payload = ev.data;
-          if (payload && typeof payload === "object") yield payload as NormalizedEvent;
+          if (payload && typeof payload === "object") {
+            let normalized = payload as NormalizedEvent;
+            if (normalized.type === 'text-delta' && normalized.delta && clientFirstTextMs === undefined) clientFirstTextMs = performance.now() - clientStarted;
+            if (normalized.type === 'tool-call' && normalized.status === 'running' && clientFirstToolMs === undefined) clientFirstToolMs = performance.now() - clientStarted;
+            if (normalized.type === 'message-finish' && normalized.timing) {
+              lastTiming = {...normalized.timing, ...(clientFirstTextMs !== undefined ? {clientFirstTextMs} : {}), ...(clientFirstToolMs !== undefined ? {clientFirstToolMs} : {})};
+              normalized = {...normalized, timing: lastTiming};
+            }
+            yield normalized;
+          }
         }
       } catch (err) {
         if (ctx.abortSignal.aborted || (err as DOMException)?.name === "AbortError") return;
@@ -351,7 +372,11 @@ export function createServerChatProvider({
         }, signal: ctx.abortSignal },
       );
       try {
-        checkSessionDeadline();
+        await checkSessionDeadline();
+        if (isHostManagedSession() && !getAccessToken()) {
+          yield { type: "error", code: "runtime_unavailable", message: "Your local workspace is reconnecting. Reopen this conversation when it is ready." };
+          return;
+        }
         if (isSessionPaused()) {
           yield { type: "error", code: "session_renewal_required",
             message: "Renew your session, then reopen this conversation to check the saved response." };

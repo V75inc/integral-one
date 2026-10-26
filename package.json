@@ -1,6 +1,6 @@
 {
   "name": "integral-one",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "private": true,
   "integralOneUpdates": {
     "enabled": false
@@ -29,7 +29,7 @@
   },
   "dependencies": {
     "@clerk/electron": "0.1.1",
-    "@integral/desktop-host": "file:vendor/integral-desktop-host-0.1.7-dev.10.tgz",
+    "@integral/desktop-host": "file:vendor/integral-desktop-host-0.1.7-dev.11.tgz",
     "electron-updater": "6.8.9",
     "js-yaml": "4.3.2",
     "react": "18.3.1",

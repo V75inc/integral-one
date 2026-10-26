@@ -38,7 +38,7 @@ export function operationalModelLibrarySelectOptions(
 /** Parsed `app.tracks[]` entries from an app-attached operational model manifest. */
 export function manifestAppTracks(
   manifest?: Record<string, unknown> | null
-): { key: string; name: string }[] {
+): { key: string; name: string; description: string; entryTypeCount: number; viewCount: number }[] {
   if (!manifest || typeof manifest !== 'object') return [];
   const app = manifest.app;
   if (!app || typeof app !== 'object') return [];
@@ -46,14 +46,18 @@ export function manifestAppTracks(
     (app as { tracks?: unknown; track_types?: unknown }).tracks ??
     (app as { tracks?: unknown; track_types?: unknown }).track_types;
   if (!Array.isArray(tracks)) return [];
-  const out: { key: string; name: string }[] = [];
+  const out: { key: string; name: string; description: string; entryTypeCount: number; viewCount: number }[] = [];
   for (const t of tracks) {
     if (!t || typeof t !== 'object') continue;
     const o = t as Record<string, unknown>;
     const key = String(o.key || '').trim();
     if (!key) continue;
     const name = String(o.name || key).trim() || key;
-    out.push({ key, name });
+    out.push({ key, name,
+      description: typeof o.description === 'string' ? o.description.trim() : '',
+      entryTypeCount: Array.isArray(o.entry_types) ? o.entry_types.length : 0,
+      viewCount: Array.isArray(o.views) ? o.views.length : 0,
+    });
   }
   return out;
 }

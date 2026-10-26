@@ -9,7 +9,7 @@ vi.mock('./session', () => ({
 vi.mock('../lib/apiErrorNotifier', () => ({ clearApiFailure: vi.fn(), notifyApiFailure: vi.fn() }));
 
 import apiClient from './client';
-import { refreshAccessToken } from './session';
+import { refreshAccessToken, checkSessionDeadline, getAccessToken } from './session';
 import { enableSessionRecovery, requestSessionRecovery } from './sessionRecovery';
 
 afterEach(() => { vi.useRealTimers(); vi.clearAllMocks(); enableSessionRecovery(null); });
@@ -52,4 +52,21 @@ describe('API request deadlines', () => {
     expect(adapter).toHaveBeenCalledTimes(1);
     expect(refreshAccessToken).not.toHaveBeenCalled();
   });
+});
+
+it('waits for expiry renewal before dispatching a mutation with the renewed token', async () => {
+  let finish!: (token: string) => void;
+  vi.mocked(checkSessionDeadline).mockReturnValueOnce(new Promise(resolve => { finish = resolve; }));
+  vi.mocked(getAccessToken).mockReturnValue('renewed-access');
+  const adapter: AxiosAdapter = vi.fn(async config => {
+    expect(config.headers.Authorization).toBe('Bearer renewed-access');
+    return { data: {}, status: 200, statusText: 'OK', headers: {}, config };
+  });
+  const request = apiClient.post('/tools/example', {}, { adapter });
+  await Promise.resolve();
+  expect(adapter).not.toHaveBeenCalled();
+  finish('renewed-access');
+  await request;
+  expect(adapter).toHaveBeenCalledOnce();
+  vi.mocked(getAccessToken).mockReturnValue(null);
 });

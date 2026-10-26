@@ -98,7 +98,9 @@ export const FEED_ENTRIES_QUERY_KEY_ROOT = ['feed', 'entries'] as const;
  * tallies (entries-today, active-tracks, last-activity) go stale while
  * the FeedPage list updates.
  */
-export function invalidateFeedCaches(qc: QueryClient): Promise<void> {
+export type QueryInvalidator = Pick<QueryClient, 'invalidateQueries'>;
+
+export function invalidateFeedCaches(qc: QueryInvalidator): Promise<void> {
   return qc.invalidateQueries({ queryKey: ['feed'] });
 }
 
@@ -111,7 +113,7 @@ export function invalidateFeedCaches(qc: QueryClient): Promise<void> {
  * Track / App create / delete mutations MUST call this helper so the
  * Mission Control track/app counts stay current.
  */
-export function invalidateWorkspaceListCaches(qc: QueryClient): Promise<void> {
+export function invalidateWorkspaceListCaches(qc: QueryInvalidator): Promise<void> {
   return qc.invalidateQueries({ queryKey: ['workspaces'] });
 }
 

@@ -1,10 +1,11 @@
+import { accessControlApi } from '../api/accessControl';
 import { useDeployment } from '../hooks/useDeployment';
 import { AppIcon } from '../ui';
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { ResourceAccessReview } from '../components/access/ResourceAccessReview';
 import { usePhantomClickGuard } from '../hooks/usePhantomClickGuard';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import {
   Users,
   Plus,
@@ -109,6 +110,7 @@ interface CollabRow {
 
 export function AppDetailPage() {
   const { collaboration } = useDeployment();
+  const { scope: activeHomeScope } = useScope();
   const { appId } = useParams<{ appId: string }>();
   const navigate = useNavigate();
   const { user: me } = useAuth();
@@ -143,24 +145,33 @@ export function AppDetailPage() {
   const [collaboratorTotal, setCollaboratorTotal] = useState<number | null>(null);
   const [collaboratorDirectoryVisible, setCollaboratorDirectoryVisible] = useState(true);
   const [accessDetailsOpen, setAccessDetailsOpen] = useState(false);
+  const [sectionParams, setSectionParams] = useSearchParams();
+  const requestedSection = sectionParams.get('section');
+  const explicitSection = requestedSection === 'home' || requestedSection === 'tracks' || requestedSection === 'dashboards' ? requestedSection : null;
   const [appSection, setAppSection] = useState<AppDetailSection>(() =>
-    appId ? readAppDetailSection(appId) : 'tracks'
+    explicitSection ?? (appId ? readAppDetailSection(appId) : 'tracks')
   );
   const { setPageContext, clearPageContext } = useChatPageFocus();
 
   const selectAppSection = useCallback(
     (section: AppDetailSection) => {
       setAppSection(section);
+      setSectionParams(previous => {
+        const next = new URLSearchParams(previous);
+        next.set('section', section);
+        if (section !== 'dashboards') next.delete('dashboard_id');
+        return next;
+      }, { replace: true });
       if (appId) writeAppDetailSection(appId, section);
     },
-    [appId]
+    [appId, setSectionParams]
   );
 
   // Restore last section when navigating between apps without remounting.
   useEffect(() => {
     if (!appId) return;
-    setAppSection(readAppDetailSection(appId));
-  }, [appId]);
+    setAppSection(explicitSection ?? readAppDetailSection(appId));
+  }, [appId, explicitSection]);
 
   const dashboardsQuery = useQuery({
     queryKey: ['dashboards', appId],
@@ -169,15 +180,15 @@ export function AppDetailPage() {
   });
   const dashboardCount = dashboardsQuery.data?.length ?? 0;
   const homeQuery = useQuery({
-    queryKey: ['app-home-definition', appId],
+    queryKey: ['app-home-definition', appId, activeHomeScope?.workspaceId],
     queryFn: () => dashboardsApi.home(appId!, false),
     refetchInterval: 15_000,
-    enabled: Boolean(appId),
+    enabled: Boolean(appId && app?.id === appId && app.workspace_id === activeHomeScope?.workspaceId),
   });
   const hasHome = Boolean(homeQuery.data?.home);
   useEffect(() => {
-    if (appId && homeQuery.data) setAppSection(readAppDetailSection(appId, hasHome ? 'home' : 'tracks'));
-  }, [appId, homeQuery.data, hasHome]);
+    if (appId && homeQuery.data) setAppSection(explicitSection === 'home' && !hasHome ? 'tracks' : explicitSection ?? readAppDetailSection(appId, hasHome ? 'home' : 'tracks'));
+  }, [appId, homeQuery.data, hasHome, explicitSection]);
 
   // Publish breadcrumb trail to the TopBar.
   // When the App is workspace-scoped, lead the trail with the {WorkspaceName}
@@ -376,6 +387,19 @@ export function AppDetailPage() {
   const isWorkspaceOwner = workspaces.find(w => w.id === app?.workspace_id)?.your_role === 'owner';
   const canAdmin = isWorkspaceOwner || isAppOwner || isAdminInCollab;
   const canManageCollaborators = canAdmin;
+  const hasConfigurableSettings = Boolean(app?.settings_schema && Object.keys(app.settings_schema.properties || {}).length);
+  const functionSettings = useQuery({
+    queryKey: ['app-function-settings', appId, app?.workspace_id, homeQuery.data?.definition_revision],
+    queryFn: () => accessControlApi.bindings(appId!),
+    enabled: Boolean(isWorkspaceOwner && appId && app?.id === appId && app.workspace_id === activeHomeScope?.workspaceId),
+    retry: false,
+  });
+  // Retain existing grants for review/revocation, even if the new definition
+  // no longer declares roles. Failed discovery stays reachable for retry.
+  const hasFunctionSettings = isWorkspaceOwner && (functionSettings.isError ||
+    Boolean(Object.keys(functionSettings.data?.role_actions || {}).length || functionSettings.data?.bindings?.length));
+  const hasAppSettings = hasConfigurableSettings || hasFunctionSettings;
+
   // Adding or linking a track is app.update, not the workspace create flag.
   // A workspace owner can open this App as a commenter and still holds
   // canCreateTracks; showing New track in that case returns 403.
@@ -654,7 +678,7 @@ export function AppDetailPage() {
                 Edit
               </Button>
             ) : null}
-            {canAdmin ? (
+            {canAdmin && hasAppSettings ? (
               <Button
                 variant="outline"
                 size="sm"
@@ -1054,10 +1078,12 @@ export function AppDetailPage() {
           open={showAppSettingsModal}
           appId={appId}
           appName={app.name}
-          functionAccessWorkspaceId={isWorkspaceOwner ? app.workspace_id : undefined}
+          functionAccessWorkspaceId={hasFunctionSettings ? app.workspace_id : undefined}
+          initialSection={hasConfigurableSettings ? 'settings' : 'access'}
           onClose={() => setShowAppSettingsModal(false)}
           onSaved={() => {
-            showToast('Settings saved', 'success');
+            void queryClient.invalidateQueries({ queryKey: ['app-home-query', appId] });
+            void queryClient.invalidateQueries({ queryKey: ['app-home-data', appId] });
           }}
         />
       ) : null}

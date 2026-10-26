@@ -40,6 +40,9 @@ export interface TrackDetailMainColumnProps {
   onEntryCreatedFromComposer: (entry?: Entry) => void;
   semanticMode: boolean;
   retrievalMissingCount: number;
+  matchesLoading?: boolean;
+  matchesError?: boolean;
+  onRetryMatches?: () => void;
   filteredEntries: Entry[];
   retrievalResultsLength: number;
   entriesListError: string | null;
@@ -89,6 +92,9 @@ export function TrackDetailMainColumn({
   onEntryCreatedFromComposer,
   semanticMode,
   retrievalMissingCount,
+  matchesLoading,
+  matchesError,
+  onRetryMatches,
   filteredEntries,
   retrievalResultsLength,
   entriesListError,
@@ -165,8 +171,8 @@ export function TrackDetailMainColumn({
               Showing {filteredEntries.length} of {retrievalResultsLength}{' '}
               matches.{' '}
               <span className="text-[color:var(--text-muted)]">
-                {retrievalMissingCount} additional match
-                {retrievalMissingCount === 1 ? ' is' : 'es are'} loading…
+                {matchesLoading ? 'Loading matching records…' : matchesError ? 'Matching records could not be loaded.' : 'Some matches are outside the current filters or no longer available.'}
+                {matchesError && <button type="button" className="ml-2 underline" onClick={onRetryMatches}>Retry</button>}
               </span>
             </div>
           ) : null}

@@ -1,3 +1,4 @@
+import { useScopeOptional } from '../../context/ScopeContext';
 /**
  * useEventStream — UX-02 WS-first + polling-fallback state machine.
  *
@@ -37,6 +38,7 @@ const RECONNECT_DELAYS_MS = [1000, 2000, 4000, 8000, 16000, 30000];
 const FAILURE_WINDOW_MS = 60_000;
 const FAILURE_THRESHOLD = 3;
 const POLLING_INTERVAL_MS = 5_000;
+const MAX_ACTIVITY_EVENTS = 500;
 /** Background safety-poll cadence used even when WS is live. Catches events
  *  silently dropped by the WS broadcast path (e.g. per-subscriber permission
  *  re-checks, multi-process subscription-registry isolation, brief network
@@ -81,7 +83,9 @@ function nextReconnectDelay(attempt: number): number {
 }
 
 export function useEventStream(scope: string): UseEventStreamResult {
-  const { token } = useAuth();
+  const { token, user } = useAuth();
+  const principalId = user?.user_id ?? user?.id;
+  const workspaceId = useScopeOptional()?.scope?.workspaceId;
   const [status, setStatus] = useState<EventStreamStatus>('connecting');
   const [events, setEvents] = useState<ActivityEvent[]>([]);
 
@@ -102,17 +106,23 @@ export function useEventStream(scope: string): UseEventStreamResult {
   const pollingCursorRef = useRef<string | null>(null);
   const pollingInFlightRef = useRef(false);
   const teardownRef = useRef(false);
+  const generationRef = useRef(0);
+  const cursorOwnerRef = useRef('');
   // Wrap the WS open path in a ref so reconnect/recovery callbacks can call
   // it from inside other callbacks without ESLint warnings about TDZ.
   const openWsRef = useRef<(() => void) | null>(null);
 
   /** Push one (possibly already-seen) event into the dedup map and refresh
    *  the rendered list. Latest-wins per id — newer arrival overwrites older. */
-  const ingestEvent = useCallback((evt: ActivityEvent) => {
-    if (!evt.id) return; // Defensive — backend always assigns an id, but skip empties.
-    dedupRef.current.set(evt.id, evt);
-    setEvents(sortedFromMap(dedupRef.current));
+  const ingestEvents = useCallback((incoming: ActivityEvent[]) => {
+    for (const event of incoming) {
+      if (event.id) dedupRef.current.set(event.id, event);
+    }
+    const sorted = sortedFromMap(dedupRef.current);
+    for (const event of sorted.slice(0, Math.max(0, sorted.length - MAX_ACTIVITY_EVENTS))) dedupRef.current.delete(event.id);
+    setEvents(sorted.slice(-MAX_ACTIVITY_EVENTS));
   }, []);
+  const ingestEvent = useCallback((event: ActivityEvent) => ingestEvents([event]), [ingestEvents]);
 
   /** Stop the polling loop (if running). Called whenever WS is healthy again. */
   const stopPolling = useCallback(() => {
@@ -126,33 +136,35 @@ export function useEventStream(scope: string): UseEventStreamResult {
    *  is false. Each event is already normalized inside fetchEventsPage. */
   const pollOnce = useCallback(async () => {
     if (pollingInFlightRef.current) return;
-    if (teardownRef.current) return;
+    if (teardownRef.current || document.visibilityState === 'hidden') return;
+    const generation = generationRef.current;
     pollingInFlightRef.current = true;
     try {
       // Walk forward in one tick until the backend says no more. The page cap
       // is enforced server-side; if a busy track emits many events between
       // ticks, we'll catch up across multiple loops within one interval.
 
-      while (true) {
+      for (let pageNumber = 0; pageNumber < 10; pageNumber += 1) {
+        if (generation !== generationRef.current || teardownRef.current) return;
+        const previousCursor = pollingCursorRef.current;
         const page = await fetchEventsPage({
           since: pollingCursorRef.current,
           scope,
           limit: 50
         });
-        for (const evt of page.events) {
-          ingestEvent(evt);
-        }
-        pollingCursorRef.current = page.next_cursor;
-        if (!page.has_more || !page.next_cursor) break;
+        if (generation !== generationRef.current || teardownRef.current) return;
+        ingestEvents(page.events);
+        pollingCursorRef.current = page.resume_cursor ?? page.next_cursor ?? previousCursor;
+        if (!page.has_more || !page.next_cursor || page.next_cursor === previousCursor) break;
       }
     } catch {
       // Polling failures are silent — the user already sees status='polling';
       // we'll try again next tick. Surfacing a toast here would spam users
       // when the backend is briefly unavailable.
     } finally {
-      pollingInFlightRef.current = false;
+      if (generation === generationRef.current) pollingInFlightRef.current = false;
     }
-  }, [ingestEvent, scope]);
+  }, [ingestEvents, scope, workspaceId]);
 
   /** Enter polling mode — start the interval and run one immediate tick. */
   const startPolling = useCallback(() => {
@@ -195,6 +207,7 @@ export function useEventStream(scope: string): UseEventStreamResult {
    *  mount and from the reconnect schedule. */
   const openWs = useCallback(() => {
     if (teardownRef.current) return;
+    const generation = generationRef.current;
     if (!token) {
       // No token yet (e.g. before AuthContext hydrates). Defer — useEffect
       // below will re-trigger once token becomes available.
@@ -216,11 +229,13 @@ export function useEventStream(scope: string): UseEventStreamResult {
       try {
         ws = await openEventStream(scope);
       } catch {
-        recordWsFailure();
-        scheduleReconnect();
+        if (generation === generationRef.current && !teardownRef.current) {
+          recordWsFailure();
+          scheduleReconnect();
+        }
         return;
       }
-      if (teardownRef.current) return;
+      if (teardownRef.current || generation !== generationRef.current) { ws.close(); return; }
       wsRef.current = ws;
       // Watchdog: if the socket dwells in CONNECTING beyond
       // CONNECTION_TIMEOUT_MS, treat it as a failure. Otherwise a Vite-
@@ -232,7 +247,7 @@ export function useEventStream(scope: string): UseEventStreamResult {
       }
       connectionTimeoutRef.current = setTimeout(() => {
         connectionTimeoutRef.current = null;
-        if (teardownRef.current) return;
+        if (teardownRef.current || generation !== generationRef.current) return;
         // Only act if the WS is still trying to connect — once onopen
         // fires we set status='live' and the timeout is moot.
         if (
@@ -258,7 +273,7 @@ export function useEventStream(scope: string): UseEventStreamResult {
       };
       ws.onopen = () => {
         clearConnectionTimeout();
-        if (teardownRef.current) return;
+        if (teardownRef.current || generation !== generationRef.current) return;
         attemptRef.current = 0;
         failureTimestampsRef.current = [];
         stopPolling();
@@ -269,26 +284,10 @@ export function useEventStream(scope: string): UseEventStreamResult {
         // the user staring at "Live" with no rows. One polling page on open
         // seeds the dedup map from the persisted DBLog history; subsequent
         // live broadcasts overwrite by id via ingestEvent's latest-wins.
-        void (async () => {
-          if (teardownRef.current) return;
-          try {
-            const page = await fetchEventsPage({
-              since: pollingCursorRef.current,
-              scope,
-              limit: 50
-            });
-            if (teardownRef.current) return;
-            for (const evt of page.events) {
-              ingestEvent(evt);
-            }
-            pollingCursorRef.current = page.next_cursor;
-          } catch {
-            // Backfill is best-effort; live WS continues regardless.
-          }
-        })();
+        void pollOnce();
       };
       ws.onmessage = (event: MessageEvent) => {
-        if (teardownRef.current) return;
+        if (teardownRef.current || generation !== generationRef.current) return;
         try {
           const raw = JSON.parse(String(event.data)) as unknown;
           const normalized = parseChangeEventWireMessage(raw);
@@ -298,9 +297,12 @@ export function useEventStream(scope: string): UseEventStreamResult {
           // Malformed payload — drop silently. Real backend events are JSON.
         }
       };
+      let ended = false;
       const handleEnd = () => {
+        if (ended || generation !== generationRef.current) return;
+        ended = true;
         clearConnectionTimeout();
-        if (teardownRef.current) return;
+        if (teardownRef.current || generation !== generationRef.current) return;
         wsRef.current = null;
         recordWsFailure();
         scheduleReconnect();
@@ -308,7 +310,7 @@ export function useEventStream(scope: string): UseEventStreamResult {
       ws.onerror = handleEnd;
       ws.onclose = handleEnd;
     })();
-  }, [scope, token, ingestEvent, recordWsFailure, scheduleReconnect, stopPolling]);
+  }, [scope, token, ingestEvent, recordWsFailure, scheduleReconnect, stopPolling, pollOnce]);
 
   // Keep openWsRef pointing at the latest closure so async callbacks can
   // invoke it without recreating the callback graph.
@@ -318,12 +320,18 @@ export function useEventStream(scope: string): UseEventStreamResult {
 
   // Mount + scope/token change → open WS. Tear down on unmount.
   useEffect(() => {
+    ++generationRef.current;
+    pollingInFlightRef.current = false;
     teardownRef.current = false;
     attemptRef.current = 0;
     failureTimestampsRef.current = [];
-    pollingCursorRef.current = null;
-    dedupRef.current = new Map();
-    setEvents([]);
+    const cursorOwner = JSON.stringify([principalId, workspaceId, scope]);
+    if (cursorOwnerRef.current !== cursorOwner) {
+      cursorOwnerRef.current = cursorOwner;
+      pollingCursorRef.current = null;
+      dedupRef.current = new Map();
+      setEvents([]);
+    }
 
     openWs();
 
@@ -337,6 +345,7 @@ export function useEventStream(scope: string): UseEventStreamResult {
 
     return () => {
       teardownRef.current = true;
+      ++generationRef.current;
       if (reconnectTimerRef.current !== null) {
         clearTimeout(reconnectTimerRef.current);
         reconnectTimerRef.current = null;
@@ -362,7 +371,7 @@ export function useEventStream(scope: string): UseEventStreamResult {
     // openWs / stopPolling identities are stable across renders (memoized via
     // useCallback with stable deps) so it's safe to omit them — but keeping
     // them in deps is honest about what this effect depends on.
-  }, [openWs, stopPolling, pollOnce]);
+  }, [openWs, stopPolling, pollOnce, principalId, workspaceId, scope]);
 
   /** Force-reconnect — reset backoff and try again immediately. */
   const reconnect = useCallback(() => {

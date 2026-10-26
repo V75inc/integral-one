@@ -118,7 +118,7 @@ function ProviderStatus({ config, onSetUp }: { config: SpeechConfig; onSetUp?: (
       <Stack gap="sm">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <Text variant="body" weight="medium" as="p">
-            Workspace provider
+            Transcription model
           </Text>
           {pill}
         </div>
@@ -128,10 +128,10 @@ function ProviderStatus({ config, onSetUp }: { config: SpeechConfig; onSetUp?: (
         <Text variant="body-sm" as="p">
           {thisBrowser}
         </Text>
-        {!provider.configured && isOwner && onSetUp ? (
+        {isOwner && onSetUp ? (
           <div>
             <Button variant="secondary" size="sm" onClick={onSetUp}>
-              Set up in AI Models
+              {provider.configured ? 'Manage model in AI Models' : 'Set up in AI Models'}
             </Button>
           </div>
         ) : null}
@@ -223,7 +223,10 @@ export function VoiceInputSection({
   const prefs = prefsQuery.data;
   const config = configQuery.data;
   const save = (patch: Partial<SpeechPreferences>) =>
-    update.mutate(patch, { onError: err => showToast(errorMessage(err), 'error') });
+    update.mutate(patch, {
+      onSuccess: () => showToast('Voice input preferences saved.', 'success'),
+      onError: err => showToast(errorMessage(err), 'error'),
+    });
 
   const browserNote = config?.engines.find(e => e.source === 'browser')?.privacy_note;
   const resolved = resolveEngine(config);

@@ -175,7 +175,7 @@ export function TracksPage() {
               icon={<Plus size={14} strokeWidth={LINE_ICON_STROKE} />}
               onClick={() => setShowModal(true)}
             >
-              Create track
+              Manage Tracks
             </Button>
           ) : null}
           <WorkspaceCreationRightsNotice
@@ -239,7 +239,7 @@ export function TracksPage() {
                       icon={<Plus size={14} strokeWidth={LINE_ICON_STROKE} />}
                       onClick={() => setShowModal(true)}
                     >
-                      Create track
+                      Manage Tracks
                     </Button>
                   ) : null}
                   <Button
