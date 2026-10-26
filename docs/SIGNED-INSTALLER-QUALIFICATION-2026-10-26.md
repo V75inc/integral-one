@@ -153,6 +153,6 @@ The offered `0.1.7` downloaded, made one additional cold backup with account-key
 
 ## Publication hold
 
-No signing secrets were added to CI. Its waiting candidate was superseded by the approved local Keychain build. No tag, GitHub release, visibility change or deployment was made.
+No signing secrets were added to CI. Hosted candidate run `40396366548` failed before signing because its notarization credentials were absent; the approved local Keychain build supplied the qualified candidate. The explicit local/hosted route correction is documented in [installer release](INSTALLER-RELEASE.md#configuration-failure-found-on-26-october). No tag, GitHub release, visibility change or deployment was made.
 
 Clean activation, new-account signup and real browser sign-in/callback journeys passed in `0.1.6`; the corrected signed `0.1.7` also passed retained real-account activation and display-name checks as described above. Complete qualification on each advertised platform before publication. The updater-retention fixture used a synthetic account. Windows signing/native update acceptance is not established by this Mac run. Core rc35 requires a development prerelease, with the matching manifest, ZIP, update YAML, fixed bootstrap and notices published together after approval.

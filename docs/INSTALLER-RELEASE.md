@@ -31,13 +31,16 @@ The Node/Python/uv source prerequisites are build tools, not end-user requiremen
 
 ## 2. Prepare signing and the protected CI environment
 
-The local V75 Inc. Developer ID certificate and Keychain notarization profile are verified. The owner-approved `0.1.5` and corrected `0.1.6` Mac candidates were accepted by Apple on 26 October; [signed qualification](SIGNED-INSTALLER-QUALIFICATION-2026-10-26.md) records its exact bytes, tests and publication hold. Follow the [macOS signing walkthrough](MACOS-SIGNING.md). No Windows certificate is currently available; follow the [Windows signing walkthrough](WINDOWS-SIGNING.md) and leave Windows disabled in this signed workflow until the chosen provider adapter is qualified. A separate unsigned Windows development workflow permits native engineering independently of Apple.
+The local V75 Inc. Developer ID certificate and Keychain notarization profile are verified. The owner-approved `0.1.5`, corrected `0.1.6` and display-name correction `0.1.7` Mac candidates were accepted by Apple on 26 October; [signed qualification](SIGNED-INSTALLER-QUALIFICATION-2026-10-26.md) records their exact bytes, tests and publication hold. Follow the [macOS signing walkthrough](MACOS-SIGNING.md). No Windows certificate is currently available; follow the [Windows signing walkthrough](WINDOWS-SIGNING.md) and leave Windows disabled in this signed workflow until the chosen provider adapter is qualified. A separate unsigned Windows development workflow permits native engineering independently of Apple.
 
-Configure the GitHub environment **desktop-release** with required reviewers and appropriate branch restrictions **before** adding signing secrets. The workflow checks this protection before entering signing jobs. It builds candidates automatically after Core pin changes land on main, or by explicit manual dispatch; it cannot publish a release.
+Local Keychain signing is the default route. Automatic Core-pin pushes run the source/target plan and explicitly skip hosted signing, without requesting signing-environment approval or claiming a signed artifact. PR qualification still runs on Linux, macOS and Windows. The local Keychain is not accessible to GitHub-hosted runners.
+
+For an approved hosted signing route, configure the GitHub environment **desktop-release** with required reviewers and appropriate branch restrictions **before** adding signing secrets. An explicit manual dispatch requests hosted signing. To also request it automatically after pin changes, opt in with repository variable `ONE_CI_SIGNING_ENABLED=true`; leave it absent or `false` for local signing. Protection is checked before entering signing jobs, and credential presence is checked before dependency setup. This workflow cannot publish a release.
 
 | Setting | Purpose |
 | --- | --- |
 | Variable `ONE_PRODUCTION_ACCOUNT_CONFIG` | Public JSON accepted by `desktop/accounts/config.js`; configured production Logto issuer and public client ID |
+| Repository variable `ONE_CI_SIGNING_ENABLED` | Optional `true` enables automatic hosted signing; absent/`false` retains the local route |
 | Secrets `MACOS_CSC_LINK`, `MACOS_CSC_KEY_PASSWORD` | Developer ID Application certificate/P12 and its password |
 | Secrets `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD`, `APPLE_TEAM_ID` | Apple notarization credentials/team |
 | Legacy Windows fields `WINDOWS_CSC_LINK`, `WINDOWS_CSC_KEY_PASSWORD` | Do not populate as a new-cert enrollment recipe; the Windows provider adapter still needs qualification |
@@ -46,7 +49,11 @@ Clerk secret keys and receipt-signing private keys stay on the account service, 
 
 ## 3. Build candidates
 
-Core pin changes on main automatically start **Signed installer candidate**, gated by the protected release environment. For a reviewed rerun, manually dispatch it with the exact stable source version. Leave **include_windows** off for the initial macOS launch. It uses a native macOS arm64 runner (plus Windows x64 only when explicitly enabled), builds the source, runs qualification, signs/notarizes, inspects packages and generates per-platform installer manifests. It then assembles a downloadable candidate bundle. No `contents: write` permission or GitHub Release publication step is present.
+Core pin changes on main automatically start the **Signed installer candidate** plan. With local signing selected, its summary directs the maintainer to the designated Mac and no signed build/assembly job runs. With hosted signing explicitly requested, the protected environment gates the build. For a reviewed hosted run, manually dispatch it with the exact stable source version. Leave **include_windows** off for the initial macOS launch. The hosted route uses a native macOS arm64 runner (plus Windows x64 only when explicitly enabled), builds the source, runs qualification, signs/notarizes, inspects packages and generates per-platform installer manifests. It then installs assembly dependencies before validating manifests and assembling a downloadable candidate bundle. No `contents: write` permission or GitHub Release publication step is present.
+
+### Configuration failure found on 26 October
+
+[Run 40396366548](https://github.com/V75inc/integral-one/actions/runs/40396366548) passed source setup and UI tests but failed before signing because Apple notarization credentials were absent. A live metadata check found no repository or `desktop-release` signing secrets; only the public account configuration variable was present in that environment. Local signing/notarization success does not provision hosted signing. The workflow now follows the explicit route above and reports missing secret names early, without printing their values. No key export or credential upload was performed. Historical run results are preserved; rerunning that old workflow revision would still require its hosted credentials.
 
 Equivalent native commands after source setup:
 

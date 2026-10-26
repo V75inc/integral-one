@@ -27,9 +27,16 @@ jobs:
     outputs:
       matrix: ${{ steps.targets.outputs.matrix }}
       version: ${{ steps.version.outputs.version }}
+      hosted: ${{ steps.route.outputs.hosted }}
     steps:
       - uses: actions/checkout@v4
+      - id: route
+        name: Select the explicit signing route
+        env:
+          ONE_CI_SIGNING_ENABLED: ${{ vars.ONE_CI_SIGNING_ENABLED || 'false' }}
+        run: node scripts/verify-ci-signing.js route
       - name: Require a protected release environment before accessing signing secrets
+        if: steps.route.outputs.hosted == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
@@ -86,6 +93,7 @@ jobs:
           PYTHON
   build:
     needs: plan
+    if: needs.plan.outputs.hosted == 'true'
     environment: desktop-release
     strategy:
       fail-fast: false
@@ -101,6 +109,14 @@ jobs:
           node-version: '24'
           architecture: ${{ matrix.arch }}
           cache: npm
+      - name: Validate hosted signing configuration before dependency setup
+        env:
+          CSC_LINK: ${{ secrets[matrix.certificate] }}
+          CSC_KEY_PASSWORD: ${{ secrets[matrix.password] }}
+          APPLE_ID: ${{ matrix.platform == 'darwin' && secrets.APPLE_ID || '' }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ matrix.platform == 'darwin' && secrets.APPLE_APP_SPECIFIC_PASSWORD || '' }}
+          APPLE_TEAM_ID: ${{ matrix.platform == 'darwin' && secrets.APPLE_TEAM_ID || '' }}
+        run: node scripts/verify-ci-signing.js
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
@@ -145,6 +161,7 @@ jobs:
             release/install-manifest-*.json
   assemble:
     needs: [plan, build]
+    if: needs.plan.outputs.hosted == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -156,8 +173,8 @@ jobs:
           pattern: installer-*
           merge-multiple: true
           path: release-assets
-      - run: node scripts/installer-manifest.js merge release-assets release-assets/install-manifest.json
       - run: npm ci --ignore-scripts
+      - run: node scripts/installer-manifest.js merge release-assets release-assets/install-manifest.json
       - run: node scripts/update-metadata.js release-assets
       - name: Include reviewed bootstrap and notices
         run: >-
