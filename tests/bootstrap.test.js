@@ -13,15 +13,17 @@ function fixture(t, channel = 'development') {
   } } };
   const publication = { urls: [{ filename: `integral_core-${core.version}-py3-none-any.whl`, yanked: false, digests: { sha256: core.wheelSha256 } }] };
   const releases = [{ tag_name: 'v0.1.5', draft: false, prerelease: channel === 'development', assets: [{ name: 'install-manifest.json' }, { name: manifest.artifacts[platform].file }] }];
+  const payload = Buffer.from('Synthetic installer bytes; extraction must never be reached by the corruption test.');
+  fs.writeFileSync(path.join(root, 'payload'), payload);
   const save = () => { for (const [name, value] of Object.entries({ manifest, core: publication, releases })) fs.writeFileSync(path.join(root, `${name}.json`), JSON.stringify(value)); };
   save();
-  function run() {
+  function run(args = ['--check']) {
     if (process.platform === 'darwin') {
       const shim = path.join(root, 'curl');
-      fs.writeFileSync(shim, `#!${process.execPath}\nconst fs=require('fs'),path=require('path'),a=process.argv.slice(2),u=a.find(x=>x.startsWith('https://')),out=a[a.indexOf('-o')+1];const name=u.includes('/pypi/integral-core/')?'core':u.includes('api.github.com')?'releases':u.endsWith('install-manifest.json')?'manifest':null;if(!name)throw Error('Installer download forbidden in check test');fs.copyFileSync(path.join(__dirname,name+'.json'),out);`, { mode: 0o755 });
+      fs.writeFileSync(shim, `#!${process.execPath}\nconst fs=require('fs'),path=require('path'),a=process.argv.slice(2),u=a.find(x=>x.startsWith('https://')),out=a[a.indexOf('-o')+1];const name=u.includes('/pypi/integral-core/')?'core.json':u.includes('api.github.com')?'releases.json':u.endsWith('install-manifest.json')?'manifest.json':u.endsWith('/integral-one-0.1.5-mac-arm64.zip')?'payload':null;if(!name)throw Error('Unexpected fixture download');fs.copyFileSync(path.join(__dirname,name),out);`, { mode: 0o755 });
       const source = fs.readFileSync(path.join(__dirname, '../install/install.sh'), 'utf8').replaceAll('/usr/bin/curl', `"${shim}"`);
       const script = path.join(root, 'install.sh'); fs.writeFileSync(script, source);
-      return spawnSync('/bin/bash', [script, '--channel', channel, '--check'], { encoding: 'utf8', timeout: 30000 });
+      return spawnSync('/bin/bash', [script, '--channel', channel, ...args], { encoding: 'utf8', timeout: 30000 });
     }
     const quote = value => value.replaceAll("'", "''");
     let source = fs.readFileSync(path.join(__dirname, '../install/install.ps1'), 'utf8');
@@ -30,7 +32,7 @@ function fixture(t, channel = 'development') {
     const script = path.join(root, 'install.ps1'); fs.writeFileSync(script, source);
     return spawnSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-File', script, '-Channel', channel, '-Check'], { encoding: 'utf8', timeout: 30000 });
   }
-  return { root, manifest, publication, releases, save, run };
+  return { root, manifest, publication, releases, payload, save, run };
 }
 const native = !['darwin', 'win32'].includes(process.platform) || (process.platform === 'darwin' && process.arch !== 'arm64');
 test('native bootstrap check resolves stable and development metadata without downloading an application', { skip: native }, t => {
@@ -46,4 +48,18 @@ test('native bootstrap rejects channel mismatch, yanked Core and changed publica
     assert.notEqual(result.status, 0, result.stdout);
     assert.doesNotMatch(result.stdout, /No files installed/);
   }
+});
+test('macOS bootstrap reaches the download and rejects corrupted bytes before extraction', { skip: process.platform !== 'darwin' || process.arch !== 'arm64' }, t => {
+  const f = fixture(t);
+  const crypto = require('node:crypto');
+  f.manifest.artifacts['darwin-arm64'].bytes = f.payload.length;
+  f.manifest.artifacts['darwin-arm64'].sha256 = crypto.createHash('sha256').update(f.payload).digest('hex');
+  f.save();
+  const corrupted = Buffer.from(f.payload); corrupted[0] ^= 1;
+  fs.writeFileSync(path.join(f.root, 'payload'), corrupted);
+  const result = f.run([]);
+  assert.notEqual(result.status, 0, result.stdout + result.stderr);
+  assert.match(result.stdout, /Downloading Integral One 0\.1\.5/);
+  assert.match(result.stderr, /Installer checksum mismatch/);
+  assert.doesNotMatch(result.stderr, /unbound variable/);
 });

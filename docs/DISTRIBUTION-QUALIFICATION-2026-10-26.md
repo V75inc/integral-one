@@ -47,6 +47,8 @@ Native CI builds the actual Mac ZIP and Windows NSIS targets before package insp
 
 ## Remaining distribution acceptance
 
+Subsequent owner-approved signing, notarization and local native installer/update tests are recorded in [signed qualification](SIGNED-INSTALLER-QUALIFICATION-2026-10-26.md). That record updates the Mac signing status below and identifies the remaining normal-profile, clean-machine and real sign-in acceptance checks. Publication is still held.
+
 The source implementation is prepared for distribution. Actual signed/notarized release assets are still required. With approval to use signing material, build and test signed version A and version B on every advertised platform, including download rejection, a real native update, first startup, local account continuity, records and recovery. Complete the real browser sign-in/callback journey in the released package. Windows also requires the approved certificate-store/provider configuration and native installer acceptance.
 
 The rc35 candidate belongs in the **development** channel because its Core publication is on TestPyPI. Publish its matching installers, schema-2 manifest, update YAML and bootstrap scripts together as a GitHub prerelease after acceptance. Stable distribution requires an eligible PyPI Core publication and the stable channel. Signing, notarization and release publication remain explicit approved operations; this qualification did not perform them.

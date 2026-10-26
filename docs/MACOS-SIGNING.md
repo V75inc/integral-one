@@ -2,7 +2,7 @@
 
 You already have an Apple Developer membership. The remaining Apple setup is a **Developer ID Application** signing identity and notarization access. A Windows certificate is not needed for the initial Mac launch.
 
-The V75 Inc. organization team and its Developer ID Application identity were verified locally on 18 October 2026. The issued certificate matches the user-created CSR and has its matching private key; Apple’s G2 intermediate is present in login. Certificate expiry is 17 November 2027. No private key was exported and no custom trust override was added. Notarization credentials and actual signed-release qualification are still pending.
+The V75 Inc. organization team and its Developer ID Application identity were verified locally on 18 October 2026. The issued certificate matches the user-created CSR and has its matching private key; Apple’s G2 intermediate is present in login. Certificate expiry is 17 November 2027. No private key was exported and no custom trust override was added. The owner-approved `0.1.5` Mac candidate was signed and accepted by notarization on 26 October; see [the signed qualification](SIGNED-INSTALLER-QUALIFICATION-2026-10-26.md) for exact bytes, local installer/update evidence and remaining acceptance checks.
 
 ## 1. Sign into the right Apple team
 
@@ -42,7 +42,7 @@ For an approved local signed build, electron-builder supports `APPLE_KEYCHAIN` p
 
 ## 4. Finish signup configuration
 
-Complete the [Clerk and Cloudflare walkthrough](CLERK-CLOUDFLARE-SETUP.md), including the launch account architecture decision. The installer must contain public production configuration so users never enter API keys or configure a server. Email/social consent remains the normal user signup step.
+Use the reviewed [Logto PKCE configuration](SPEC-logto-account-gate.md). The installer must contain public production configuration so users never enter API keys or configure a server. Email/social consent remains the normal user signup step.
 
 ## 5. Sign, qualify and publish
 
