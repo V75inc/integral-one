@@ -1,6 +1,6 @@
 # Integral One Windows installer bootstrap. Apache-2.0; see LICENSE and NOTICE.
 [CmdletBinding()]
-param([switch]$Check, [switch]$DownloadOnly)
+param([switch]$Check, [switch]$DownloadOnly, [ValidateSet('stable','development')][string]$Channel = 'stable')
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 function Receive-IntegralRelease([string]$Uri, [string]$OutFile) {
@@ -9,6 +9,7 @@ function Receive-IntegralRelease([string]$Uri, [string]$OutFile) {
     $handler = New-Object System.Net.Http.HttpClientHandler
     $handler.AllowAutoRedirect = $false
     $client = New-Object -TypeName System.Net.Http.HttpClient -ArgumentList $handler
+    $client.DefaultRequestHeaders.UserAgent.ParseAdd('Integral-One-installer')
     $client.Timeout = [TimeSpan]::FromMinutes(30)
     $response = $null
     try {
@@ -49,24 +50,45 @@ function Install-IntegralOne {
         Write-Host 'Finding the latest Integral One release...'
         $manifestFile = Join-Path $work 'install-manifest.json'
         try {
-            Receive-IntegralRelease "$base/latest/download/install-manifest.json" $manifestFile
+            $manifestUri = "$base/latest/download/install-manifest.json"
+            if ($Channel -eq 'development') {
+                $releasesFile = Join-Path $work 'releases.json'
+                Receive-IntegralRelease 'https://api.github.com/repos/V75inc/integral-one/releases?per_page=30' $releasesFile
+                if ((Get-Item -LiteralPath $releasesFile).Length -gt 2097152) { throw 'Oversized release index.' }
+                $releases = @(Get-Content -LiteralPath $releasesFile -Raw | ConvertFrom-Json)
+                $eligible = @($releases | Where-Object { !$_.draft -and $_.prerelease -and $_.tag_name -match '^v[0-9]+\.[0-9]+\.[0-9]+$' -and @($_.assets | Where-Object { $_.name -ceq 'install-manifest.json' }).Count -eq 1 -and ($_.assets.name -ccontains "integral-one-$($_.tag_name.Substring(1))-win-x64.exe") } | Sort-Object { [version]$_.tag_name.Substring(1) } -Descending)
+                if (!$eligible.Count) { throw 'No signed development installer has been published yet.' }
+                $manifestUri = "$base/download/$($eligible[0].tag_name)/install-manifest.json"
+            }
+            Receive-IntegralRelease $manifestUri $manifestFile
             if ((Get-Item -LiteralPath $manifestFile).Length -gt 65536) { throw 'Oversized manifest.' }
             $manifest = Get-Content -LiteralPath $manifestFile -Raw | ConvertFrom-Json
         }
         catch { throw 'No installable release is available, or the download failed. Visit https://github.com/V75inc/integral-one/releases.' }
-        if ($manifest.schemaVersion -ne 1 -or $manifest.version -notmatch '^[0-9]+\.[0-9]+\.[0-9]+$') { throw 'Invalid stable-release manifest.' }
+        if ($manifest.schemaVersion -ne 2 -or $manifest.version -notmatch '^[0-9]+\.[0-9]+\.[0-9]+$') { throw 'Invalid installer manifest.' }
+        $registry = if ($Channel -eq 'development') { 'testpypi' } else { 'pypi' }
+        $index = if ($Channel -eq 'development') { 'https://test.pypi.org' } else { 'https://pypi.org' }
+        if ($manifest.channel -cne $Channel -or $manifest.core.registry -cne $registry -or $manifest.core.version -notmatch '^[0-9]+\.[0-9]+\.[0-9]+((a|b|rc)[0-9]+)?$' -or $manifest.core.wheelSha256 -cnotmatch '^[a-f0-9]{64}$') { throw 'Installer Core identity or channel mismatch.' }
+        if ($Channel -eq 'stable' -and $manifest.core.version -notmatch '^[0-9]+\.[0-9]+\.[0-9]+$') { throw 'Stable installers cannot include a Core release candidate.' }
+        $coreFile = Join-Path $work 'core.json'
+        Receive-IntegralRelease "$index/pypi/integral-core/$($manifest.core.version)/json" $coreFile
+        if ((Get-Item -LiteralPath $coreFile).Length -gt 1048576) { throw 'Oversized Core publication metadata.' }
+        $core = Get-Content -LiteralPath $coreFile -Raw | ConvertFrom-Json
+        $wheels = @($core.urls | Where-Object { $_.filename -ceq "integral_core-$($manifest.core.version)-py3-none-any.whl" -and !$_.yanked -and $_.digests.sha256 -ceq $manifest.core.wheelSha256 })
+        if ($wheels.Count -ne 1) { throw 'The installer Core pin does not match its package publication.' }
         $version = $manifest.version
         if (!($manifest.artifacts.PSObject.Properties.Name -contains 'win32-x64')) { throw 'A trusted Windows installer has not been published for this release. macOS can be installed separately; check Releases for Windows availability.' }
         $asset = $manifest.artifacts.'win32-x64'
         $file = "integral-one-$version-win-x64.exe"
-        if ($asset.file -cne $file -or $asset.sha256 -cnotmatch '^[a-f0-9]{64}$' -or $asset.bytes -le 0 -or $asset.signerThumbprint -notmatch '^[A-Fa-f0-9]{40}$') { throw 'Invalid Windows installer metadata.' }
-        if ($Check) { Write-Host "Integral One $version is available for Windows x64. No files installed."; return }
+        if ($asset.file -cne $file -or $asset.sha256 -cnotmatch '^[a-f0-9]{64}$' -or $asset.bytes -le 0 -or $asset.signerThumbprint -notmatch '^[A-Fa-f0-9]{40}$' -or $asset.publisherName -cne 'V75 Inc.') { throw 'Invalid Windows installer metadata.' }
+        if ($Check) { Write-Host "Integral One $version with Core $($manifest.core.version) is available for Windows x64 ($Channel). No files installed."; return }
         $download = Join-Path $work $file
         Write-Host "Downloading Integral One $version..."
         Receive-IntegralRelease "$base/download/v$version/$file" $download
         if ((Get-Item -LiteralPath $download).Length -ne $asset.bytes -or (Get-FileHash -LiteralPath $download -Algorithm SHA256).Hash.ToLowerInvariant() -cne $asset.sha256) { throw 'Installer download failed its integrity check. Nothing was installed.' }
         $signature = Get-AuthenticodeSignature -LiteralPath $download
         if ($signature.Status -ne 'Valid' -or $signature.SignerCertificate.Thumbprint -ine $asset.signerThumbprint) { throw 'The installer does not have the expected valid publisher signature.' }
+        if ($signature.SignerCertificate.GetNameInfo([System.Security.Cryptography.X509Certificates.X509NameType]::SimpleName,$false) -cne 'V75 Inc.' -or !$signature.TimeStamperCertificate) { throw 'The installer must have a timestamped V75 Inc. signature.' }
         if ($DownloadOnly) {
             $destination = Join-Path ([Environment]::GetFolderPath('UserProfile')) "Downloads\$file"
             if (Test-Path -LiteralPath $destination) { throw "A download already exists at $destination. Move it before retrying." }
@@ -82,6 +104,8 @@ function Install-IntegralOne {
             if (!(Test-Path -LiteralPath $existing)) { throw 'The installation directory contains an unexpected application. Use the direct installer.' }
             $oldSignature = Get-AuthenticodeSignature -LiteralPath $existing
             if ($oldSignature.Status -ne 'Valid' -or $oldSignature.SignerCertificate.Subject -cne $signature.SignerCertificate.Subject) { throw 'The existing application has a different or invalid publisher. Use the direct installer for recovery.' }
+            $previousVersion = (Get-Item -LiteralPath $existing).VersionInfo.ProductVersion
+            if ($previousVersion -notmatch '^[0-9]+\.[0-9]+\.[0-9]+$' -or [version]$previousVersion -gt [version]$version) { throw 'The installed version cannot be verified or is newer. Use the app updater; a downgrade can make your workspace incompatible.' }
         }
         Write-Host 'Installing Integral One for your Windows account...'
         # /D must be the final option and has no enclosing quotes in NSIS syntax.

@@ -34,8 +34,8 @@ for(const [name,key] of [[runtime.coreWheel,runtime.coreWheel],[process.platform
 assert.match(asar.extractFile(archive,path.join('desktop','main.js')).toString(),/Integral \| one/);
 const accountConfig=JSON.parse(asar.extractFile(archive,path.join('desktop','accounts','config.runtime.json')).toString());
 require('../desktop/accounts/config').validateConfig(accountConfig);
-for (const member of ['desktop/updates.js','node_modules/electron-updater/out/main.js']) assert.ok(members.includes('/'+member), `Missing ${member}`);
-for (const file of ['desktop/main.js','desktop/updates.js','desktop/accounts/controller.js','desktop/accounts/clerk-setup.js','desktop/accounts/receipt.js','desktop/accounts/config.js','desktop/accounts/ui/account.js','desktop/accounts/ui/account.css','desktop/accounts/preload.js']) {
+for (const member of ['desktop/updates.js','desktop/releases.js','desktop/release-contract.js','desktop/update-backup.js','desktop/accounts/logto-setup.js','node_modules/electron-updater/out/main.js']) assert.ok(members.includes('/'+member), `Missing ${member}`);
+for (const file of ['desktop/main.js','desktop/updates.js','desktop/releases.js','desktop/release-contract.js','desktop/update-backup.js','desktop/accounts/controller.js','desktop/accounts/logto-setup.js','desktop/accounts/clerk-setup.js','desktop/accounts/receipt.js','desktop/accounts/config.js','desktop/accounts/ui/account.js','desktop/accounts/ui/account.css','desktop/accounts/preload.js']) {
   const packedHash = require('node:crypto').createHash('sha256').update(asar.extractFile(archive, path.join(...file.split('/')))).digest('hex');
   assert.equal(packedHash, hash(path.join(root, file)), `Packaged source differs: ${file}`);
 }
@@ -48,6 +48,7 @@ if (fs.existsSync(updateConfigFile)) {
   assert.equal(feed.owner, 'V75inc');
   assert.equal(feed.repo, 'integral-one');
   assert.ok(!feed.token && !feed.private, 'Updater must use the public release feed without credentials');
+  if (process.platform === 'win32') assert.deepEqual(feed.publisherName, ['V75 Inc.'], 'Windows updater requires the approved publisher pin');
 } else assert.ok(!packagedProduct.integralOneUpdates?.enabled, 'Enabled updater needs its packaged public feed configuration');
 const closureFile = path.join(root, '.local/verification/release-readiness/ui-dependency-closure.json');
 if (fs.existsSync(closureFile)) {

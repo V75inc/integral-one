@@ -1,9 +1,9 @@
 {
-  "contractVersion": 2,
-  "provider": "clerk",
-  "setupMode": "clerk",
+  "contractVersion": 3,
+  "provider": "logto",
+  "setupMode": "logto",
   "configured": true,
   "environment": "production",
-  "publishableKey": "pk_live_Y2xlcmsub25pbnRlZ3JhbC5haSQ",
-  "clerkIssuer": "https://clerk.onintegral.ai"
+  "appId": "n8k7hws5ydhawj073ksjm",
+  "issuer": "https://auth.saas.apps.trueselph.com/oidc"
 }

@@ -1,7 +1,7 @@
 {
   "contract_version": 1,
-  "source_commit": "82b4d6d12c3899f030f45bbe8d9f7ca7d44b7a1c",
-  "source_tree_sha256": "21cb64c11d19ccfabc3a009ed9d7e9c4a46557d516323e37a133dc2ceea0071f",
+  "source_commit": "17f14ba3126fbbe93e71b5b19df4005d39a78709",
+  "source_tree_sha256": "74995b2f918518899cfa790be2643f1c9dbe465b030151bea55d2601a2cf817b",
   "files": {
     "LICENSE": "edae8d0a61f1e409ef29e5fd25e00498d7416eba71a173c8fb37a226ed1ec829",
     "NOTICE": "f2cc49b4cbede379bb64849dacd70f700c43dd4151eed43e9b989c6ec2827aaf",
@@ -25,7 +25,8 @@
     "frontend/nginx.docker.conf": "e90786a8b710680629412a9eec21d67c2fc09b9169ce9a2779a04534807d4d7b",
     "frontend/package-lock.json": "6accddc56cc479ccd725f47c11558d852a0467f31f13c422c3024a24689ac85a",
     "frontend/package.json": "a4e3351db21cf3df61398ab63cc15836c8163275efa8772fe9601dd746234593",
-    "frontend/plugins/integralAppPublicPages.ts": "3d3d99a28a039de8231442329df4d3b05f19a87defda53e2b4b13bd115973e36",
+    "frontend/plugins/__tests__/integralAppPublicPages.test.ts": "dc20d8c3e44a4b9a702babab18f87b934ca9f35bef90f57cd607cf2a239b3ae1",
+    "frontend/plugins/integralAppPublicPages.ts": "ac70fc4afce23cd3b9e88f19ca444f39593db42c082f4e127c0fb770c624ddf8",
     "frontend/pnpm-lock.yaml": "94f1dff1e927e938c3fb78a71e737a9438d37493175148c06316dd94f4cd549e",
     "frontend/postcss.config.js": "45027a2befa94d6f46875c529d1088c12548d8f0bee31133e4ebb00ebc581e33",
     "frontend/public/S10.html": "e588d3a0f898eb9ac4c63927acd79b6464cdc216dcf21f055efe2e79eb525aa1",

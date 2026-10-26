@@ -1,5 +1,7 @@
 # Native platform readiness
 
+**26 October:** The current source candidate pins rc35. See [the distribution qualification](DISTRIBUTION-QUALIFICATION-2026-10-26.md) for the current local checks. The earlier platform evidence below remains historical; the signing and Intel compatibility constraints still apply.
+
 The rc29 source candidate was checked at Core commit `818542ef29390f4350253808668cb4ab13a1334e`.
 The published rc29 wheel was subsequently pinned and passed the same local runtime/store/settings checks. Signed installer acceptance remains separate.
 

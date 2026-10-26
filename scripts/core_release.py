@@ -272,6 +272,10 @@ def prepare(root, policy, version, metadata, source):
         pins["product_version"] = package["version"] = lock["version"] = lock[
             "packages"
         ][""]["version"] = next_version
+        package.setdefault("integralOneUpdates", {}).update(
+            enabled=True,
+            channel="development" if policy["registry"] == "testpypi" else "stable",
+        )
         pins["core"].update(
             version=version,
             source_commit=tag_commit,

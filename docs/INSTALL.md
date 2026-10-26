@@ -32,7 +32,7 @@ The installer downloads the Windows installer, checks its checksum and Authentic
 
 Choose **Sign up** or **Sign in**, then complete email verification or your social provider's prompts. Everything else is prepared automatically. Initial runtime downloads need internet and may take a few minutes; no separate runtime installation or activation step is needed. Local work continues offline after setup.
 
-Your files and records stay on your computer. Hosted AI requests send the necessary prompts/context to your selected provider. Account information goes to Clerk.
+Your files and records stay on your computer. Hosted AI requests send the necessary prompts/context to your selected provider. Account sign-in goes to the configured Logto service.
 
 ## Prefer a download button?
 
@@ -49,3 +49,17 @@ SignPath Foundation signing is being investigated; no approval is claimed.
 - **Existing installation needs recovery:** keep the data directory and contact a maintainer. Do not delete records or encryption keys to reinstall.
 
 The bootstrap replaces application files only. It does not provide a workspace backup; keep a consistent backup before updates. See [getting started](GETTING-STARTED.md), [troubleshooting](TROUBLESHOOTING.md) and [data compatibility](DATA-COMPATIBILITY.md).
+
+## Development release candidates
+
+Development installers follow TestPyPI Core releases and are published as GitHub prereleases. Once a signed candidate is published, the bootstrap can select it directly:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/V75inc/integral-one/main/install/install.sh | /bin/bash -s -- --channel development
+```
+
+```powershell
+& ([scriptblock]::Create((irm https://raw.githubusercontent.com/V75inc/integral-one/main/install/install.ps1))) -Channel development
+```
+
+Use `--check` on macOS or `-Check` on Windows to inspect availability without downloading or installing an application. Both channels verify the installer's Core pin against the selected package index, then retain native publisher and checksum checks. A development channel does not bypass signing. The app checks that channel automatically and offers **Help → Check for Updates…** for a manual check. Download and restart each require your approval.

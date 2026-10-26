@@ -1,127 +1,110 @@
 "use strict";
-const test = require("node:test");
-const assert = require("node:assert/strict");
-const { EventEmitter } = require("node:events");
-const fs = require("node:fs");
-const os = require("node:os");
-const path = require("node:path");
-const { createUpdates } = require("../desktop/updates");
+const test = require('node:test'), assert = require('node:assert/strict');
+const { EventEmitter } = require('node:events');
+const fs = require('node:fs'), os = require('node:os'), path = require('node:path'), crypto = require('node:crypto');
+const { createUpdates } = require('../desktop/updates');
 function fixture(t, options = {}) {
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), "one-updates-"));
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'one-updates-'));
   t.after(() => fs.rmSync(home, { recursive: true, force: true }));
   const app = new EventEmitter(), updater = new EventEmitter(), calls = [], messages = [], answers = [];
-  Object.assign(app, { isPackaged: true, getVersion: () => "0.1.0", getPath: () => home,
-    relaunch: () => calls.push("relaunch"), quit: () => calls.push("quit") }, options.app);
-  updater.checkForUpdates = async () => { calls.push("check"); return { updateInfo: { version: "0.2.0" } }; };
-  updater.downloadUpdate = async () => { calls.push("download"); };
-  updater.quitAndInstall = () => { calls.push("install"); };
-  const prefs = path.join(home, "one-updates.json");
-  if (options.automatic) fs.writeFileSync(prefs, '{"automaticChecks":true}');
+  Object.assign(app, { isPackaged: true, getVersion: () => '0.1.0', getPath: () => home, relaunch: () => calls.push('relaunch'), quit: () => calls.push('quit') }, options.app);
+  const data = Buffer.from('qualified test installer'), file = path.join(home, 'update.zip'); fs.writeFileSync(file, data);
+  const manifest = { schemaVersion: 2, version: '0.2.0', channel: 'development', core: { version: '0.1.1rc36', registry: 'testpypi', wheelSha256: 'a'.repeat(64) }, artifacts: {} };
+  const asset = { file: 'integral-one-0.2.0-mac-arm64.zip', bytes: data.length, sha256: crypto.createHash('sha256').update(data).digest('hex'), appleTeamId: 'M43V972XU9' };
+  manifest.artifacts['darwin-arm64'] = asset;
+  const result = { latestCore: '0.1.1rc36', registry: 'testpypi', candidate: { manifest, asset, feedUrl: 'https://github.com/V75inc/integral-one/releases/download/v0.2.0/' } };
+  const info = () => ({ version: manifest.version, integralCore: { ...manifest.core }, releaseChannel: manifest.channel, files: [{ url: asset.file, size: asset.bytes }] });
+  updater.setFeedURL = feed => { calls.push('feed'); assert.equal(feed.provider, 'generic'); assert.equal(feed.url, result.candidate.feedUrl); };
+  updater.checkForUpdates = async () => { calls.push('check'); return { updateInfo: info() }; };
+  updater.downloadUpdate = async () => { calls.push('download'); return [file]; };
+  updater.quitAndInstall = () => calls.push('install');
+  const prefs = path.join(home, 'one-updates.json');
+  if (options.automatic !== undefined) fs.writeFileSync(prefs, JSON.stringify({ automaticChecks: options.automatic }));
   let tick;
-  const control = createUpdates({ app, autoUpdater: updater, production: true, platform: "darwin",
-    prepareForInstall: async () => { calls.push("stop"); },
+  const control = createUpdates({ app, autoUpdater: updater, enabled: true, channel: 'development', currentCore: { version: '0.1.1rc35' }, platform: 'darwin', arch: 'arm64',
+    discover: async () => { calls.push('discover'); return result; }, prepareForInstall: async () => calls.push('backup-stop'),
     dialog: { showMessageBox: async message => { messages.push(message); return { response: answers.shift() ?? 1 }; } },
-    interval: fn => { tick = fn; return { unref() {} }; }, clear: () => calls.push("clear"), ...options.control });
+    interval: fn => { tick = fn; return { unref() {} }; }, clear: () => calls.push('clear'), ...options.control });
   t.after(control.dispose);
-  return { app, updater, calls, messages, answers, prefs, control, tick: () => tick?.() };
+  return { app, updater, calls, messages, answers, prefs, control, result, info, file, tick: () => tick?.() };
 }
-test("updates are opt-in, and declining a download never downloads or installs", async t => {
-  const f = fixture(t); f.control.start();
-  assert.deepEqual(f.calls, []);
-  assert.equal(f.control.menuItems[1].checked, false);
-  await f.control.check();
-  assert.deepEqual(f.calls, ["check"]);
-  assert.equal(f.updater.autoDownload, false);
-  assert.equal(f.updater.autoInstallOnAppQuit, false);
-  assert.equal(f.updater.allowDowngrade, false);
-  assert.equal(f.updater.allowPrerelease, false);
-  assert.equal(f.updater.logger, null);
+test('first launch checks automatically and declining leaves the installed app alone', async t => {
+  const f = fixture(t); await f.control.start();
+  assert.deepEqual(f.calls, ['discover', 'feed', 'check']);
+  assert.equal(f.control.menuItems[1].checked, true);
+  assert.equal(f.updater.autoDownload, false); assert.equal(f.updater.autoInstallOnAppQuit, false); assert.equal(f.updater.allowDowngrade, false);
+  assert.equal(f.messages.length, 1);
+  await f.control.check(false); assert.equal(f.messages.length, 1);
+  await f.control.check(true); assert.equal(f.messages.length, 2);
 });
-test("approved download waits for separate restart approval, then stops Core before install", async t => {
+test('download and restart need separate approvals; stop and backup precede installation', async t => {
   const f = fixture(t); f.answers.push(0, 1);
   await f.control.check();
-  assert.deepEqual(f.calls, ["check", "download"]);
-  f.app.emit("before-quit");
-  assert.equal(f.calls.includes("install"), false);
-  f.answers.push(0);
-  await f.control.check();
-  assert.deepEqual(f.calls, ["check", "download", "stop", "install"]);
+  assert.deepEqual(f.calls, ['discover', 'feed', 'check', 'download']);
+  f.app.emit('before-quit'); assert.equal(f.calls.includes('install'), false);
+  f.answers.push(0); await f.control.check();
+  assert.deepEqual(f.calls.slice(-2), ['backup-stop', 'install']);
 });
-test("engine stop failure prevents install and retains the downloaded update", async t => {
-  const f = fixture(t, { control: { prepareForInstall: async () => { throw new Error("Private runtime detail"); } } });
-  f.answers.push(0, 0);
+test('failed backup or engine stop prevents install and offers recovery', async t => {
+  const f = fixture(t, { control: { prepareForInstall: async () => { throw new Error('private runtime'); } } });
+  f.answers.push(0, 0); await f.control.check();
+  assert.equal(f.calls.includes('install'), false);
+  assert.match(f.messages.at(-1).buttons[0], /Reopen/);
+  assert.equal(JSON.stringify(f.messages).includes('private runtime'), false);
+});
+test('a tampered downloaded installer never reaches restart or install', async t => {
+  const f = fixture(t); fs.appendFileSync(f.file, 'tampered'); f.answers.push(0);
   await f.control.check();
-  assert.equal(f.calls.includes("install"), false);
+  assert.equal(f.calls.includes('backup-stop'), false); assert.equal(f.calls.includes('install'), false);
   assert.match(f.messages.at(-1).message, /could not/);
-  assert.equal(JSON.stringify(f.messages).includes("Private runtime detail"), false);
 });
-test("duplicate checks share one request and one set of approval prompts", async t => {
-  const f = fixture(t); let finish;
-  f.updater.checkForUpdates = () => new Promise(resolve => { f.calls.push("check"); finish = resolve; });
-  const first = f.control.check(), second = f.control.check();
-  assert.equal(first, second);
-  finish({ updateInfo: { version: "0.2.0" } });
-  await first;
-  assert.deepEqual(f.calls, ["check"]);
-  assert.equal(f.messages.length, 1);
+test('concurrent checks coalesce and a manual request receives background failure feedback', async t => {
+  let finish; const f = fixture(t, { control: { discover: () => new Promise((_, reject) => { finish = reject; }) } });
+  const first = f.control.check(false), second = f.control.check(true);
+  assert.equal(first, second); finish(new Error('private HTTP body')); await first;
+  assert.equal(f.messages.length, 1); assert.equal(JSON.stringify(f.messages).includes('private HTTP body'), false);
 });
-test("previews and unqualified platforms never contact an update feed", async t => {
-  for (const options of [{ app: { isPackaged: false } }, { app: { getVersion: () => "0.1.0-dev.1" } },
-    { control: { production: false } }, { control: { platform: "win32" } }]) {
-    const f = fixture(t, options); f.control.start(); await f.control.check();
-    assert.deepEqual(f.calls, []);
-    assert.match(f.messages[0].message, /unavailable/);
+test('previews and unsupported platforms do not make update requests; Windows x64 is enabled', async t => {
+  for (const options of [{ app: { isPackaged: false } }, { control: { enabled: false } }, { control: { platform: 'linux' } }, { control: { platform: 'darwin', arch: 'x64' } }]) {
+    const f = fixture(t, options); await f.control.start(); await f.control.check();
+    assert.deepEqual(f.calls, []); assert.match(f.messages[0].message, /unavailable/);
   }
+  const f = fixture(t, { control: { platform: 'win32', arch: 'x64' } }); await f.control.check(); assert.ok(f.calls.includes('discover'));
 });
-test("malformed, prerelease, equal and older versions cannot be downloaded", async t => {
-  for (const version of ["bad", "0.3.0-rc.1", "0.1.0", "0.0.9", "<script>"]) {
-    const f = fixture(t); f.answers.push(0);
-    f.updater.checkForUpdates = async () => ({ updateInfo: { version } });
-    await f.control.check();
-    assert.equal(f.calls.includes("download"), false);
-  }
+test('a saved opt-out persists and manual checks still work', async t => {
+  const f = fixture(t, { automatic: false }); await f.control.start(); assert.deepEqual(f.calls, []);
+  assert.equal(f.control.menuItems[1].checked, false); await f.control.check(); assert.ok(f.calls.includes('check'));
+  f.control.menuItems[1].click({ checked: false }); assert.equal(JSON.parse(fs.readFileSync(f.prefs)).automaticChecks, false);
 });
-test("background network failures stay quiet; approved download failures are visible and redacted", async t => {
-  const f = fixture(t);
-  f.updater.checkForUpdates = async () => { f.updater.emit("error", new Error("private URL")); throw new Error("private URL"); };
-  await f.control.check(false);
-  assert.equal(f.messages.length, 0);
-  f.updater.checkForUpdates = async () => ({ updateInfo: { version: "0.2.0" } });
-  f.updater.downloadUpdate = async () => { throw new Error("secret HTTP body"); };
-  f.answers.push(0);
-  await f.control.check(false);
-  assert.match(f.messages.at(-1).message, /could not/);
-  assert.equal(JSON.stringify(f.messages).includes("secret HTTP body"), false);
+test('published Core without a compatible installer is reported once automatically and on manual request', async t => {
+  const f = fixture(t); f.result.candidate = null;
+  await f.control.start(); await f.control.check(false); assert.equal(f.messages.length, 1);
+  assert.match(f.messages[0].message, /Core 0.1.1rc36/); assert.match(f.messages[0].detail, /being prepared/);
+  await f.control.check(true); assert.equal(f.messages.length, 2); assert.equal(f.calls.includes('download'), false);
 });
-test("automatic-check choice persists and stopped timers do not generate new traffic", async t => {
-  const f = fixture(t); f.control.start();
-  const item = { checked: true };
-  f.control.menuItems[1].click(item);
-  await f.control.check();
-  assert.deepEqual(JSON.parse(fs.readFileSync(f.prefs)), { automaticChecks: true });
-  f.control.dispose(); f.tick(); await f.control.check(false);
-  assert.deepEqual(f.calls, ["check", "clear"]);
+test('background connection failures are quiet and no result is offered after disposal', async t => {
+  const f = fixture(t, { control: { discover: async () => { throw new Error('private'); } } });
+  await f.control.check(false); assert.equal(f.messages.length, 0);
+  let resolve; const g = fixture(t, { control: { discover: () => new Promise(done => { resolve = done; }) } });
+  const pending = g.control.check(); g.control.dispose(); resolve(g.result); await pending;
+  assert.equal(g.messages.length, 0); assert.equal(g.calls.includes('check'), false);
 });
-test("native signature/install errors offer recovery without exposing backend error text", async t => {
-  const f = fixture(t); f.answers.push(0, 0);
-  await f.control.check();
-  f.updater.emit("error", new Error("untrusted signed ZIP response"));
-  await new Promise(resolve => setImmediate(resolve));
-  assert.match(f.messages.at(-1).detail, /installed version/);
-  assert.equal(JSON.stringify(f.messages).includes("untrusted signed ZIP response"), false);
-  assert.equal(f.calls.includes("relaunch"), false);
+test('native installation errors retain the installed app and offer to reopen it', async t => {
+  const f = fixture(t); f.answers.push(0, 0); await f.control.check();
+  f.updater.emit('error', new Error('private signature details')); await new Promise(resolve => setImmediate(resolve));
+  assert.match(f.messages.at(-1).detail, /installed version/); assert.equal(JSON.stringify(f.messages).includes('private signature details'), false);
+});
+test('startup loads preferences only after the host establishes the stable data path', async t => {
+  const item = { checked: false }, f = fixture(t, { automatic: false, control: { Menu: { getApplicationMenu: () => ({ getMenuItemById: () => item }) } } });
+  const correct = f.app.getPath; f.app.getPath = () => '/not-the-host-data-path'; assert.equal(f.calls.length, 0);
+  f.app.getPath = correct; await f.control.start(); assert.equal(item.checked, false); assert.deepEqual(f.calls, []);
 });
 
-test("startup reads the final host data path and restores the native automatic-check choice", async t => {
-  const item = { checked: false };
-  const f = fixture(t, { automatic: true, control: { Menu: { getApplicationMenu: () => ({getMenuItemById: () => item}) } } });
-  const correct = f.app.getPath;
-  f.app.getPath = () => '/not-the-final-host-data-path';
-  assert.equal(f.calls.length, 0);
-  f.app.getPath = correct;
-  f.control.start();
-  await f.control.check();
-  assert.equal(item.checked, true);
-  assert.equal(f.control.menuItems[1].checked, true);
-  assert.deepEqual(f.calls, ['check']);
+test('automatic-check preferences refuse a dangling symlink without writing its target', { skip: process.platform === 'win32' }, async t => {
+  const f = fixture(t), target = path.join(path.dirname(f.prefs), 'outside.json');
+  fs.symlinkSync(target, f.prefs);
+  const item = { checked: false }; f.control.menuItems[1].click(item);
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(item.checked, true); assert.equal(fs.existsSync(target), false);
+  assert.match(f.messages.at(-1).message, /could not/);
 });

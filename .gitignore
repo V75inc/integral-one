@@ -18,3 +18,11 @@ __pycache__/
 desktop/accounts/ui/
 desktop/accounts/preload.js
 desktop/accounts/config.runtime.json
+
+
+# Avoid bloating repo with agent skills
+.agents/
+skills-lock.json
+
+# IDE files
+.idea

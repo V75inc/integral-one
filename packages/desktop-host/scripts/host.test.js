@@ -62,25 +62,48 @@ test('remote host starts no local runtime and exposes no local preload or sessio
   assert.equal(event.blocked,true);
 });
 
-async function localFixture({owned = true, stop = async () => ({state:'stopped'})} = {}) {
-  const app = new EventEmitter(), stops = [], menus = [];
-  let boot, quit = 0, ready = 0;
+async function localFixture({owned = true, stop = async () => ({state:'stopped'}), platform = 'darwin', windowsTitleBar = false, loadingScreen} = {}) {
+  const app = new EventEmitter(), stops = [], menus = [], windows = [], handlers = {};
+  let boot, quit = 0, ready = 0, builtMenu = null;
   Object.assign(app, {setName(){}, commandLine:{hasSwitch:()=>true}, getPath:()=>'/task/one',
     requestSingleInstanceLock:()=>true, quit:()=>{quit++;},
     whenReady:()=>({then:fn=>{boot=fn;return {catch(){}};}})});
   class Window extends EventEmitter {
-    constructor() { super(); this.webContents = new EventEmitter(); this.webContents.setWindowOpenHandler=()=>{}; }
-    async loadURL() {} close() {} setTitle() {}
+    constructor(options) {
+      super(); this.options = options; windows.push(this);
+      this.webContents = new EventEmitter(); this.webContents.setWindowOpenHandler=()=>{};
+      this.webContents.send = (channel, value) => { this.fullscreenEvent = [channel, value]; };
+    }
+    async loadURL(url) { this.url = url; } close() {} setTitle() {}
+    setMenu(menu) { this.menu = menu; }
+    getContentSize() { return [1280, 800]; }
+    setTitleBarOverlay(overlay) { this.overlay = overlay; }
+    setBackgroundColor(color) { this.backgroundColor = color; }
+    setFullScreen(value) {
+      this.fullScreen = Boolean(value);
+      this.emit(value ? 'enter-full-screen' : 'leave-full-screen');
+    }
+    isFullScreen() { return Boolean(this.fullScreen); }
   }
   const electron = {app, BrowserWindow:Window,
-    Menu:{buildFromTemplate:x=>x,setApplicationMenu:x=>menus.push(x)},
+    Menu:{
+      buildFromTemplate:x=>x,
+      setApplicationMenu(menu) { builtMenu = menu; menus.push(menu); },
+      getApplicationMenu() {
+        return { getMenuItemById(id) {
+          const item = builtMenu?.find(entry => entry.id === id);
+          if (!item) return null;
+          return { submenu: item.submenu ? { popup(options) { item.popped = options; } } : undefined };
+        } };
+      },
+    },
     dialog:{showErrorBox(){}}, shell:{}, session:{defaultSession:{clearCache:async()=>{}}},
-    ipcMain:{handle(){}}, systemPreferences:{}, nativeTheme:{}, nativeImage:{}};
+    ipcMain:{handle(channel, fn) { handlers[channel] = fn; }}, systemPreferences:{}, nativeTheme:{}, nativeImage:{}};
   const runtime = {owned,pid:123,process_created:456,home:'/task/home',cli:{file:'integral',args:[]},web_url:'http://127.0.0.1:19006'};
   const module = {exports:{}};
   vm.runInNewContext(fs.readFileSync(path.join(__dirname,'../lib/host.js'),'utf8'), {
     module, __dirname:path.join(__dirname,'../lib'), URL,
-    process:{argv:['electron','main'],env:{},platform:'darwin'},
+    process:{argv:['electron','main'],env:{},platform},
     require:id=>{
       if(id==='electron')return electron;
       if(id==='node:fs')return {mkdirSync(){},chmodSync(){}};
@@ -90,9 +113,9 @@ async function localFixture({owned = true, stop = async () => ({state:'stopped'}
       return require(id.startsWith('./')?path.join(__dirname,'../lib',id):id);
     },
   });
-  const control = module.exports.runDesktop({mode:'local',helpMenuItems:[{label:'Check for Updates…'}],onReady:()=>{ready++;}});
+  const control = module.exports.runDesktop({mode:'local',windowsTitleBar,loadingScreen,helpMenuItems:[{label:'Check for Updates…'}],onReady:()=>{ready++;}});
   await boot();
-  return {control,app,runtime,stops,menus,ready,quit:()=>quit};
+  return {control,app,runtime,stops,menus,windows,handlers,ready,quit:()=>quit};
 }
 
 test('update preparation serializes a confirmed owned-engine shutdown and exposes a native menu', async () => {
@@ -121,4 +144,65 @@ test('updates cannot stop an externally owned runtime or treat a live status res
   await new Promise(resolve=>setImmediate(resolve));
   assert.equal(prevented,true);
   assert.equal(running.quit(),0);
+});
+
+function trustedEvent(win) {
+  win.webContents.mainFrame = { url: 'http://127.0.0.1:19006/' };
+  return { sender: win.webContents, senderFrame: win.webContents.mainFrame };
+}
+
+test('Windows title bar recolors the native caption and pops the installed menu', async () => {
+  const f = await localFixture({ platform: 'win32', windowsTitleBar: true, loadingScreen: { backgroundColor: '#171717', title: 'Integral | one' } });
+  const splash = f.windows[0];
+  const main = f.windows[1];
+  assert.equal(splash.options.titleBarStyle, 'hidden');
+  assert.equal(splash.menu, null);
+  assert.equal(splash.options.autoHideMenuBar, true);
+  assert.equal(splash.options.backgroundColor, '#171717');
+  assert.deepEqual(splash.options.titleBarOverlay, { color: '#171717', symbolColor: '#ededed', height: 32 });
+  assert.equal(main.options.titleBarStyle, 'hidden');
+  assert.equal(main.options.autoHideMenuBar, true);
+  assert.equal(main.options.backgroundColor, '#1a1a1a');
+  assert.deepEqual(main.options.titleBarOverlay, { color: '#1a1a1a', symbolColor: '#ededed', height: 32 });
+  const argument = main.options.webPreferences.additionalArguments[0];
+  const bar = f.menus[0].filter(item => item.id);
+  assert.equal(Array.from(bar, item => item.id).join(','), 'file,edit,view,help');
+  const edit = bar.find(item => item.id === 'edit');
+  const editRoles = edit.submenu.map(item => item.role).filter(Boolean);
+  assert.equal(Array.from(editRoles).join(','), 'undo,redo,cut,copy,paste,pasteAndMatchStyle,delete');
+  assert.equal(edit.submenu.some(item => item.role === 'selectAll' || item.label === 'Settings'), false);
+  const viewRoles = bar.find(item => item.id === 'view').submenu.map(item => item.role).filter(Boolean);
+  assert.equal(Array.from(viewRoles).join(','), 'resetZoom,zoomIn,zoomOut');
+  assert.equal(bar.some(item => item.role === 'windowMenu' || item.id === 'window'), false);
+  assert.deepEqual(JSON.parse(argument.slice('--integral-window-chrome='.length)).menus.map(menu => menu.id),
+    ['file', 'edit', 'view', 'help']);
+  const event = trustedEvent(main);
+  assert.equal(await f.handlers['integral:window-chrome-popup'](event, 'file', 12, 32), true);
+  const popped = f.menus[0].find(item => item.id === 'file').popped;
+  assert.equal(popped.window, main);
+  assert.equal(popped.x, 12);
+  assert.equal(popped.y, 32);
+  assert.equal(await f.handlers['integral:window-chrome-popup'](event, 'tools', 12, 32), null);
+  assert.equal(await f.handlers['integral:window-chrome-popup'](event, 'window', 12, 32), null);
+  assert.equal(await f.handlers['integral:window-chrome-theme'](event, 'light'), '#fafafa');
+  assert.deepEqual(main.overlay, { color: '#fafafa', symbolColor: '#0b0b0c', height: 32 });
+  assert.equal(main.backgroundColor, '#fafafa');
+  assert.equal(await f.handlers['integral:window-chrome-theme'](event, 'blue'), null);
+  assert.equal(f.handlers['integral:window-chrome-fullscreen'], undefined);
+  await assert.rejects(f.handlers['integral:window-chrome-popup']({ sender: {}, senderFrame: event.senderFrame }, 'file', 12, 32), /Untrusted/);
+});
+
+test('Mac and a framed Windows window keep the system title bar', async () => {
+  const mac = await localFixture({ platform: 'darwin', windowsTitleBar: true });
+  assert.equal(mac.windows[0].options.titleBarStyle, undefined);
+  assert.equal(mac.windows.at(-1).options.titleBarStyle, undefined);
+  assert.equal(mac.windows.at(-1).options.backgroundColor, '#ffffff');
+  const macView = mac.menus[0].find(item => item.id === 'view');
+  assert.equal(macView.submenu.some(item => item.role === 'togglefullscreen'), true);
+  assert.equal(mac.handlers['integral:window-chrome-popup'], undefined);
+  const framed = await localFixture({ platform: 'win32' });
+  assert.equal(framed.windows[0].options.titleBarStyle, undefined);
+  assert.equal(framed.windows.at(-1).options.titleBarStyle, undefined);
+  assert.equal(framed.windows.at(-1).options.autoHideMenuBar, undefined);
+  assert.equal(framed.handlers['integral:window-chrome-theme'], undefined);
 });

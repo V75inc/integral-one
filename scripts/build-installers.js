@@ -5,6 +5,11 @@ const { execFileSync } = require('node:child_process');
 const root = path.join(__dirname, '..');
 process.chdir(root);
 const signed = process.argv.includes('--signed');
+// The checked-in config.json stays unconfigured. Installer builds use the
+// public production account file unless a build already chose another one.
+if (!process.env.INTEGRAL_ACCOUNT_CONFIG) {
+  process.env.INTEGRAL_ACCOUNT_CONFIG = path.join(root, 'desktop/accounts/config.production.json');
+}
 const preparationEnv = require('./signing-config').releasePreparationEnv(process.env);
 if (process.argv.slice(2).some(arg => arg !== '--signed')) throw new Error('Usage: npm run build:installers [-- --signed]');
 if (!['darwin', 'win32'].includes(process.platform) || !['arm64', 'x64'].includes(process.arch) || (process.platform === 'win32' && process.arch !== 'x64')) throw new Error('Installer targets are macOS arm64/x64 and Windows x64. Build on the matching native runner.');
@@ -12,7 +17,6 @@ const npm = process.env.npm_execpath;
 if (!npm) throw new Error('Run through npm run build:installers.');
 if (signed) {
   if (process.platform === 'darwin' && process.arch !== 'arm64') throw new Error('Signed Mac release currently supports Apple Silicon on macOS 14+; Intel is blocked by Core runtime dependency compatibility.');
-  if (process.platform === 'win32') throw new Error('Windows signed release remains blocked until its signing and automatic-update path are qualified. The initial signed release targets macOS.');
   const { version } = require('../package.json');
   const pins = require('../distribution.json');
   if (!/^\d+\.\d+\.\d+$/.test(version) || pins.product_version !== version) throw new Error('Signed public installers require matching stable package/distribution versions.');
@@ -33,7 +37,8 @@ const builder = require.resolve('electron-builder/cli.js');
 const args = [builder, process.platform === 'darwin' ? '--mac' : '--win', process.platform === 'darwin' ? 'zip' : 'nsis', `--${process.arch}`, '--publish', 'never'];
 if (signed) {
   args.push('--config.forceCodeSigning=true');
-  if (process.platform === 'darwin') args.push('--config.mac.notarize=true', '--config.extraMetadata.integralOneUpdates.enabled=true');
+  args.push('--config.extraMetadata.integralOneUpdates.enabled=true');
+  if (process.platform === 'darwin') args.push('--config.mac.notarize=true');
   else args.push(`--config.win.signtoolOptions.certificateSha1=${process.env.ONE_WINDOWS_CERT_SHA1}`);
 }
 if (!signed && process.platform === 'win32') args.push('--config.win.signExecutable=false');

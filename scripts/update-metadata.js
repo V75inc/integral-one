@@ -20,8 +20,21 @@ function generate(directory, version) {
     return { url: artifact.file, sha512: crypto.createHash("sha512").update(bytes).digest("base64"), size: bytes.length };
   });
   const primary = files.find(file => /-x64\.zip$/.test(file.url)) || files[0];
-  const metadata = { version, files, path: primary.url, sha512: primary.sha512, releaseDate: new Date().toISOString() };
+  const metadata = { version, integralCore: manifest.core, releaseChannel: manifest.channel,
+    files, path: primary.url, sha512: primary.sha512, releaseDate: new Date().toISOString() };
   fs.writeFileSync(path.join(directory, "latest-mac.yml"), yaml.dump(metadata));
+  const windows = manifest.artifacts['win32-x64'];
+  if (windows) {
+    const file = path.join(directory, windows.file), stat = fs.lstatSync(file);
+    if (!stat.isFile() || stat.isSymbolicLink()) throw new Error('Invalid Windows update artifact.');
+    const bytes = fs.readFileSync(file);
+    if (bytes.length !== windows.bytes || crypto.createHash('sha256').update(bytes).digest('hex') !== windows.sha256)
+      throw new Error('Windows update artifact differs from the verified installer.');
+    const sha512 = crypto.createHash('sha512').update(bytes).digest('base64');
+    fs.writeFileSync(path.join(directory, 'latest.yml'), yaml.dump({ version, integralCore: manifest.core,
+      releaseChannel: manifest.channel, files: [{ url: windows.file, sha512, size: bytes.length }],
+      path: windows.file, sha512, releaseDate: metadata.releaseDate }));
+  }
   return metadata;
 }
 if (require.main === module) {

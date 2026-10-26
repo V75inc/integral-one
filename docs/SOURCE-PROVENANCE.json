@@ -57,6 +57,16 @@
     "source_commit": "eebaa74aeb6e53d009b65dd5ef11c623a678b9bc"
   },
   "released_core": {
+    "version": "0.1.1rc35",
+    "source_commit": "17f14ba3126fbbe93e71b5b19df4005d39a78709",
+    "wheel_sha256": "1956ca24832ea4927109a127f599a7d0e973262d844f87cfcd25c685273f0712",
+    "packaged_python_files_match_source": 818,
+    "original_license_and_notice_match": true,
+    "publication_index": "https://test.pypi.org/project/integral-core/0.1.1rc35/",
+    "ui_source_tree_sha256": "74995b2f918518899cfa790be2643f1c9dbe465b030151bea55d2601a2cf817b",
+    "qualification": "Automated consumer matrix required; signing, native GUI upgrade and release approval remain separate"
+  },
+  "previous_released_core": {
     "version": "0.1.1rc34",
     "source_commit": "82b4d6d12c3899f030f45bbe8d9f7ca7d44b7a1c",
     "wheel_sha256": "abea5d37b8c33dd90efc797727cda6e69cfde9e13645377aada10c34c5be418b",
@@ -66,14 +76,12 @@
     "ui_source_tree_sha256": "21cb64c11d19ccfabc3a009ed9d7e9c4a46557d516323e37a133dc2ceea0071f",
     "qualification": "Automated consumer matrix required; signing, native GUI upgrade and release approval remain separate"
   },
-  "previous_released_core": {
-    "version": "0.1.1rc33",
-    "source_commit": "7e3c50645761048bde92d89adadd2386acca280c",
-    "wheel_sha256": "50e582bec86884be4f10df27155c4656d6585a2edb330b5cafee5d19cd49a2ee",
-    "packaged_python_files_match_source": 816,
-    "original_license_and_notice_match": true,
-    "publication_index": "https://test.pypi.org/project/integral-core/0.1.1rc33/",
-    "ui_source_tree_sha256": "21cb64c11d19ccfabc3a009ed9d7e9c4a46557d516323e37a133dc2ceea0071f",
-    "qualification": "Automated consumer matrix required; signing, native GUI upgrade and release approval remain separate"
+  "desktop_distribution_integration": {
+    "menu_pr": 4,
+    "menu_commit": "59b2eaf20514464020e9617f1cfb2bdd59c83e0c",
+    "accounts_pr": 12,
+    "accounts_commit": "bea37b4d307bde7c9f3a34203831facdb861383f",
+    "desktop_host_version": "0.1.7-dev.12",
+    "changes": "Integrates Windows menu chrome and native Logto PKCE; adds cold update backups without changing app IDs, store paths or owner keys."
   }
 }

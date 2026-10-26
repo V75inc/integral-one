@@ -72,10 +72,10 @@ release containing #165 is published and composed; its actual consumer journey
 is required before signing.
 
 After the exact installers and a signed version-A-to-version-B update are approved,
-publish those assets together as the next stable **Integral One** release. The
+publish those assets together as the next **Integral One** release in its matching channel: ordinary releases for PyPI and prereleases for TestPyPI. The
 installed One updater discovers it, asks before download and restart, stops its
 owned Core process, and installs the complete distribution. Automatic checks stay
-opt-in. Network/account outages do not invalidate existing local access.
+enabled by default and can be turned off. Network/account outages do not invalidate existing local access.
 
 This workflow prepares tested source updates; it does not automatically merge,
 use signing keys, publish installers or bypass native platform security. Windows

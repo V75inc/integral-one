@@ -17,6 +17,15 @@ input,
 textarea {
   font: inherit;
 }
+button,
+a,
+input,
+textarea,
+summary,
+.browser-handoff,
+.help-content {
+  -webkit-app-region: no-drag;
+}
 button {
   cursor: pointer;
 }
@@ -36,10 +45,22 @@ summary:focus-visible {
   width: min(100% - 48px, 384px);
   margin: 0 auto;
   padding: 44px 0 24px;
+  overflow-wrap: anywhere;
+}
+.account-titlebar {
+  position: fixed;
+  z-index: 2;
+  top: env(titlebar-area-y, 0px);
+  left: env(titlebar-area-x, 0px);
+  width: env(titlebar-area-width, 100%);
+  height: env(titlebar-area-height, 32px);
+  -webkit-app-region: drag;
 }
 .account-header {
   text-align: center;
   margin-bottom: 28px;
+  -webkit-app-region: drag;
+  user-select: none;
 }
 .wordmark {
   display: flex;
@@ -75,13 +96,6 @@ summary:focus-visible {
 }
 .account-body {
   min-height: 180px;
-}
-.account-switch {
-  text-align: center;
-  font-size: 13px;
-  line-height: 1.6;
-  color: #aaa9a5;
-  margin: 18px 0 0;
 }
 .text-action {
   padding: 4px 2px;
@@ -221,12 +235,6 @@ summary:hover {
 a {
   color: #efa477;
 }
-.cl-rootBox {
-  width: 100%;
-}
-.cl-cardBox {
-  max-width: 100%;
-}
 @media (max-width: 400px) {
   .account-page {
     width: calc(100% - 40px);
@@ -263,9 +271,12 @@ a {
   color: #aaa9a5;
   margin-top: 8px;
 }
-.browser-handoff .text-action {
-  padding: 6px 0;
-  min-height: 36px;
+.browser-handoff .error {
+  margin-top: 12px;
 }
-
-.account-header--form .wordmark{margin-bottom:0}
+.account-body .text-action {
+  display: block;
+  width: fit-content;
+  margin: 8px auto 0;
+  min-height: 44px;
+}

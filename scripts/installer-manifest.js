@@ -4,17 +4,10 @@ const path = require('node:path');
 const crypto = require('node:crypto');
 const { execFileSync } = require('node:child_process');
 const root = path.join(__dirname, '..');
+const { validateManifest, channelPolicy } = require('../desktop/release-contract');
 const run = (file, args) => execFileSync(file, args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
 function validatePart(part) {
-  if (part.schemaVersion !== 1 || !/^\d+\.\d+\.\d+$/.test(part.version)) throw new Error('Only stable release manifests are supported.');
-  const entries = Object.entries(part.artifacts || {});
-  if (!entries.length) throw new Error('Manifest has no installers.');
-  const names = { 'darwin-arm64': `integral-one-${part.version}-mac-arm64.zip`, 'darwin-x64': `integral-one-${part.version}-mac-x64.zip`, 'win32-x64': `integral-one-${part.version}-win-x64.exe` };
-  for (const [platform, asset] of entries) {
-    if (!names[platform] || asset.file !== names[platform] || !/^[a-f0-9]{64}$/.test(asset.sha256) || !Number.isSafeInteger(asset.bytes) || asset.bytes < 1) throw new Error('Invalid installer identity/checksum/size.');
-    if (platform.startsWith('darwin') ? asset.appleTeamId !== 'M43V972XU9' : !/^[A-F0-9]{40}$/.test(asset.signerThumbprint)) throw new Error('Missing verified publisher identity.');
-  }
-  return part;
+  return validateManifest(part);
 }
 function createPart() {
   if (process.platform === 'darwin' && process.arch !== 'arm64') throw new Error('Intel Mac release is blocked until Core runtime compatibility is qualified.');
@@ -53,9 +46,13 @@ function createPart() {
       "$env:ONE_WINDOWS_CERT_SHA1",
     ].join('; ');
     asset.signerThumbprint = execFileSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', command], { env: { ...process.env, ONE_SIGNED_INSTALLER: target, ONE_SIGNED_APP: path.join(root, 'release/win-unpacked/Integral One.exe'), ONE_RELEASE_VERSION: version }, encoding: 'utf8' }).trim().toUpperCase();
+    asset.publisherName = 'V75 Inc.';
     inspectPackagedAccount(path.join(root, 'release/win-unpacked/resources/app.asar'), config);
   } else throw new Error('Unsupported native release runner.');
-  const part = validatePart({ schemaVersion: 1, version, artifacts: { [platform]: asset } });
+  const pins = require('../distribution.json'), channel = require('../package.json').integralOneUpdates.channel;
+  const part = validatePart({ schemaVersion: 2, version, channel,
+    core: { version: pins.core.version, registry: channelPolicy(channel).registry, wheelSha256: pins.core.wheel_sha256 },
+    artifacts: { [platform]: asset } });
   const output = path.join(root, `release/install-manifest-${platform}.json`);
   fs.writeFileSync(output, JSON.stringify(part, null, 2) + '\n');
   console.log(`Verified native installer and wrote ${path.basename(output)}.`);
@@ -70,8 +67,9 @@ function merge(directory, output) {
   let result;
   for (const name of parts) {
     const part = validatePart(JSON.parse(fs.readFileSync(path.join(directory, name), 'utf8')));
-    if (!result) result = { schemaVersion: 1, version: part.version, artifacts: {} };
+    if (!result) result = { schemaVersion: 2, version: part.version, channel: part.channel, core: part.core, artifacts: {} };
     if (part.version !== result.version) throw new Error('Do not combine release versions.');
+    if (part.channel !== result.channel || JSON.stringify(part.core) !== JSON.stringify(result.core)) throw new Error('Do not combine Core versions or release channels.');
     for (const [platform, asset] of Object.entries(part.artifacts)) {
       if (result.artifacts[platform]) throw new Error('Duplicate platform.');
       const file = path.join(directory, asset.file);
