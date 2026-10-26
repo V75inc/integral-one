@@ -20,6 +20,12 @@ The local host and bundler require neutral runtime composition contract v1 as
 well as legacy profile/identity compatibility. Stored owner IDs, data paths and
 session/recovery keys do not change. Remote mode starts no local runtime.
 
+Bundled launches require uv-managed Python 3.12, avoiding system Python discovery.
+First-time provisioning has a 30-minute bound; other CLI operations retain the
+five-minute bound. `startCore({onProgress})` emits fixed, allowlisted download/setup
+messages for the startup window's `[role="status"]` element. Subprocess logs and
+paths are never forwarded to that window. Reopening reuses completed downloads.
+
 Distributions can supply native `helpMenuItems` and an `onReady` callback.
 `runDesktop` returns `stopRuntime({requireExclusive})` for a reviewed updater.
 It waits for the owned Core process to stop using its PID/creation-time binding,

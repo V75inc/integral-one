@@ -96,9 +96,15 @@ async function boot() {
       webPreferences: { sandbox: true, nodeIntegration: false, contextIsolation: true } });
     if (process.platform === 'win32') progress.setMenu?.(null);
     await progress.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(splash.html ||
-      '<html><body style="font:16px system-ui;padding:30px"><h2>Starting Integral</h2><p>Preparing your private workspace. The first launch downloads its runtime; later launches reuse it.</p></body></html>'
+      '<html><body style="font:16px system-ui;padding:30px"><h2>Starting Integral</h2><p role="status">Preparing your private workspace. The first launch downloads its runtime; later launches reuse it.</p></body></html>'
     ));
-    try { runtime = await startCore({ home, resources }); workspace = runtime.web_url; }
+    const onProgress = message => {
+      if (progress.isDestroyed()) return;
+      void progress.webContents.executeJavaScript(
+        `document.querySelector('[role="status"]')?.replaceChildren(document.createTextNode(${JSON.stringify(message)}))`
+      ).catch(() => {});
+    };
+    try { runtime = await startCore({ home, resources, onProgress }); workspace = runtime.web_url; }
     finally { progress.close(); }
   }
   const applicationMenu = Menu.buildFromTemplate([

@@ -52,7 +52,23 @@ The following passed:
 8. Explicit cold launch of the updated app in the same isolated homes. The retained entry was inspected in the UI and API. Installation identity/keys, account files, timezone and pinned App matched the pre-update state and backup.
 9. The exact candidate's native Help → Check for Updates dialog performed the live TestPyPI/GitHub check and reported its result.
 
-The SDK's automatic relaunch was disabled only in the test fixture, because Squirrel does not carry the task's profile/home arguments into a relaunch. The exact candidate was reopened explicitly with those arguments. This establishes native replacement and cold-launch continuity; automatic relaunch in a normal default profile remains a separate acceptance check. Real rc33/rc34 → rc35 engine upgrade rehearsals are recorded in [the source qualification](DISTRIBUTION-QUALIFICATION-2026-10-26.md).
+The SDK's automatic relaunch was disabled only in the test fixture, because Squirrel does not carry the task's profile/home arguments into a relaunch. The exact candidate was reopened explicitly with those arguments. This establishes native replacement and cold-launch continuity; the separate-Mac rehearsal below completes automatic relaunch in a normal default profile. Real rc33/rc34 → rc35 engine upgrade rehearsals are recorded in [the source qualification](DISTRIBUTION-QUALIFICATION-2026-10-26.md).
+
+## Separate-Mac automatic restart
+
+A separate Apple Silicon Mac running macOS 15.7.7 was accessed through the owner-authorized SSH route, with its test account logged into the desktop. It initially contained no Integral installation or data. The same fixed `0.1.5` candidate was transferred with a signed/notarized lower-version QA fixture; the SDK's automatic relaunch remained enabled. The product's ordinary `Integral` user-data and Core paths were used.
+
+Automatic/manual checks, decline, corrupted download rejection, Later/normal quit, one cold backup, native replacement and automatic restart all passed. No explicit launch of `0.1.5` was performed. Its running process and already-owned runtime were checked after restart. The retained entry, installation identity/keys, One account record/setup key, timezone and pinned App matched their pre-update values. The installed ASAR matched the fixed candidate, and strict signature verification and Gatekeeper assessment passed on that Mac. The native updater result records `automaticRelaunch: true`.
+
+The first verification driver encountered an Electron ASAR filesystem error while hashing the raw archive. It was rerun using `original-fs` from the existing signed helper's Node mode. This corrected only the external verification driver; the installed candidate bytes and its running process were unchanged.
+
+### First-start defect found during this rehearsal
+
+The first cold launch exceeded the host's five-minute CLI timeout while downloading Python/runtime dependencies. Reopening after provisioning resumed succeeded. This is a failed first-start check, even though the subsequent updater/relaunch checks passed.
+
+The follow-up `0.1.6` source uses desktop host `0.1.7-dev.13`: uv-managed Python 3.12 only, a 30-minute startup/provisioning bound, and fixed download/setup messages in the sandboxed startup window. Ordinary stop/session/backup operations retain the five-minute bound. Reopening reuses completed downloads. This is a new candidate and does not replace the fixed `0.1.5` artifact's bytes or its recorded results. The corrected launcher completed a real, empty-cache rehearsal on the separate Mac: Python and dependencies downloaded, Core rc35 reached ready after 485,455 ms, and the owned runtime stopped successfully at 486,908 ms. No second launch or manual Python installation was needed. The new signed package and updater checks are recorded separately below.
+
+A developer-tools prompt was separately triggered by a maintainer's `xcrun stapler` check on the test Mac, which has no developer tools installed. Developer tools are not an end-user prerequisite; signature and Gatekeeper checks on that machine use built-in tools. Stapled-ticket validation was already completed on the signing Mac.
 
 ## Local regression checks and evidence
 
@@ -60,8 +76,16 @@ After the bootstrap correction, `npm run verify` passed 171 Node and 16 Python t
 
 The task-owned evidence directory is `/Users/eldonmarks/.codex/worktrees/integral-one-signed-qualification-2026-10-26`. It contains candidate assets, accepted notarization IDs, build/verification logs, bootstrap and native updater drivers/results, screenshots, the retained synthetic home and its backup. Test engines were stopped after checks. The lower-version fixture stays outside `candidate-assets`.
 
+## Corrected candidate `0.1.6`
+
+The application was rebuilt with desktop host `0.1.7-dev.13` and unchanged Core rc35, app ID, data paths and recovery keys. Apple submission `02cd0d51-2287-449d-b53c-de9ac6f6d8b8` was Accepted. Strict signature verification, stapled-ticket validation, Gatekeeper and maintained-source/package parity passed. ASAR SHA-256 is `2d010f84fd13ddfadf640b252d594db6bd8d593465ac13a7b5e4a8d3418b86d7`.
+
+`npm run verify` passed 171 Node and 16 Python tests, desktop-host passed 52 tests, and the composed UI built with all 2,246 UI tests passing across 366 files. The actual engine upgrade/settings/cold-restart rehearsal passed before signing. Regression checks cover managed-Python arguments, provisioning past five minutes, its 30-minute bound, unchanged operation bounds, sanitized progress and sandboxed status rendering.
+
+Evidence for this candidate is under `qualification-0.1.6` inside the task directory. This is a separate immutable candidate from `0.1.5`; neither is a published release. The native two-version update rehearsal for `0.1.6` remains pending until its exact ZIP is installed and verified.
+
 ## Publication hold
 
 No signing secrets were added to CI. Its waiting candidate was superseded by the approved local Keychain build. No tag, GitHub release, visibility change or deployment was made.
 
-Before publication, complete normal-profile automatic relaunch and clean-machine acceptance on each advertised platform, and the real browser sign-in/callback journey. The local account used for update retention was synthetic. Windows signing/native update acceptance is not established by this Mac run. Core rc35 requires a development prerelease, with the matching manifest, ZIP, update YAML, fixed bootstrap and notices published together after approval.
+Before publication, complete the corrected candidate's clean first-start acceptance, qualification on each advertised platform, and the real browser sign-in/callback journey. The local account used for update retention was synthetic. Windows signing/native update acceptance is not established by this Mac run. Core rc35 requires a development prerelease, with the matching manifest, ZIP, update YAML, fixed bootstrap and notices published together after approval.

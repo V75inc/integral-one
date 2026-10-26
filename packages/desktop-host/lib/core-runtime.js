@@ -41,14 +41,14 @@ function invocation({ resources, command = process.env.INTEGRAL_CORE_COMMAND,
     }
     return {
       file: path.join(base, process.platform === 'win32' ? 'uv.exe' : 'uv'),
-      args: ['tool', 'run', '--python', '3.12', '--index-url', 'https://pypi.org/simple',
+      args: ['tool', 'run', '--managed-python', '--python', '3.12', '--index-url', 'https://pypi.org/simple',
         '--from', path.join(base, manifest.coreWheel), 'integral'],
     };
   }
   return { file: 'integral', args: [] };
 }
 
-function runCli(command, args, { timeout = 300_000, spawnProcess = spawn } = {}) {
+function runCli(command, args, { timeout = 300_000, spawnProcess = spawn, onProgress } = {}) {
   return new Promise((resolve, reject) => {
     const env = { ...process.env };
     delete env.PYTHONPATH;
@@ -57,12 +57,31 @@ function runCli(command, args, { timeout = 300_000, spawnProcess = spawn } = {})
     });
     let stdout = '';
     let stderr = '';
+    let progressLine = '';
+    let lastProgress = '';
     const timer = setTimeout(() => {
       child.kill();
-      reject(new Error('Core startup timed out. Inspect the installation logs and retry.'));
+      reject(new Error(args[0] === 'up'
+        ? 'Preparing your workspace took too long. Check your internet connection and reopen Integral to resume setup.'
+        : 'The workspace operation timed out. Retry the operation.'));
     }, timeout);
     child.stdout.on('data', chunk => { stdout += chunk; });
-    child.stderr.on('data', chunk => { stderr = (stderr + chunk).slice(-8000); });
+    child.stderr.on('data', chunk => {
+      stderr = (stderr + chunk).slice(-8000);
+      // Only fixed status messages reach the splash. Never forward logs, paths,
+      // dependency names or arbitrary subprocess output into its renderer.
+      if (!onProgress) return;
+      progressLine += chunk;
+      const lines = progressLine.split(/[\r\n]/);
+      progressLine = lines.pop().slice(-1024);
+      for (const line of lines) {
+        let status;
+        if (/^Downloading cpython-/.test(line)) status = 'Downloading Python for your workspace...';
+        else if (/^Downloading /.test(line)) status = 'Downloading workspace components...';
+        else if (/^(Prepared |Installed | Downloaded |Downloaded )/.test(line)) status = 'Preparing your workspace...';
+        if (status && status !== lastProgress) { lastProgress = status; onProgress(status); }
+      }
+    });
     child.on('error', error => { clearTimeout(timer); reject(error); });
     child.on('close', code => {
       clearTimeout(timer);
@@ -72,10 +91,13 @@ function runCli(command, args, { timeout = 300_000, spawnProcess = spawn } = {})
   });
 }
 
-async function startCore({ home, resources, command, runner = runCli, request = fetch }) {
+async function startCore({ home, resources, command, runner = runCli, request = fetch, onProgress }) {
   const cli = command || invocation({ resources });
   const args = ['up', '--home', home, '--no-open', '--json', '--profile', 'desktop_single_user'];
-  const runtime = await runner(cli, args);
+  // A first run downloads Python and the wheel's dependencies. Slow connections
+  // need a larger provisioning bound; stop/session/backup keep the default bound.
+  onProgress?.('Preparing your private workspace. First-time setup may take several minutes...');
+  const runtime = await runner(cli, args, { timeout: 30 * 60_000, onProgress });
   if (runtime.contract_version !== 1 || runtime.state !== 'ready' || !runtime.installation_id || typeof runtime.started !== 'boolean') {
     throw new Error('This Core release does not support the desktop runtime contract.');
   }

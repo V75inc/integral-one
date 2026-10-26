@@ -62,7 +62,7 @@ test('remote host starts no local runtime and exposes no local preload or sessio
   assert.equal(event.blocked,true);
 });
 
-async function localFixture({owned = true, stop = async () => ({state:'stopped'}), platform = 'darwin', windowsTitleBar = false, loadingScreen} = {}) {
+async function localFixture({owned = true, stop = async () => ({state:'stopped'}), platform = 'darwin', windowsTitleBar = false, loadingScreen, startupMessage} = {}) {
   const app = new EventEmitter(), stops = [], menus = [], windows = [], handlers = {};
   let boot, quit = 0, ready = 0, builtMenu = null;
   Object.assign(app, {setName(){}, commandLine:{hasSwitch:()=>true}, getPath:()=>'/task/one',
@@ -73,6 +73,7 @@ async function localFixture({owned = true, stop = async () => ({state:'stopped'}
       super(); this.options = options; windows.push(this);
       this.webContents = new EventEmitter(); this.webContents.setWindowOpenHandler=()=>{};
       this.webContents.send = (channel, value) => { this.fullscreenEvent = [channel, value]; };
+      this.webContents.executeJavaScript = async code => { this.progressCode = code; };
     }
     async loadURL(url) { this.url = url; } close() {} setTitle() {}
     setMenu(menu) { this.menu = menu; }
@@ -84,6 +85,7 @@ async function localFixture({owned = true, stop = async () => ({state:'stopped'}
       this.emit(value ? 'enter-full-screen' : 'leave-full-screen');
     }
     isFullScreen() { return Boolean(this.fullScreen); }
+    isDestroyed() { return false; }
   }
   const electron = {app, BrowserWindow:Window,
     Menu:{
@@ -107,7 +109,7 @@ async function localFixture({owned = true, stop = async () => ({state:'stopped'}
     require:id=>{
       if(id==='electron')return electron;
       if(id==='node:fs')return {mkdirSync(){},chmodSync(){}};
-      if(id==='./core-runtime')return {startCore:async()=>runtime,runCli:async (cli,args)=>{stops.push({cli,args});return stop();}};
+      if(id==='./core-runtime')return {startCore:async ({onProgress})=>{if(startupMessage)onProgress(startupMessage);return runtime;},runCli:async (cli,args)=>{stops.push({cli,args});return stop();}};
       if(id==='./theme-icons')return {createThemeIcons:()=>({start(){},current:()=>null})};
       if(id==='./permissions')return {createPermissions:()=>({})};
       return require(id.startsWith('./')?path.join(__dirname,'../lib',id):id);
@@ -117,6 +119,21 @@ async function localFixture({owned = true, stop = async () => ({state:'stopped'}
   await boot();
   return {control,app,runtime,stops,menus,windows,handlers,ready,quit:()=>quit};
 }
+
+test('startup progress updates the status as text inside a sandboxed window', async () => {
+  const message = 'Downloading workspace components...';
+  const f = await localFixture({startupMessage:message});
+  const splash = f.windows[0];
+  assert.equal(splash.options.webPreferences.sandbox,true);
+  assert.equal(splash.options.webPreferences.nodeIntegration,false);
+  assert.match(decodeURIComponent(splash.url), /role="status"/);
+  let text;
+  vm.runInNewContext(splash.progressCode, {document:{
+    querySelector: selector => {assert.equal(selector,'[role="status"]');return {replaceChildren:value=>{text=value;}};},
+    createTextNode: value => value,
+  }});
+  assert.equal(text,message);
+});
 
 test('update preparation serializes a confirmed owned-engine shutdown and exposes a native menu', async () => {
   let finish;

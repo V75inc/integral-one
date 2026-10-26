@@ -1,7 +1,7 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { validateWorkspace, invocation, startCore } = require('../lib/core-runtime');
+const { validateWorkspace, invocation, startCore, runCli } = require('../lib/core-runtime');
 
 test('workspace URL restricts insecure origins and embedded credentials', () => {
   assert.equal(validateWorkspace('http://127.0.0.1:9006/'), 'http://127.0.0.1:9006');
@@ -22,7 +22,8 @@ test('desktop starts a blank Core installation and attaches without claiming an 
       assert.equal(url.href, 'http://127.0.0.1:9006/api/meta/deployment');
       assert.equal(options.redirect, 'error');
       return {ok: true, json: async () => ({runtime: {contract_version: 1, preset: 'local', identity: 'installation_owner'}})};
-    }, runner: async (_cli, args) => {
+    }, runner: async (_cli, args, options) => {
+      assert.equal(options.timeout, 30 * 60_000);
       calls.push(args);
       return args[0] === 'status' ? { state: 'ready' } : {
         state: 'ready', contract_version: 1, deployment_profile: 'desktop_single_user', runtime_contract_version: 1, supported_runtime_presets: ['hosted', 'local'], desktop_contract_version: 1, harness_provider_id: 'integral_native', started: false, installation_id: 'abc', web_url: 'http://127.0.0.1:9006', home: '/private/home',
@@ -30,6 +31,44 @@ test('desktop starts a blank Core installation and attaches without claiming an 
     } });
   assert.equal(runtime.owned, false);
   assert.deepEqual(calls[0], ['up', '--home', '/private/home', '--no-open', '--json', '--profile', 'desktop_single_user']);
+});
+
+function fakeProcess() {
+  const { EventEmitter } = require('node:events');
+  const child = new EventEmitter();
+  child.stdout = new EventEmitter(); child.stderr = new EventEmitter();
+  child.kills = 0; child.kill = () => { child.kills++; };
+  return child;
+}
+
+test('cold provisioning survives five minutes and reports only fixed progress messages', async t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const child = fakeProcess(), progress = [];
+  const result = runCli({file: 'uv', args: ['tool', 'run']}, ['up'], {
+    timeout: 30 * 60_000, spawnProcess: () => child, onProgress: message => progress.push(message),
+  });
+  child.stderr.emit('data', 'Downloading cpy');
+  child.stderr.emit('data', 'thon-3.12 (20MiB)\nDownloading private-package (1MiB)\n');
+  child.stderr.emit('data', 'Downloading another-package\nsecret /Users/private/token=abc\nInstalled 150 packages\n');
+  t.mock.timers.tick(6 * 60_000);
+  assert.equal(child.kills, 0);
+  child.stdout.emit('data', '{"state":"ready"}'); child.emit('close', 0);
+  assert.deepEqual(await result, {state: 'ready'});
+  assert.deepEqual(progress, ['Downloading Python for your workspace...', 'Downloading workspace components...', 'Preparing your workspace...']);
+});
+
+test('cold provisioning has a bounded retry message and ordinary operations keep five minutes', async t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const setup = fakeProcess();
+  const setupResult = assert.rejects(runCli({file: 'uv', args: []}, ['up'], {
+    timeout: 30 * 60_000, spawnProcess: () => setup,
+  }), /reopen Integral to resume setup/);
+  t.mock.timers.tick(30 * 60_000); await setupResult; assert.equal(setup.kills, 1);
+  const stop = fakeProcess();
+  const stopResult = assert.rejects(runCli({file: 'uv', args: []}, ['stop'], {
+    spawnProcess: () => stop,
+  }), /workspace operation timed out/);
+  t.mock.timers.tick(300_000); await stopResult; assert.equal(stop.kills, 1);
 });
 test('rejects incompatible descriptors and a remote local-runtime endpoint', async () => {
   for (const descriptor of [{ contract_version: 2 }, { contract_version: 1, web_url: 'https://remote.example' }]) {
@@ -64,7 +103,7 @@ test('Core-only bundled manifests launch without a legacy harness dependency', (
       harness_provider_id: 'integral_native', sha256: { [wheel]: hash('wheel'), uv: hash('launcher') } };
     fs.writeFileSync(path.join(base, 'runtime.json'), JSON.stringify(manifest));
     const cli = invocation({ resources, command: '', prefix: '' });
-    assert.deepEqual(cli.args, ['tool', 'run', '--python', '3.12', '--index-url', 'https://pypi.org/simple',
+    assert.deepEqual(cli.args, ['tool', 'run', '--managed-python', '--python', '3.12', '--index-url', 'https://pypi.org/simple',
       '--from', path.join(base, manifest.coreWheel), 'integral']);
     fs.writeFileSync(path.join(base, 'runtime.json'), JSON.stringify({ ...manifest, agentWheel: 'retired-jvagent.whl' }));
     assert.throws(() => invocation({ resources, command: '', prefix: '' }), /Invalid bundled runtime/);

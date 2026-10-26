@@ -81,7 +81,7 @@
     "menu_commit": "59b2eaf20514464020e9617f1cfb2bdd59c83e0c",
     "accounts_pr": 12,
     "accounts_commit": "bea37b4d307bde7c9f3a34203831facdb861383f",
-    "desktop_host_version": "0.1.7-dev.12",
-    "changes": "Integrates Windows menu chrome and native Logto PKCE; adds cold update backups without changing app IDs, store paths or owner keys."
+    "desktop_host_version": "0.1.7-dev.13",
+    "changes": "Integrates Windows menu chrome and native Logto PKCE; adds cold update backups, explicit managed Python and bounded first-start provisioning progress without changing app IDs, store paths or owner keys."
   }
 }
