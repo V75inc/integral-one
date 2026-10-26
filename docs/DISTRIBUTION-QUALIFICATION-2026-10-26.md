@@ -43,6 +43,8 @@ The release environment's public `ONE_PRODUCTION_ACCOUNT_CONFIG` was updated fro
 
 PR verification now retains and checks the base branch's actual published wheel before building the candidate. Its upgrade test therefore exercises the previous Core version rather than replacing the candidate with itself.
 
+Native CI builds the actual Mac ZIP and Windows NSIS targets before package inspection. Electron-builder omits `app-update.yml` for directory-only Mac/Windows builds, so those directory targets cannot qualify the enabled updater's shipped feed configuration.
+
 ## Remaining distribution acceptance
 
 The source implementation is prepared for distribution. Actual signed/notarized release assets are still required. With approval to use signing material, build and test signed version A and version B on every advertised platform, including download rejection, a real native update, first startup, local account continuity, records and recovery. Complete the real browser sign-in/callback journey in the released package. Windows also requires the approved certificate-store/provider configuration and native installer acceptance.

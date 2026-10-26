@@ -51,13 +51,17 @@ jobs:
       - run: npm run qualify:runtime
       - run: node scripts/qualify-upgrade.js "$RUNNER_TEMP/previous-core" --require-settings
         shell: bash
-      - run: npx electron-builder --dir --publish never
+      - name: Package Linux directory
+        if: runner.os == 'Linux'
+        run: npx electron-builder --dir --publish never
+      # Directory-only Mac/Windows builds omit app-update.yml. Exercise the
+      # actual installer targets so inspection checks the shipped updater feed.
+      - name: Build unsigned native development installer
+        if: runner.os != 'Linux'
+        run: npm run build:installers
       - if: runner.os == 'macOS'
         run: node scripts/qualify-mac-signing.js release
       - run: node scripts/inspect-package.js
-      - name: Build unsigned Windows development installer
-        if: runner.os == 'Windows'
-        run: npm run build:installers
       - uses: actions/upload-artifact@v4
         if: runner.os == 'Windows'
         with:
