@@ -32,6 +32,18 @@ if (
   );
 }
 let host;
+let profileRuntime;
+const initializeProfile = require("./accounts/local-profile").createProfileInitializer({
+  getProfile: controller.accountProfile,
+  authorize: controller.authorizeSession,
+});
+async function prepareProfile(runtime = profileRuntime) {
+  if (!runtime) return;
+  profileRuntime = runtime;
+  // A cosmetic setup failure must never lock an activated local workspace.
+  try { await initializeProfile(runtime); }
+  catch { console.warn("Local display name could not be initialized; the saved profile remains available."); }
+}
 const updates = require("./updates").createUpdates({
   app,
   dialog: electron.dialog,
@@ -54,11 +66,12 @@ host = require("@integral/desktop-host").runDesktop({
   helpMenuItems: updates.menuItems,
   onReady: updates.start,
   beforeBoot: controller.beforeBoot,
+  beforeWorkspace: ({ runtime }) => prepareProfile(runtime),
   account: {
     profile: controller.accountProfile,
     authorizeSession: controller.authorizeSession,
     signOut: controller.signOut,
-    signIn: controller.signIn,
+    signIn: async () => { await controller.signIn(); await prepareProfile(); },
     resumeOffline: controller.resumeOffline,
   },
   loadingScreen: {

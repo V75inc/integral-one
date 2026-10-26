@@ -94,9 +94,10 @@ function verifyClaims(claims, appId, nonce, now) {
       (typeof claims.email !== "string" ||
         claims.email.length > 320 ||
         (claims.email.length > 0 && !/^[^\s@]+@[^\s@]+$/.test(claims.email)))) ||
-    (claims.name !== undefined &&
-      claims.name !== null &&
-      (typeof claims.name !== "string" || claims.name.length > 256))
+    ["name", "given_name", "family_name", "username", "preferred_username"].some(
+      key => claims[key] !== undefined && claims[key] !== null &&
+        (typeof claims[key] !== "string" || claims[key].length > 256),
+    )
   )
     throw new Error("Invalid account profile.");
 }
@@ -110,14 +111,12 @@ function extractProfile(claims) {
             claims.preferred_username
           ? `${claims.preferred_username}@integral.local`
           : "";
-  const name =
-    typeof claims.name === "string"
-      ? claims.name
-      : typeof claims.username === "string"
-        ? claims.username
-        : typeof claims.preferred_username === "string"
-          ? claims.preferred_username
-          : "";
+  const name = [
+    claims.name,
+    [claims.given_name, claims.family_name].filter(Boolean).join(" "),
+    claims.username,
+    claims.preferred_username,
+  ].find(value => typeof value === "string" && value.trim())?.trim().slice(0, 256) || "";
   return { email, name };
 }
 function signingJwk(keys, kid) {

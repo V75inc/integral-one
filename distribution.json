@@ -1,12 +1,12 @@
 {
   "contract_version": 1,
   "product": "integral-one",
-  "product_version": "0.1.6",
+  "product_version": "0.1.7",
   "mode": "local",
   "desktop_host": {
-    "version": "0.1.7-dev.13",
-    "artifact": "vendor/integral-desktop-host-0.1.7-dev.13.tgz",
-    "sha256": "91b985ca13fe7c40fedcba7243513f6d3b187ce71f1f34c97e0ec47e4a3aa11b"
+    "version": "0.1.7-dev.14",
+    "artifact": "vendor/integral-desktop-host-0.1.7-dev.14.tgz",
+    "sha256": "5f427122812fe334aa0150eb066397bdfa6d7bed3419627e97456769dbc07416"
   },
   "core": {
     "version": "0.1.1rc35",

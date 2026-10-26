@@ -173,6 +173,9 @@ async function boot() {
       return callback();
     });
   }
+  // Trusted product composition may initialize local preferences before the UI
+  // reads them. Remote hosts never receive local runtime authority.
+  if (runtime) await options.beforeWorkspace?.({ runtime });
   await createWindow();
   booting = false;
   await options.onReady?.();

@@ -133,6 +133,8 @@ function claimCases() {
     ["wrong nonce", { nonce: "other-nonce" }, {}],
     ["email without one @", { email: "owner.example.com" }, {}],
     ["name longer than 256", { name: "n".repeat(257) }, {}],
+    ["username longer than 256", { username: "n".repeat(257) }, {}],
+    ["non-string given name", { given_name: {} }, {}],
     ["email longer than 320", { email: `${"a".repeat(310)}@example.com` }, {}],
     ["empty sub", { sub: "" }, {}],
     ["sub longer than 128", { sub: "s".repeat(129) }, {}],
@@ -275,6 +277,16 @@ test("a missing name is accepted and defaults to empty", async (t) => {
   await f.exchange();
   const setup = verifyLogtoSetup(f.home, readState(f.home));
   assert.equal(setup.profile.name, "");
+});
+
+for (const [claims, expected] of [
+  [{ name: "  Ada Lovelace  " }, "Ada Lovelace"],
+  [{ name: "", given_name: "Ada", family_name: "Lovelace", username: "ada" }, "Ada Lovelace"],
+  [{ name: " ", username: "ada" }, "ada"],
+  [{ name: "", preferred_username: "ada" }, "ada"],
+]) test(`account name selects the first nonblank profile field: ${expected}`, async t => {
+  const f = fixture(t); f.issue(claims); await f.exchange();
+  assert.equal(verifyLogtoSetup(f.home, readState(f.home)).profile.name, expected);
 });
 
 test("a username-only sign-in without email or name is accepted", async (t) => {
