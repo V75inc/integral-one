@@ -121,6 +121,7 @@ test('Core download and restart have separate consent and show download progress
   const runtime = runtimeFixture(), progress = [], f = fixture(t, { control: { runtimeUpdates: runtime.updates, progress: (...args) => progress.push(args) } }); f.result.candidate = null;
   f.answers.push(0, 1); await f.control.start(); assert.equal(runtime.counts().downloads, 1); assert.equal(runtime.counts().installs, 0);
   assert.ok(progress.some(([, value]) => value === 50)); assert.match(f.control.menuItems[0].label, /Restart to Update Core/);
+  await f.control.check(false); assert.equal(f.messages.length, 2, 'automatic polling must not repeat the restart prompt');
   f.app.emit('before-quit'); assert.equal(runtime.counts().installs, 0);
   f.answers.push(0); await f.control.check(); assert.equal(runtime.counts().installs, 1); assert.equal(f.calls.includes('install'), false);
 });

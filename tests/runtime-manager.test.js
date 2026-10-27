@@ -48,7 +48,7 @@ test("activation uses the reviewed uv, probes the new engine and retains account
   const active = await f.restart(); assert.equal(active.currentCore(), "0.1.1rc36"); assert.equal(active.staged(), null); assert.equal(f.counts().starts, 1);
   assert.equal(fs.readFileSync(path.join(f.home, "store/record"), "utf8"), "original record");
   assert.equal(fs.readFileSync(path.join(f.home, "one-account/setup-key.json"), "utf8"), "unchanged local integrity key");
-  assert.ok(JSON.parse(f.environment.INTEGRAL_CORE_ARGS).some(value => value.includes("runtime-updates/releases/0.1.1rc36-")));
+  assert.ok(JSON.parse(f.environment.INTEGRAL_CORE_ARGS).some(value => value.includes(path.join("runtime-updates", "releases", "0.1.1rc36-"))));
   assert.equal(active.state().pending, null); assert.ok(fs.existsSync(active.state().previous.snapshot));
 });
 test("a failed trial restores the old runtime and complete cold home while retaining the failed copy", async t => {

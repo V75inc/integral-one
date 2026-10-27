@@ -74,6 +74,7 @@ function createUpdates({ app, dialog, Menu, autoUpdater, prepareForInstall,
   }
   function onError() { if (installing) void failure(true); }
   async function offerRestart() {
+    notices.add(`ready:${downloaded.version}`);
     const core = downloaded.kind === "runtime";
     const result = await message({ type: "info", message: `Integral One ${downloaded.version} is ready to install.`,
       ...(core ? { message: `Integral Core ${downloaded.version} is ready to install.` } : {}),
