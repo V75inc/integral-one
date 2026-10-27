@@ -18,6 +18,11 @@ esbuild.buildSync({
   legalComments: "linked",
 });
 esbuild.buildSync({
+  entryPoints: [path.join(root, "desktop/update-preload-entry.js")],
+  outfile: path.join(root, "desktop/update-preload.js"), bundle: true,
+  platform: "node", format: "cjs", external: ["electron"], target: "node22",
+});
+esbuild.buildSync({
   entryPoints: [path.join(root, "desktop/accounts/preload-entry.js")],
   outfile: path.join(root, "desktop/accounts/preload.js"),
   bundle: true,

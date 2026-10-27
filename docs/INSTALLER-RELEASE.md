@@ -2,6 +2,19 @@
 
 This is the maintainer counterpart to [Install Integral One](INSTALL.md). Prepared code is not a published installer. Publication, production configuration and signing-material use require the applicable approvals.
 
+## Core runtime releases and the 0.1.9 host
+
+One 0.1.9 introduces independent qualified Core updates and automatic native
+notifications. Installed 0.1.8 needs one signed host upgrade to enable this lane.
+Qualify the new host with the signed two-version updater before publishing it;
+local runtime tests and ad hoc packaging do not replace that gate.
+
+Subsequent compatible Core releases use the separate
+[Core publication workflow](CORE-RELEASE-UPDATES.md), with immutable runtime
+payloads outside the signed application. They require no Electron rebuild or
+native signing keys. Runtime payloads are not signed/notarized installers and
+must never be included in `install-manifest.json` or the native update YAML.
+
 ## Deliverables
 
 The owner-selected initial launch targets Apple Silicon Macs on macOS 14+. Intel is blocked by Core runtime compatibility; see [platform readiness](PLATFORM-READINESS.md). A stable GitHub release tagged `vX.Y.Z` must contain:

@@ -1,6 +1,6 @@
 {
   "name": "integral-one",
-  "version": "0.1.8",
+  "version": "0.1.9",
   "private": true,
   "integralOneUpdates": {
     "enabled": true,
@@ -65,7 +65,8 @@
       "NOTICE",
       "PRIVACY.md",
       "CODE_SIGNING.md",
-      "!desktop/accounts/preload-entry.js"
+      "!desktop/accounts/preload-entry.js",
+      "!desktop/update-preload-entry.js"
     ],
     "extraResources": [
       {

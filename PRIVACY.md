@@ -4,8 +4,9 @@
 
 V75 Inc. maintains Integral One. Your workspace files and records stay on your
 computer. Account signup is online; after setup, local access continues offline.
-This notice describes the candidate implementation. Production account signup is
-being qualified and the public installer has not launched. Retention periods, hosting locations and deletion
+This notice describes the development preview. A signed Apple Silicon installer
+is available, and real sign-in/signup has been qualified. Production privacy
+review remains pending. Retention periods, hosting locations and deletion
 operations must be finalized before public signup. Contact
 **[support@v75inc.com](mailto:support@v75inc.com)** for privacy and account requests.
 
@@ -25,13 +26,18 @@ their settings and policies before sending confidential information.
 ## Application updates
 
 Integral One checks for Core and compatible One releases automatically after
-startup and every six hours. Help provides a manual check and an automatic-check
+startup and every six hours while open. One 0.1.9 also checks on wake/window focus
+when the last check was at least an hour ago. Help provides a manual check and an automatic-check
 opt-out. Stable builds query PyPI; development builds query TestPyPI. Both query
 the public V75 GitHub release endpoints. Those services receive ordinary request
 and connection information. These requests send
 no account token, installation identifier, workspace records or model credentials.
 You approve downloading an available update and restarting to install it
-separately. Update checks are independent of account signup and marketing.
+separately. One 0.1.9 can download compatible qualified Core/UI payloads from
+GitHub and the original Core wheel from Python package-file hosts without
+replacing the desktop app. The native update panel may send an operating-system
+notification when permitted. No update daemon runs after One quits. Update checks
+are independent of account signup and marketing.
 
 ## Integral account signup
 
@@ -115,4 +121,8 @@ and backup retention/deletion schedules and processor/transfer arrangements are
 open production decisions, recorded in [privacy readiness](docs/PRIVACY-READINESS.md).
 This preview notice is not a claim of legal review or SignPath approval.
 
-Update backups remain locally under the Integral user-data directory until you remove them.
+Update archives remain locally under the Integral user-data directory until you
+remove them. Independent runtime updates also retain full cold home snapshots
+and failed-trial copies beside the workspace for recovery. These contain the
+workspace, account setup state and local keys; protect them like the original
+workspace. No automatic deletion schedule is imposed by this feature.
