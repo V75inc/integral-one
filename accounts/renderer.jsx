@@ -1,63 +1,82 @@
 import React, { useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 
-function ConfiguredSignIn() {
+function ConfiguredSignIn({ linkedAccount }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const [notice, setNotice] = useState("");
+  const [notice, setNotice] = useState(null);
+  const [accountChoiceRequired, setAccountChoiceRequired] = useState(false);
   useEffect(() => {
     return window.integralActivation.onStatus((status) => {
-      if (typeof status?.message === "string" && status.message)
-        setNotice(status.message);
+      if (typeof status?.message === "string" && status.message) {
+        setNotice({ message: status.message, kind: status.kind });
+        if (status.kind === "linked-account") setAccountChoiceRequired(true);
+      }
     });
   }, []);
   function clearStatus() {
     setError("");
-    setNotice("");
+    setNotice(null);
   }
-  async function openBrowser() {
+  async function openBrowser(restart = false) {
     clearStatus();
     setBusy(true);
     try {
-      await window.integralActivation.start();
+      if (restart) await window.integralActivation.restartSignin();
+      else await window.integralActivation.start();
     } catch {
       setError("The browser could not be opened. Try again.");
     } finally {
       setBusy(false);
     }
   }
-  const status = notice || error;
+  const status = notice?.message || error;
+  const differentAccount = accountChoiceRequired;
   return (
     <>
       <div className="browser-handoff" role="status">
-        <p>Finish signing in in your browser, then return here.</p>
-        <p className="handoff-hint">
-          Once Integral One opens, you can close the browser tab.
-        </p>
+        {linkedAccount && (
+          <p className="linked-account">
+            This workspace uses <strong>{linkedAccount}</strong>.
+          </p>
+        )}
+        {!status && (
+          <>
+            <p>Finish signing in in your browser, then return here.</p>
+            <p className="handoff-hint">
+              Once Integral One opens, you can close the browser tab.
+            </p>
+          </>
+        )}
         {status ? (
           <p className="error" role="alert">
             {status}
           </p>
         ) : null}
+        {differentAccount && (
+          <p className="handoff-hint">
+            Choose the account used to set up this workspace, or continue offline.
+          </p>
+        )}
       </div>
       <button
         type="button"
         className="action primary"
         disabled={busy}
-        onClick={openBrowser}
+        onClick={() => openBrowser(differentAccount)}
       >
-        {busy ? "Opening your browser…" : "Continue in your browser"}
+        {busy ? "Opening your browser…" : differentAccount ? "Choose your workspace account" : "Continue in your browser"}
       </button>
-      <button
-        type="button"
-        className="text-action"
-        onClick={() => {
-          clearStatus();
-          window.integralActivation.restartSignin();
-        }}
-      >
-        Restart sign-in
-      </button>
+      {!differentAccount && (
+        <button
+          type="button"
+          className="text-action"
+          disabled={busy}
+          onClick={() => openBrowser(true)}
+        >
+          Restart sign-in
+        </button>
+      )}
     </>
   );
 }
@@ -115,7 +134,7 @@ function App() {
               </p>
             )}
             {context.configured ? (
-              <ConfiguredSignIn />
+              <ConfiguredSignIn linkedAccount={context.linkedAccount} />
             ) : (
               <UnconfiguredPreview />
             )}

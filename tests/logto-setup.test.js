@@ -894,6 +894,9 @@ function openGate(t, { home, config, request }) {
   const opened = [];
   const schemes = [];
   const sent = [];
+  const windowActions = [];
+  let minimized = false;
+  let browserFails = false;
   let win = null;
   let windows = 0;
   let protocol = null;
@@ -910,6 +913,7 @@ function openGate(t, { home, config, request }) {
       clipboard: { writeText() {} },
       shell: {
         openExternal: async (url) => {
+          if (browserFails) throw new Error("sentinel-private-browser-error");
           opened.push(url);
         },
       },
@@ -944,6 +948,10 @@ function openGate(t, { home, config, request }) {
         isDestroyed() {
           return false;
         }
+        isMinimized() { return minimized; }
+        restore() { minimized = false; windowActions.push("restore"); }
+        show() { windowActions.push("show"); }
+        focus() { windowActions.push("focus"); }
         async loadURL() {}
         close() {
           this.emit("closed");
@@ -976,6 +984,10 @@ function openGate(t, { home, config, request }) {
       return protocol;
     },
     sent,
+    windowActions,
+    minimize: () => { minimized = true; },
+    failBrowser: () => { browserFails = true; },
+    recoverBrowser: () => { browserFails = false; },
   };
 }
 
@@ -1706,6 +1718,17 @@ async function renderAccountPage(t, gate) {
   return {
     text: () => root.textContent,
     alertText: () => alertText(root),
+    async click(label) {
+      const nodes = [];
+      const walk = node => { nodes.push(node); for (const child of node.childNodes || []) walk(child); };
+      walk(root);
+      const button = nodes.find(node => node.tagName === "BUTTON" && node.textContent === label);
+      assert.ok(button, `Missing mounted button: ${label}`);
+      // This small DOM fixture has no delegated event propagation. Invoke the
+      // mounted button's actual React handler, including its async IPC action.
+      const props = button[Object.keys(button).find(key => key.startsWith("__reactProps$"))];
+      await act(async () => { await props.onClick(); });
+    },
     async deliver(messages) {
       await act(async () => {
         for (const message of messages)
@@ -1716,7 +1739,7 @@ async function renderAccountPage(t, gate) {
   };
 }
 
-test("a different subject reaches the account page as the linked account", async (t) => {
+test("a different account is explained, foregrounded and retried with an explicit login", async (t) => {
   const f = fixture(t);
   f.issue();
   await f.exchange();
@@ -1735,14 +1758,17 @@ test("a different subject reaches the account page as the linked account", async
     userData: f.home,
     forceSignIn: true,
   });
+  gate.controller.signOut();
   const page = await renderAccountPage(t, gate);
   assert.match(page.text(), /Continue in your browser/);
+  assert.match(page.text(), /This workspace uses owner@example.com/);
   assert.equal(page.alertText().includes(LINKED_ACCOUNT), false);
   const original = fs.readFileSync(accountPath(f.home, "activation.json"));
   const key = fs.readFileSync(accountPath(f.home, "setup-key.json"));
   await gate.handlers.get("integral-one:account-start")(gate.event());
   const auth = new URL(gate.opened[0]);
   idToken = token({ nonce: auth.searchParams.get("nonce") }, { sub: "other-subject" });
+  gate.minimize();
   gate.app.emit(
     "open-url",
     { preventDefault() {} },
@@ -1760,8 +1786,52 @@ test("a different subject reaches the account page as the linked account", async
   );
   assert.equal(readState(f.home).installationId, f.state.installationId);
   assert.equal(page.alertText().trim(), LINKED_ACCOUNT);
-  gate.close();
-  await assert.rejects(pending, /local data is unchanged/);
+  assert.throws(() => gate.controller.authorizeSession(), /Sign in or choose Continue offline/);
+  assert.equal(gate.sent.at(-1).payload.kind, "linked-account");
+  assert.deepEqual(gate.windowActions, ["restore", "show", "focus"]);
+  assert.doesNotMatch(page.text(), /Finish signing in|Once Integral One opens/);
+  assert.match(page.text(), /Choose your workspace account/);
+  assert.doesNotMatch(page.text(), /Restart sign-in/);
+  assert.match(page.text(), /Continue offline/);
+  gate.failBrowser();
+  await page.click("Choose your workspace account");
+  assert.equal(page.alertText(), "The browser could not be opened. Try again.");
+  assert.match(page.text(), /Choose your workspace account/);
+  gate.recoverBrowser();
+  await page.click("Choose your workspace account");
+  const retry = new URL(gate.opened.at(-1));
+  assert.equal(retry.searchParams.get("prompt"), "login");
+  assert.notEqual(retry.searchParams.get("state"), auth.searchParams.get("state"));
+  assert.equal(page.alertText(), "");
+  idToken = token({ nonce: retry.searchParams.get("nonce") });
+  gate.app.emit("open-url", { preventDefault() {} }, callbackFrom(retry));
+  await pending;
+  assert.equal(readState(f.home).signedOut, false);
+  assert.equal(readState(f.home).installationId, f.state.installationId);
+  assert.equal(fs.readFileSync(accountPath(f.home, "setup-key.json")).equals(key), true);
+});
+
+test("restart browser failures are shown in the mounted account page", async t => {
+  const f = fixture(t);
+  const gate = openGate(t, { home: f.home, config: publicConfig(), request: f.request });
+  void gate.controller.beforeBoot({ userData: f.home });
+  const page = await renderAccountPage(t, gate);
+  assert.doesNotMatch(page.text(), /This workspace uses/);
+  gate.failBrowser();
+  await page.click("Restart sign-in");
+  assert.equal(page.alertText(), "The browser could not be opened. Try again.");
+  assert.doesNotMatch(page.text(), /Finish signing in|sentinel-private/);
+});
+
+test("account hints use only a verified profile and avoid generated email placeholders", async t => {
+  const f = fixture(t);
+  f.issue({ email: undefined, username: "workspace-owner", name: "Workspace owner" });
+  await f.exchange();
+  const gate = openGate(t, { home: f.home, config: publicConfig(), request: f.request });
+  void gate.controller.beforeBoot({ userData: f.home, forceSignIn: true });
+  const context = await gate.handlers.get("integral-one:activation-context")(gate.event());
+  assert.equal(context.linkedAccount, "Workspace owner");
+  assert.doesNotMatch(JSON.stringify(context), /integral\.local|logto-subject|id_token|privateKey/);
 });
 
 test("desktop main constructs the account controller without the Clerk bridge", () => {
@@ -1818,7 +1888,9 @@ test('OAuth error callbacks require the pending state and never forward remote e
   url.searchParams.set('error_description', 'sentinel-private-remote-body');
   gate.app.emit('open-url', { preventDefault() {} }, url.href); await settle();
   assert.equal(gate.sent.length, 0);
+  assert.deepEqual(gate.windowActions, []);
   url.searchParams.set('state', auth.searchParams.get('state'));
   gate.app.emit('open-url', { preventDefault() {} }, url.href); await settle();
   assert.equal(gate.sent.length, 1); assert.doesNotMatch(JSON.stringify(gate.sent), /sentinel-private/);
+  assert.deepEqual(gate.windowActions, ['show', 'focus']);
 });
