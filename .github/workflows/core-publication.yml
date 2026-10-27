@@ -1,11 +1,11 @@
-name: Prepare One from published Core
+name: Qualify independent Core update
 on:
   schedule:
     - cron: '23 */6 * * *'
   workflow_dispatch:
     inputs:
       core_version:
-        description: Optional exact newer published Core version; otherwise use the newest eligible publication
+        description: Optional exact newer Core publication; otherwise newest eligible release
         required: false
         type: string
   repository_dispatch:
@@ -13,15 +13,14 @@ on:
 permissions:
   contents: read
 concurrency:
-  group: core-publication-preparation
+  group: core-runtime-publication
   cancel-in-progress: false
 jobs:
   prepare:
     runs-on: ubuntu-latest
     outputs:
-      changed: ${{ steps.publication.outputs.changed }}
-      version: ${{ steps.publication.outputs.version }}
       ready: ${{ steps.candidate.outputs.ready }}
+      version: ${{ steps.publication.outputs.version }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -30,7 +29,7 @@ jobs:
         with:
           python-version: '3.12'
       - id: publication
-        name: Require an eligible actual package publication
+        name: Require an actual eligible package publication
         env:
           CORE_VERSION: ${{ inputs.core_version || github.event.client_payload.version || '' }}
         shell: bash
@@ -40,20 +39,19 @@ jobs:
           python scripts/core_release.py check "${args[@]}"
       - id: candidate
         if: steps.publication.outputs.changed == 'true'
-        name: Keep existing candidate branches intact
+        name: Preserve every existing runtime release
         env:
           GH_TOKEN: ${{ github.token }}
           CORE_VERSION: ${{ steps.publication.outputs.version }}
         shell: bash
         run: |
-          refs=$(gh api "repos/$GITHUB_REPOSITORY/git/matching-refs/heads/core-$CORE_VERSION" --jq '.[].ref')
-          if printf '%s\n' "$refs" | grep -Fx "refs/heads/core-$CORE_VERSION"; then
+          if gh release view "core-v$CORE_VERSION" --json tagName > /dev/null 2>&1; then
             echo 'ready=false' >> "$GITHUB_OUTPUT"
           else
             echo 'ready=true' >> "$GITHUB_OUTPUT"
           fi
       - if: steps.candidate.outputs.ready == 'true'
-        name: Verify wheel, exact release tag, Python sources and notices; compose candidate pins
+        name: Verify exact upstream tag, engine, notices and UI provenance
         env:
           CORE_VERSION: ${{ steps.publication.outputs.version }}
         shell: bash
@@ -61,13 +59,13 @@ jobs:
           mkdir -p .candidate/baseline
           python -c 'import json,pathlib,shutil; p=pathlib.Path(json.load(open("distribution.json"))["core"]["base_wheel"]); shutil.copyfile(p,pathlib.Path(".candidate/baseline")/p.name)'
           git clone --depth 1 --single-branch --branch "v$CORE_VERSION" https://github.com/V75inc/integral-core.git "$RUNNER_TEMP/core-source"
-          python scripts/core_release.py prepare --version "$CORE_VERSION" --source "$RUNNER_TEMP/core-source"
+          python scripts/core_release.py prepare --runtime-only --version "$CORE_VERSION" --source "$RUNNER_TEMP/core-source"
           git add package.json package-lock.json distribution.json docs/SOURCE-PROVENANCE.json docs/CORE-UPDATE-CANDIDATE.json vendor/core-runtime vendor/core-ui-source
           git diff --cached --binary > .candidate/candidate.patch
       - uses: actions/upload-artifact@v4
         if: steps.candidate.outputs.ready == 'true'
         with:
-          name: core-candidate-input
+          name: core-runtime-input
           path: .candidate/
           include-hidden-files: true
           retention-days: 3
@@ -78,17 +76,15 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
+        os: [ubuntu-latest, macos-15]
     runs-on: ${{ matrix.os }}
-    env:
-      CSC_IDENTITY_AUTO_DISCOVERY: 'false'
     steps:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
       - uses: actions/download-artifact@v4
         with:
-          name: core-candidate-input
+          name: core-runtime-input
           path: .candidate
       - run: git apply --index .candidate/candidate.patch
       - uses: actions/setup-node@v4
@@ -110,49 +106,60 @@ jobs:
       - run: npm run build:runtime
       - run: npm run qualify:runtime
       - run: node scripts/qualify-upgrade.js .candidate/baseline --require-settings
-      - run: npx electron-builder --dir --publish never
       - if: runner.os == 'macOS'
-        run: node scripts/qualify-mac-signing.js release
-      - run: node scripts/inspect-package.js
-      - if: runner.os == 'Windows'
-        run: npm run build:installers
-  source-pr:
+        name: Produce and independently extract the runtime payload
+        shell: bash
+        run: |
+          node -e "if(process.platform!=='darwin'||process.arch!=='arm64')throw Error('Runtime publication requires the qualified Apple Silicon runner')"
+          python scripts/runtime-payload.py --output core-runtime-assets --platform darwin-arm64
+          python - <<'PY'
+          import json,os,pathlib,subprocess
+          root=pathlib.Path.cwd(); m=root/'core-runtime-assets/runtime-manifest.json'
+          manifest=json.loads(m.read_text()); pins=json.loads((root/'distribution.json').read_text())
+          subprocess.run(['python','desktop/runtime-updates/payload.py',str(m.parent/manifest['payload']['file']),str(root/pins['core']['base_wheel']),str(m),str(pathlib.Path(os.environ['RUNNER_TEMP'])/'verified-runtime')],check=True)
+          PY
+          node scripts/qualify-independent-runtime.js core-runtime-assets .candidate/baseline "$RUNNER_TEMP/independent-runtime-qualification"
+          cp "$RUNNER_TEMP/independent-runtime-qualification/result.json" core-runtime-assets/qualification.json
+      - uses: actions/upload-artifact@v4
+        if: runner.os == 'macOS'
+        with:
+          name: qualified-core-runtime
+          path: core-runtime-assets/
+          retention-days: 14
+          if-no-files-found: error
+  publish:
     needs: [prepare, qualify]
+    if: github.ref == 'refs/heads/main' && needs.prepare.outputs.ready == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: write
-      pull-requests: write
-      actions: write
     steps:
-      - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
-          name: core-candidate-input
-          path: .candidate
-      - name: Apply only validated product pins and immutable upstream artifacts
-        shell: bash
-        run: |
-          git apply --index .candidate/candidate.patch
-          python - <<'PY'
-          import subprocess
-          allowed = {'package.json', 'package-lock.json', 'distribution.json', 'docs/SOURCE-PROVENANCE.json', 'docs/CORE-UPDATE-CANDIDATE.json'}
-          files = subprocess.check_output(['git', 'diff', '--cached', '--name-only', '-z']).decode().split('\0')
-          assert all(not p or p in allowed or p.startswith(('vendor/core-runtime/', 'vendor/core-ui-source/')) for p in files), 'Unexpected candidate path'
-          PY
-      - name: Open a tested source PR; never sign, merge or publish installers
+          name: qualified-core-runtime
+          path: runtime-assets
+      - name: Publish complete qualified runtime; never overwrite existing assets
         env:
           GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
           CORE_VERSION: ${{ needs.prepare.outputs.version }}
-          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          SOURCE_COMMIT: ${{ github.sha }}
         shell: bash
         run: |
-          branch="core-$CORE_VERSION"
-          git checkout -b "$branch"
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git commit -m "chore: prepare One for Core $CORE_VERSION"
-          git push -u origin "$branch"
-          printf 'Compose published Core %s into a new One patch release. The package hash, exact tag, engine source and notices match. Native Linux/macOS/Windows builds, UI/runtime tests and existing-store upgrade checks passed in [the preparation run](%s/%s/actions/runs/%s).\n\nSigning/notarization, signed two-version update and final installer publication still require review. No installed engine was hot-swapped and no installer was published.\n' "$CORE_VERSION" "$GITHUB_SERVER_URL" "$GITHUB_REPOSITORY" "$GITHUB_RUN_ID" > .candidate/pr.md
-          gh pr create --draft --base "$DEFAULT_BRANCH" --head "$branch" --title "Prepare One for Core $CORE_VERSION" --body-file .candidate/pr.md
-          gh workflow run verify.yml --ref "$branch"
-        # GITHUB_TOKEN PR events do not start ordinary CI; the explicit dispatch does.
+          python - <<'PY'
+          import hashlib,json,os,pathlib,subprocess
+          root=pathlib.Path('runtime-assets'); m=json.loads((root/'runtime-manifest.json').read_text()); p=root/m['payload']['file']
+          assert m['core']['version']==os.environ['CORE_VERSION'] and m['source']['one']==os.environ['SOURCE_COMMIT']
+          assert p.stat().st_size==m['payload']['bytes'] and hashlib.sha256(p.read_bytes()).hexdigest()==m['payload']['sha256']
+          tag='core-v'+m['core']['version']; notes=root/'notes.md'
+          notes.write_text('Qualified Integral Core '+m['core']['version']+' runtime and One UI update for Apple Silicon. Requires Integral One '+m['minimumOneVersion']+' or later within the compatible host range. The desktop app discovers this package automatically, asks before downloading/restarting, and preserves its signed application bundle. Runtime and existing-store upgrade qualification passed before publication. This is a runtime payload, not an installer; do not run or install it manually.\n')
+          args=['gh','release','create',tag,'--target',os.environ['SOURCE_COMMIT'],'--draft','--latest=false','--title','Core '+m['core']['version']+' for Integral One','--notes-file',str(notes)]
+          if m['channel']=='development': args.append('--prerelease')
+          subprocess.run(args,check=True)
+          subprocess.run(['gh','release','upload',tag,str(root/'runtime-manifest.json'),str(p)],check=True)
+          result=json.loads(subprocess.check_output(['gh','release','view',tag,'--json','assets'],text=True))
+          expected={f.name:(f.stat().st_size,'sha256:'+hashlib.sha256(f.read_bytes()).hexdigest()) for f in [root/'runtime-manifest.json',p]}
+          assert {a['name']:(a['size'],a['digest']) for a in result['assets']}==expected
+          subprocess.run(['gh','release','edit',tag,'--draft=false','--latest=false'],check=True)
+          PY
+# No Electron build, native installer, signing credentials, host version bump or source PR.

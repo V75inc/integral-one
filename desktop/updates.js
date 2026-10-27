@@ -8,12 +8,13 @@ const { discoverUpdates, verifyUpdateInfo, verifyDownload } = require("./release
 function createUpdates({ app, dialog, Menu, autoUpdater, prepareForInstall,
   platform = process.platform, arch = process.arch, enabled = false, channel = "stable",
   currentCore, request = fetch, discover = discoverUpdates, verifyDownloaded = verifyDownload,
-  interval = setInterval, clear = clearInterval, preferences }) {
+  interval = setInterval, clear = clearInterval, preferences, runtimeUpdates, progress = () => {}, powerMonitor, now = Date.now }) {
   const policy = channelPolicy(channel);
   const available = app.isPackaged && enabled && APP_VERSION.test(app.getVersion()) &&
     ((platform === "darwin" && arch === "arm64") || (platform === "win32" && arch === "x64"));
   let automatic = true, task = null, timer = null, downloaded = null;
   let installing = false, disposed = false, ready = false, approved = false, failureTask = null, manualRequested = false;
+  let lastCheck = 0;
   const notices = new Set();
   const preferenceFile = () => preferences || path.join(app.getPath("userData"), "one-updates.json");
   function loadPreferences() {
@@ -39,7 +40,12 @@ function createUpdates({ app, dialog, Menu, autoUpdater, prepareForInstall,
   }
   async function message(options) {
     if (disposed) return { response: 1 };
-    return dialog.showMessageBox({ title: "Integral One updates", noLink: true, ...options });
+    return dialog.showMessageBox({ title: "Integral One updates", noLink: true, automatic: !manualRequested, ...options });
+  }
+  function menuStatus(label = "Check for Updates…") {
+    menuItems[0].label = label;
+    const item = Menu?.getApplicationMenu()?.getMenuItemById("one-update-action");
+    if (item) item.label = label;
   }
   async function failure(stopped = installing) {
     if (failureTask) return failureTask;
@@ -48,13 +54,16 @@ function createUpdates({ app, dialog, Menu, autoUpdater, prepareForInstall,
       detail: stopped ? "Reopen Integral One to continue with the installed version. Your workspace files have been retained."
         : "Check your connection and try again later. Your installed version and workspace files have been retained.",
       buttons: stopped ? ["Reopen Integral One", "Later"] : ["OK"], cancelId: stopped ? 1 : 0 })
-      .then(result => { if (stopped && result.response === 0) { app.relaunch(); app.quit(); } })
+      .then(result => { if (stopped && result.response === 0) {
+        const args = process.argv.slice(1).filter(value => value.startsWith("--home=") || value.startsWith("--user-data-dir="));
+        app.relaunch({ args }); app.quit();
+      } })
       .finally(() => { failureTask = null; });
     return failureTask;
   }
   if (available) {
-    // The SDK retains its checksum and native signature verification. A Core
-    // publication is offered only through the matching complete One installer.
+    // The SDK retains checksum/native signature verification for shell updates.
+    // Compatible Core payloads use the independently verified runtime manager.
     autoUpdater.autoDownload = false;
     autoUpdater.autoInstallOnAppQuit = false;
     autoUpdater.allowPrerelease = false;
@@ -65,11 +74,15 @@ function createUpdates({ app, dialog, Menu, autoUpdater, prepareForInstall,
   }
   function onError() { if (installing) void failure(true); }
   async function offerRestart() {
+    const core = downloaded.kind === "runtime";
     const result = await message({ type: "info", message: `Integral One ${downloaded.version} is ready to install.`,
-      detail: "Finish your work before restarting. Integral One will stop its local engine before installing the update.",
-      buttons: ["Restart and Install", "Later"], defaultId: 1, cancelId: 1 });
+      ...(core ? { message: `Integral Core ${downloaded.version} is ready to install.` } : {}),
+      detail: "Save your work before restarting. Your workspace and account will be backed up before the update is installed.",
+      buttons: ["Restart to Update", "Later"], defaultId: 1, cancelId: 1 });
     if (result.response !== 0 || disposed) return;
     installing = true;
+    progress("Preparing your workspace backup…");
+    if (core) { await runtimeUpdates.install(); return; }
     await prepareForInstall();
     if (disposed) return;
     autoUpdater.quitAndInstall();
@@ -81,16 +94,43 @@ function createUpdates({ app, dialog, Menu, autoUpdater, prepareForInstall,
       return;
     }
     if (installing || disposed) return;
-    if (downloaded) { if (manualRequested) await offerRestart(); return; }
+    if (!downloaded && runtimeUpdates?.staged()) {
+      const staged = runtimeUpdates.staged();
+      downloaded = { kind: "runtime", version: staged.manifest.core.version };
+      menuStatus(`Restart to Update Core ${downloaded.version}…`);
+    }
+    if (downloaded) { if (manualRequested || !notices.has(`ready:${downloaded.version}`)) { notices.add(`ready:${downloaded.version}`); await offerRestart(); } return; }
     const result = await discover({ currentCore: currentCore.version, currentVersion: app.getVersion(), channel, platform, arch, request });
     if (disposed) return;
-    const candidate = result.candidate;
+    const candidate = result.candidate && (!runtimeUpdates || runtimeUpdates.canInstallHost(result.candidate.manifest)) ? result.candidate : null;
     if (!candidate) {
-      const newerCore = result.latestCore && compareCore(result.latestCore, currentCore.version) > 0;
+      if (runtimeUpdates) {
+        const runtime = await runtimeUpdates.check();
+        if (disposed) return;
+        if (runtime.candidate) {
+          const { manifest } = runtime.candidate, key = `runtime:${manifest.core.version}`;
+          menuStatus(`Update Core ${manifest.core.version} Available…`);
+          if (!manualRequested && (notices.has(key) || runtimeUpdates.failed() === `${manifest.core.version}-${manifest.payload.sha256.slice(0, 16)}`)) return;
+          notices.add(key);
+          const choice = await message({ type: "info", message: `Integral Core ${manifest.core.version} is available.`,
+            detail: "Update your workspace without downloading the desktop app again. You can keep working while it downloads, then choose when to restart.",
+            buttons: ["Download Update", "Later"], defaultId: 1, cancelId: 1 });
+          if (choice.response !== 0 || disposed) return;
+          approved = true;
+          progress("Downloading your update…", 0);
+          await runtimeUpdates.stage(runtime.candidate, value => progress("Downloading your update…", value));
+          if (disposed) return;
+          downloaded = { kind: "runtime", version: manifest.core.version };
+          menuStatus(`Restart to Update Core ${manifest.core.version}…`);
+          await offerRestart(); return;
+        }
+      }
+      const effectiveCore = runtimeUpdates?.currentCore() || currentCore.version;
+      const newerCore = result.latestCore && compareCore(result.latestCore, effectiveCore) > 0;
       if (newerCore && (manualRequested || !notices.has(`core:${result.latestCore}`))) {
         notices.add(`core:${result.latestCore}`);
         await message({ type: "info", message: `Integral Core ${result.latestCore} has been published.`,
-          detail: "A compatible Integral One installer is being prepared. Check for updates again later; your current workspace is ready to use.", buttons: ["OK"] });
+          detail: runtimeUpdates ? "This update is being checked for compatibility. Check again later; your current workspace is ready to use." : "A compatible Integral One installer is being prepared. Check for updates again later; your current workspace is ready to use.", buttons: ["OK"] });
       } else if (manualRequested) await message({ type: "info", message: "Integral One is up to date.",
         detail: `Checked ${policy.registry === "pypi" ? "PyPI stable releases" : "TestPyPI development releases"} and matching Integral One installers.`, buttons: ["OK"] });
       return;
@@ -104,20 +144,24 @@ function createUpdates({ app, dialog, Menu, autoUpdater, prepareForInstall,
     verifyUpdateInfo(update?.updateInfo, candidate);
     if (disposed) return;
     notices.add(`one:${manifest.version}`);
+    menuStatus(`Integral One ${manifest.version} Update Available…`);
     const choice = await message({ type: "info", message: `Integral One ${manifest.version} with Core ${manifest.core.version} is available.`,
       detail: `Download this ${channel === "development" ? "development" : "stable"} update? You will choose when to restart and install it.`,
       buttons: ["Download Update", "Later"], defaultId: 1, cancelId: 1 });
     if (choice.response !== 0 || disposed) return;
     approved = true;
+    progress("Downloading your update…");
     const files = await autoUpdater.downloadUpdate();
     await verifyDownloaded(files, asset);
     if (disposed) return;
     downloaded = { version: manifest.version };
+    menuStatus(`Restart to Update One ${manifest.version}…`);
     await offerRestart();
   }
   function check(manual = true) {
     if (disposed) return Promise.resolve();
     manualRequested ||= manual;
+    lastCheck = now();
     if (!task) task = performCheck().catch(async () => {
       if (manualRequested || approved || downloaded || installing) await failure();
     }).finally(() => { task = null; approved = false; manualRequested = false; });
@@ -131,7 +175,7 @@ function createUpdates({ app, dialog, Menu, autoUpdater, prepareForInstall,
     timer.unref?.();
   }
   const menuItems = [
-    { label: "Check for Updates…", click: () => { void check(true); } },
+    { id: "one-update-action", label: "Check for Updates…", click: () => { void check(true); } },
     { id: "one-automatic-update-checks", label: "Automatically Check for Updates", type: "checkbox", checked: automatic, enabled: available,
       click: item => {
         try {
@@ -143,21 +187,28 @@ function createUpdates({ app, dialog, Menu, autoUpdater, prepareForInstall,
       } },
     { label: `Update channel: ${channel === "development" ? "Development (TestPyPI)" : "Stable (PyPI)"}`, enabled: false },
   ];
-  function start() {
+  async function start() {
     if (ready || disposed) return;
     ready = true;
     loadPreferences();
     menuItems[1].checked = automatic;
     const item = Menu?.getApplicationMenu()?.getMenuItemById("one-automatic-update-checks");
     if (item) item.checked = automatic;
+    powerMonitor?.on("resume", resume);
+    app.on("browser-window-focus", resume);
+    if (runtimeUpdates?.recovery()) await message({ type: "warning", message: "Your previous workspace has been restored.",
+      detail: "The update could not start safely. Your previous Core version, account and workspace backup were restored; the failed attempt is retained for recovery.", buttons: ["Continue"], cancelId: 0 });
     schedule();
     if (automatic && available) return check(false);
   }
+  function resume() { if (ready && automatic && !disposed && now() - lastCheck >= 60 * 60 * 1000) void check(false); }
   function dispose() {
     disposed = true;
     if (timer) clear(timer);
     timer = null;
     if (available) autoUpdater.removeListener("error", onError);
+    powerMonitor?.removeListener("resume", resume);
+    app.removeListener("browser-window-focus", resume);
   }
   app.once("will-quit", dispose);
   return { menuItems, start, check, dispose };

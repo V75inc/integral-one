@@ -44,9 +44,23 @@ async function prepareProfile(runtime = profileRuntime) {
   try { await initializeProfile(runtime); }
   catch { console.warn("Local display name could not be initialized; the saved profile remains available."); }
 }
+const runtimeUpdates = require("./runtime-updates/manager").createRuntimeManager({
+  app, resources, channel: require("../package.json").integralOneUpdates.channel,
+  bundledCore: require("../distribution.json").core,
+  request: (url, options) => electron.net.fetch(url, options),
+  getRuntime: () => profileRuntime,
+  prepareForInstall: () => require("./update-backup").prepareUpdate(host, app.getPath("userData")),
+});
+const updateCenter = require("./update-center").createUpdateCenter({
+  app, BrowserWindow: electron.BrowserWindow, ipcMain: electron.ipcMain, Notification: electron.Notification,
+  getWorkspaceUrl: () => profileRuntime?.web_url,
+});
 const updates = require("./updates").createUpdates({
   app,
-  dialog: electron.dialog,
+  dialog: updateCenter,
+  progress: updateCenter.progress,
+  powerMonitor: electron.powerMonitor,
+  runtimeUpdates,
   Menu: electron.Menu,
   autoUpdater: require("electron-updater").autoUpdater,
   enabled: require("../package.json").integralOneUpdates?.enabled === true,
@@ -65,7 +79,7 @@ host = require("@integral/desktop-host").runDesktop({
   resources,
   helpMenuItems: updates.menuItems,
   onReady: updates.start,
-  beforeBoot: controller.beforeBoot,
+  beforeBoot: async context => { await controller.beforeBoot(context); await runtimeUpdates.beforeBoot(context); },
   beforeWorkspace: ({ runtime }) => prepareProfile(runtime),
   account: {
     profile: controller.accountProfile,

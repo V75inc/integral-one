@@ -1,103 +1,33 @@
 # Core publication to installed One update
 
-**Decision:** prepare and qualify a complete One release for each eligible Core
-publication. The owner selected this delivery model on 21 October 2026. One's
-native host, branded UI and engine remain one tested distribution. Installed
-applications do not replace their engine directly from a package index.
+## Independent runtime delivery
 
-## Publication detection and preparation
+One 0.1.9 introduces a compatible runtime lane. It replaces the earlier requirement to rebuild the entire desktop for every Core publication. Installed One 0.1.8 needs one signed desktop upgrade first. New shell/host features still require signed native installers.
 
-`core-update-policy.json` explicitly selects the registry, supported Core series
-and prerelease policy. It currently follows **TestPyPI, Core 0.1, including
-prereleases**, matching the project's current publication channel. For a stable
-production channel, change this reviewed policy to PyPI with prereleases disabled
-after the appropriate Core versions are published there. Neither source tags
-alone nor an unqualified version bump are a package publication.
+`core-update-policy.json` selects qualified runtime delivery, automatic publication after qualification, TestPyPI development releases and the approved Core 0.1 series. Stable distribution requires a reviewed PyPI policy with prereleases disabled. Only actual non-yanked package publications qualify; a source tag is insufficient.
 
-The **Prepare One from published Core** workflow checks every six hours and also
-accepts manual dispatch or the `integral-core-published` repository-dispatch event.
-Scheduled workflows become active only after this workflow lands on the default
-branch. No external dispatch credential is required for polling.
+The **Qualify independent Core update** workflow checks every six hours on the default branch. Manual dispatch and `integral-core-published` repository dispatch are also supported. It has no native signing credentials and does not change the desktop version, merge source PRs or rebuild Electron.
 
-The repository already permits Actions to create update PRs. The release
-environment is configured with `eldonm` as its required human reviewer, only
-`main` allowed for deployments, and the public production account configuration.
-Signing secrets are not configured; no signing key was exported or used to set
-up this environment.
+1. Find an eligible newer universal wheel, verify its size/hash against the package index, and fetch the exact upstream `v<version>` tag. Compare published Python files and LICENSE/NOTICE against that tag.
+2. Preserve any existing `core-v<version>` release, including drafts. Refresh Core/UI/provenance pins only in the qualification checkout, retaining the bundled baseline for upgrade tests.
+3. Run One and host tests, UI build/tests and production module-closure review, compose the branded runtime, inventory dependencies/notices, and run runtime and existing-store upgrade qualification on Linux and Apple Silicon macOS.
+4. On macOS, package the composed wheel/notices, independently verify/extract it, then exercise the actual runtime manager against the prior wheel. Require explicit download/restart separation, cold backup, trial activation, signed local account proof/key/record/display-name/timezone/pin retention, cold reopen and failed-trial restoration. Only `darwin-arm64` is advertised initially.
+5. After every qualification job passes, a separate main-only writer job verifies the One source revision and payload bytes, creates a draft `core-v<version>` release, uploads its two assets, reads back GitHub asset hashes/sizes and publishes the complete release. Development runtimes are prereleases and never marked Latest. Existing assets are never overwritten. Failed draft publication is retained for review rather than automatically retried over existing bytes.
 
-1. Find a newer, non-yanked universal wheel in the selected registry. Respect
-   numeric PEP 440 prerelease ordering and the approved major/minor series.
-2. Check the exact wheel size and published SHA-256, then compare every packaged
-   Python file and the Apache LICENSE/NOTICE with the exact `v<version>` Core tag.
-3. Export that tag's immutable UI source, refresh the wheel/UI/provenance pins and
-   propose the next One patch version. The desktop host and existing app/data
-   identifiers remain unchanged.
-4. Run the One tests, UI build, production dependency-closure check, runtime and
-   package checks on Linux, macOS and Windows. Exercise a previous-Core store
-   through backup, app-style engine replacement and authenticated record readback.
-   Preserve installation secrets, owner access and the local One setup record.
-   Require timezone and App pin writes/readback and model-credential validation
-   admission before the candidate can proceed.
-5. Only after all three native jobs pass, open a draft source PR on
-   `core-<version>`. Existing candidate branches are left intact. Explicitly
-   dispatch ordinary PR verification, since a bot-token PR does not itself start
-   normal GitHub Actions PR workflows.
+Preparation and qualification use read-only repository permissions. Only the final job has contents-write permission, and it does not execute downloaded candidate code. A source incompatibility, missing tag, changed hash, failing test/upgrade or index outage prevents publication. This workflow becomes active only after the reviewed implementation reaches `main`.
 
-The preparation and native build jobs have read-only repository permissions and
-no release secrets. A separate final job receives source-PR permissions; it only
-applies the validated pin/artifact paths and invokes Git/GitHub, without executing
-the candidate's build code. Repository settings must allow Actions to create PRs.
-An incompatible release, unavailable tag, changed hash, failed upgrade, build
-failure or publication outage fails preparation without changing installed apps.
+## Runtime assets and contract
 
-## Delivery to machines
+Each release has `runtime-manifest.json` and `integral-one-runtime-<version>.zip`. The manifest binds product/channel, original Core registry/version/wheel hash, exact One/Core source commits, composed wheel hash, payload hash/size, qualified platforms, host contract and compatible One range. The initial range is One 0.1.9 through versions below 0.2.0, host contract 1.
 
-The source PR is reviewed and merged. Changes to the Core pins on `main`
-automatically start the signed-candidate source/target plan. Local Keychain signing
-is the default: hosted build/assembly jobs are skipped with an explicit summary.
-An approved hosted route can be requested by manual dispatch, or enabled for pin
-pushes with repository variable `ONE_CI_SIGNING_ENABLED=true`. That route
-builds the Apple Silicon installer for macOS 14+ with production public account settings,
-Developer ID signing and notarization. It assembles the matching ZIP,
-`install-manifest.json` and a single `latest-mac.yml`. It requires a protected
-`desktop-release` environment with human reviewers and branch restrictions before
-any signing job can start; missing protection fails preparation. The explicit
-manual dispatch remains available for reviewed hosted runs. Hosted credential
-presence is checked before dependency setup; the local Mac's Keychain is not a
-credential source for a GitHub-hosted runner.
+The ZIP contains a universal Core wheel with One's UI plus dependency notices. It is not an installer and must not be manually executed. Neither the runtime ZIP nor its manifest is Apple signed/notarized. The application uses fixed HTTPS release authorities, validates hashes/provenance and verifies all engine/license bytes against the independently downloaded upstream wheel. It executes through its existing reviewed launcher outside the unchanged signed app bundle. See [code signing policy](../CODE_SIGNING.md) for that trust boundary.
 
-The read-only plan first resolves the selected Mac runtime dependencies, before
-requesting signing-environment approval. Intel currently fails this check; the
-owner selected Apple Silicon first. See [platform readiness](PLATFORM-READINESS.md).
+A package-index publication can precede qualification. In that interval, One reports that compatibility checks are pending. It offers only complete matching qualified runtime releases. No end-user Node installation or source build is required.
 
-Signed preparation also requires a real temporary-home desktop journey to pass:
-App/Track/record creation, backup/restart, timezone, pinning and model-credential
-request admission. The rc28 negative control failed this gate with HTTP 403. The reviewed rc29
-release containing #165 is published and composed; its actual consumer journey
-is required before signing.
+## Native host releases
 
-After the exact installers and a signed version-A-to-version-B update are approved,
-publish those assets together as the next **Integral One** release in its matching channel: ordinary releases for PyPI and prereleases for TestPyPI. The
-installed One updater discovers it, asks before download and restart, stops its
-owned Core process, and installs the complete distribution. Automatic checks stay
-enabled by default and can be turned off. Network/account outages do not invalidate existing local access.
+Native host updates remain reviewed signed candidates with separate publication approval. The protected `desktop-release` environment requires a human reviewer and restricts signing to approved source/branches. Developer ID signing/notarization is configured for Apple Silicon; signed One 0.1.8 is publicly available as a development prerelease. Windows signing/distribution and Intel Mac qualification remain separate work.
 
-This workflow prepares tested source updates; it does not automatically merge,
-use signing keys, publish installers or bypass native platform security. Windows
-development packaging is checked, but signed Windows distribution and updates
-remain a separate platform qualification.
+The signing hook verifies bundled inputs, signs the native launcher and updates its hash before sealing the outer app. No post-sign manifest edit occurs. Local ad hoc qualification proves packaging/hash ordering, not Gatekeeper or notarization acceptance. A new host must pass the applicable signed installer and two-version updater checks before publication.
 
-## Signing integrity
-
-The macOS signing hook checks the original bundled wheel and launcher hashes,
-lets the standard Electron signer sign native children, verifies the launcher,
-then records its signed hash **before** the outer application seal is produced.
-The wheel is unchanged. The final application signature and runtime hashes are
-verified again. There is no post-sign manifest edit or disabled hash check.
-
-Ordinary macOS CI exercises this ordering with the real signer and an ad hoc
-identity; no Developer ID key is used. This proves hash/seal ordering, not
-Gatekeeper acceptance or notarization. Those checks require the actual signed
-release artifacts and approved signing-material use.
-
-See [auto-updates](AUTO-UPDATES.md) and the [installer runbook](INSTALLER-RELEASE.md).
+See [automatic updates](AUTO-UPDATES.md), [independent runtime design](INDEPENDENT-CORE-UPDATES.md), [platform readiness](PLATFORM-READINESS.md) and [installer runbook](INSTALLER-RELEASE.md).

@@ -1,6 +1,6 @@
 # Code signing policy
 
-**Development preview: no Foundation signing approval or signed public release.**
+**Apple Silicon development distribution uses V75 Inc. Developer ID signing and Apple notarization. Windows Foundation approval is not claimed.**
 
 V75 Inc. maintains Integral One. We are investigating free Windows code signing
 through SignPath Foundation. No sponsorship, certificate allocation or service
@@ -25,6 +25,23 @@ The manual Windows development workflow builds unsigned artifacts without signin
 secrets. They are internal candidates and do not pass the public installer
 bootstrap. The signed-candidate workflow does not publish releases; public release
 publication is a separately authorized operation.
+
+## Independent Core runtimes
+
+One 0.1.9 introduces separately qualified Core/UI runtime payloads. These ZIPs and
+manifests are not Developer ID signed or notarized. Their trust boundary includes
+HTTPS, the fixed PyPI/TestPyPI and V75 GitHub authorities, protected release access,
+exact upstream provenance and download/file hashes. The desktop independently
+compares engine/metadata/license bytes against the published upstream wheel and
+checks the composed UI inventory before staging. Hashes do not independently
+authenticate a publisher if a release authority is compromised.
+
+Runtime files reside in the private user-data directory and run through the
+reviewed bundled launcher. They do not modify the signed app bundle. Qualification
+and runtime publication do not use native signing keys. Compatibility, consent,
+backup and failed-trial recovery are described in
+[automatic updates](docs/AUTO-UPDATES.md). Installed 0.1.8 needs a signed host
+upgrade before it can use this lane.
 
 ## Verification and continuity
 

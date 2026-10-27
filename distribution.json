@@ -1,7 +1,7 @@
 {
   "contract_version": 1,
   "product": "integral-one",
-  "product_version": "0.1.8",
+  "product_version": "0.1.9",
   "mode": "local",
   "desktop_host": {
     "version": "0.1.7-dev.14",

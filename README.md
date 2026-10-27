@@ -11,6 +11,8 @@ Integral One brings Apps, records and an AI coworker together in a personal desk
 
 > **Release status:** [0.1.8 is available as a signed development preview](https://github.com/V75inc/integral-one/releases/tag/v0.1.8) for Apple Silicon Macs, with Core rc35 from TestPyPI. Installer, native update/automatic restart and real account checks passed. See [signed release qualification](docs/SIGNED-INSTALLER-QUALIFICATION-2026-10-26.md#published-018-development-preview).
 
+> **In development for 0.1.9:** independent qualified Core updates, automatic notifications and a persistent restart action. The published 0.1.8 app needs one desktop upgrade first. See [automatic updates](docs/AUTO-UPDATES.md).
+
 ## Get started
 
 ### One command for desktop users

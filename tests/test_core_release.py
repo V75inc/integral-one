@@ -113,6 +113,12 @@ class CorePublicationTests(unittest.TestCase):
             with self.subTest(changes=changes), self.assertRaises(ValueError):
                 release.select_release({}, "0.1.1rc28", self.policy(**changes))
 
+    def test_qualified_runtime_policy_explicitly_allows_gated_publication(self):
+        policy = self.policy(delivery="qualified-runtime", automaticPublication=True)
+        self.assertIsNone(release.select_release({}, "0.1.1rc35", policy))
+        with self.assertRaises(ValueError):
+            release.select_release({}, "0.1.1rc35", self.policy(delivery="qualified-runtime", automaticPublication=False))
+
     def test_wheel_engine_and_notices_must_match_exact_tag(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

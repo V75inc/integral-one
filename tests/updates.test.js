@@ -100,6 +100,50 @@ test('startup loads preferences only after the host establishes the stable data 
   f.app.getPath = correct; await f.control.start(); assert.equal(item.checked, false); assert.deepEqual(f.calls, []);
 });
 
+function runtimeFixture() {
+  const manifest = { core: { version: '0.1.1rc36' }, payload: { sha256: 'd'.repeat(64) } };
+  let staged = null, checks = 0, downloads = 0, installs = 0;
+  return { manifest, counts: () => ({ checks, downloads, installs }),
+    updates: { currentCore: () => '0.1.1rc35', canInstallHost: () => true, staged: () => staged, failed: () => null, recovery: () => null,
+      check: async () => { checks++; return { candidate: { manifest }, latestCore: '0.1.1rc36' }; },
+      stage: async (_candidate, progress) => { downloads++; progress(50); staged = { manifest }; return staged; },
+      install: async () => { installs++; },
+    }, ready() { staged = { manifest }; } };
+}
+test('independent Core updates are notified without an Electron installer and Later persists in the menu', async t => {
+  const runtime = runtimeFixture(), f = fixture(t, { control: { runtimeUpdates: runtime.updates } }); f.result.candidate = null;
+  await f.control.start(); assert.match(f.messages[0].message, /Core 0.1.1rc36 is available/);
+  assert.match(f.control.menuItems[0].label, /Update Core/); assert.equal(f.calls.includes('feed'), false);
+  await f.control.check(false); assert.equal(f.messages.length, 1); assert.equal(runtime.counts().downloads, 0);
+  await f.control.check(true); assert.equal(f.messages.length, 2);
+});
+test('Core download and restart have separate consent and show download progress', async t => {
+  const runtime = runtimeFixture(), progress = [], f = fixture(t, { control: { runtimeUpdates: runtime.updates, progress: (...args) => progress.push(args) } }); f.result.candidate = null;
+  f.answers.push(0, 1); await f.control.start(); assert.equal(runtime.counts().downloads, 1); assert.equal(runtime.counts().installs, 0);
+  assert.ok(progress.some(([, value]) => value === 50)); assert.match(f.control.menuItems[0].label, /Restart to Update Core/);
+  f.app.emit('before-quit'); assert.equal(runtime.counts().installs, 0);
+  f.answers.push(0); await f.control.check(); assert.equal(runtime.counts().installs, 1); assert.equal(f.calls.includes('install'), false);
+});
+test('a persisted staged Core update offers restart after relaunch without downloading it again', async t => {
+  const runtime = runtimeFixture(); runtime.ready(); const f = fixture(t, { control: { runtimeUpdates: runtime.updates } });
+  await f.control.start(); assert.match(f.messages[0].message, /Core 0.1.1rc36 is ready/); assert.equal(runtime.counts().checks, 0); assert.equal(runtime.counts().downloads, 0);
+  f.answers.push(0); await f.control.check(); assert.equal(runtime.counts().installs, 1);
+});
+test('an already updated runtime is reported current rather than needing a replacement shell', async t => {
+  const runtime = runtimeFixture(); runtime.updates.currentCore = () => '0.1.1rc36'; runtime.updates.check = async () => ({ candidate: null });
+  const f = fixture(t, { control: { runtimeUpdates: runtime.updates } }); f.result.candidate = null;
+  await f.control.check(); assert.match(f.messages[0].message, /up to date/);
+});
+test('resume and focus trigger throttled background checks and respect automatic opt-out', async t => {
+  const { EventEmitter } = require('node:events'), power = new EventEmitter(); let time = 1000;
+  const runtime = runtimeFixture(), f = fixture(t, { control: { runtimeUpdates: runtime.updates, powerMonitor: power, now: () => time } }); f.result.candidate = null;
+  await f.control.start(); const before = runtime.counts().checks;
+  f.app.emit('browser-window-focus'); await new Promise(resolve => setImmediate(resolve)); assert.equal(runtime.counts().checks, before);
+  time += 60 * 60 * 1000 + 1; power.emit('resume'); await new Promise(resolve => setImmediate(resolve)); assert.equal(runtime.counts().checks, before + 1);
+  f.control.menuItems[1].click({ checked: false }); time += 60 * 60 * 1000 + 1; power.emit('resume'); await new Promise(resolve => setImmediate(resolve)); assert.equal(runtime.counts().checks, before + 1);
+  f.control.dispose(); assert.equal(power.listenerCount('resume'), 0);
+});
+
 test('automatic-check preferences refuse a dangling symlink without writing its target', { skip: process.platform === 'win32' }, async t => {
   const f = fixture(t), target = path.join(path.dirname(f.prefs), 'outside.json');
   fs.symlinkSync(target, f.prefs);
@@ -107,4 +151,10 @@ test('automatic-check preferences refuse a dangling symlink without writing its 
   await new Promise(resolve => setImmediate(resolve));
   assert.equal(item.checked, true); assert.equal(fs.existsSync(target), false);
   assert.match(f.messages.at(-1).message, /could not/);
+});
+test('a failed runtime payload is quiet automatically and can be retried manually',async t=>{
+ const runtime=runtimeFixture();runtime.updates.failed=()=> '0.1.1rc36-'+runtime.manifest.payload.sha256.slice(0,16);
+ const f=fixture(t,{control:{runtimeUpdates:runtime.updates}});f.result.candidate=null;
+ await f.control.start();assert.equal(f.messages.length,0);assert.equal(runtime.counts().installs,0);
+ await f.control.check(true);assert.match(f.messages[0].message,/Core 0.1.1rc36 is available/);
 });

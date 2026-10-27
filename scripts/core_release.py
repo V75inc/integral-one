@@ -2,7 +2,8 @@
 """Prepare an immutable One update from an actual published Core wheel and tag.
 
 No installed runtime, signing credential, account or user store is touched.
-The read-only preparation/qualification jobs run before a separate PR writer.
+Read-only preparation/qualification precedes a separate runtime publisher (or
+the legacy source-PR route). Native signing is never part of this script.
 """
 
 import argparse
@@ -42,8 +43,9 @@ def select_release(releases, current, policy, requested=None):
     if (
         policy.get("schemaVersion") != 1
         or policy.get("registry") not in REGISTRIES
-        or policy.get("delivery") != "qualified-one-release"
-        or policy.get("automaticPublication") is not False
+        or (policy.get("delivery"), policy.get("automaticPublication")) not in {
+            ("qualified-one-release", False), ("qualified-runtime", True)
+        }
     ):
         raise ValueError("Unsupported Core update policy")
     if not re.fullmatch(r"\d+\.\d+", policy.get("series", "")) or not isinstance(
@@ -230,7 +232,7 @@ def write_json(file, value):
     file.write_text(json.dumps(value, indent=2) + "\n")
 
 
-def prepare(root, policy, version, metadata, source):
+def prepare(root, policy, version, metadata, source, runtime_only=False):
     asset = wheel_asset(metadata["urls"], version)
     data = download(asset["url"], asset["size"])
     if (
@@ -268,7 +270,7 @@ def prepare(root, policy, version, metadata, source):
         if not re.fullmatch(r"\d+\.\d+\.\d+", package["version"]):
             raise ValueError("Require a stable One version before preparing an update")
         parts = package["version"].split(".")
-        next_version = ".".join(parts[:2] + [str(int(parts[2]) + 1)])
+        next_version = package["version"] if runtime_only else ".".join(parts[:2] + [str(int(parts[2]) + 1)])
         pins["product_version"] = package["version"] = lock["version"] = lock[
             "packages"
         ][""]["version"] = next_version
@@ -321,7 +323,8 @@ def prepare(root, policy, version, metadata, source):
                 "core_commit": tag_commit,
                 "registry": policy["registry"],
                 "wheel_sha256": asset["digests"]["sha256"],
-                "automatic_publication": False,
+                "automatic_publication": bool(runtime_only and policy.get("automaticPublication")),
+                "delivery": "qualified-runtime" if runtime_only else "qualified-one-release",
             },
         )
 
@@ -332,6 +335,7 @@ def main():
     parser.add_argument("--root", type=Path, default=ROOT)
     parser.add_argument("--version")
     parser.add_argument("--source", type=Path)
+    parser.add_argument("--runtime-only", action="store_true", help="Prepare Core/UI pins without bumping the native host version")
     args = parser.parse_args()
     root = args.root.resolve()
     pins = json.loads((root / "distribution.json").read_text())
@@ -351,7 +355,7 @@ def main():
         detail = json.loads(
             download(f"{index}/pypi/integral-core/{version}/json", 1024 * 1024)
         )
-        prepare(root, policy, version, detail, args.source.resolve())
+        prepare(root, policy, version, detail, args.source.resolve(), runtime_only=args.runtime_only)
     if os.environ.get("GITHUB_OUTPUT"):
         with open(os.environ["GITHUB_OUTPUT"], "a") as output:
             output.write(
