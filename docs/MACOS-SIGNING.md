@@ -2,7 +2,7 @@
 
 You already have an Apple Developer membership. The remaining Apple setup is a **Developer ID Application** signing identity and notarization access. A Windows certificate is not needed for the initial Mac launch.
 
-The V75 Inc. organization team and its Developer ID Application identity were verified locally on 18 October 2026. The issued certificate matches the user-created CSR and has its matching private key; Apple’s G2 intermediate is present in login. Certificate expiry is 17 November 2027. No private key was exported and no custom trust override was added. The owner-approved `0.1.5`, corrected `0.1.6` and display-name correction `0.1.7` Mac candidates were signed and accepted by notarization on 26 October; see [the signed qualification](SIGNED-INSTALLER-QUALIFICATION-2026-10-26.md) for exact bytes, local installer/update evidence and remaining acceptance checks.
+The V75 Inc. organization team and its Developer ID Application identity were verified locally on 18 October 2026. The issued certificate matches the user-created CSR and has its matching private key; Apple’s G2 intermediate is present in login. Certificate expiry is 17 November 2027. No private key was exported during that initial local setup, and no custom trust override was added. The owner-approved `0.1.5`, corrected `0.1.6` and display-name correction `0.1.7` Mac candidates were signed and accepted by notarization on 26 October; see [the signed qualification](SIGNED-INSTALLER-QUALIFICATION-2026-10-26.md) for exact bytes, local installer/update evidence and remaining acceptance checks.
 
 ## 1. Sign into the right Apple team
 
@@ -40,7 +40,7 @@ The tool validates the credentials before saving them to the local login Keychai
 
 For an approved local signed build, electron-builder supports `APPLE_KEYCHAIN` pointing to that Keychain file and `APPLE_KEYCHAIN_PROFILE=integral-one-notary`. `CSC_NAME='V75 Inc. (M43V972XU9)'` selects the verified identity; omit the `Developer ID Application:` prefix because electron-builder selects the certificate type. These values contain no password. Keep signing/notarization and production release gates separate from the credential setup.
 
-Local signing is the default workflow route. GitHub-hosted signing requires its own protected credentials and explicit dispatch or opt-in; it cannot read this Mac's Keychain. See [installer release](INSTALLER-RELEASE.md#2-prepare-signing-and-the-protected-ci-environment). No private key is exported merely to make an automatic Actions run succeed.
+Local signing is the fallback when hosted signing is not explicitly enabled. The owner approved selective export/transfer of the V75 Inc. identity and notarization credentials into protected `desktop-release` on 26 October. Hosted run [40410680336](https://github.com/V75inc/integral-one/actions/runs/40410680336) passed signing/notarization and assembly; `ONE_CI_SIGNING_ENABLED=true` now enables that route for this repository. Hosted signing retains required human review and approved-branch restrictions; it cannot read this Mac's Keychain. See [installer release](INSTALLER-RELEASE.md#2-prepare-signing-and-the-protected-ci-environment). No private key is exported merely to make an automatic Actions run succeed.
 
 ## 4. Finish signup configuration
 

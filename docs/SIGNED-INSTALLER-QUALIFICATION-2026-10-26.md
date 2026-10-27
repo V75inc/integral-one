@@ -1,6 +1,6 @@
 # Signed Mac installer and updater qualification
 
-On 26 October 2026 the owner explicitly approved signing, notarization and local installer/updater testing, with publication held. The local Keychain route was used. No private key was exported and no release was published.
+On 26 October 2026 the owner explicitly approved signing, notarization and local installer/updater testing, with publication held. The local candidates below used the Keychain route, without a private-key export during that qualification. The subsequent separately approved hosted setup is recorded below. No release was published.
 
 ## Fixed candidate
 
@@ -153,6 +153,19 @@ The offered `0.1.7` downloaded, made one additional cold backup with account-key
 
 ## Publication hold
 
-No signing secrets were added to CI. Hosted candidate run `40396366548` failed before signing because its notarization credentials were absent; the approved local Keychain build supplied the qualified candidate. The explicit local/hosted route correction is documented in [installer release](INSTALLER-RELEASE.md#configuration-failure-found-on-26-october). No tag, GitHub release, visibility change or deployment was made.
+After the owner explicitly approved the credential transfer, only the V75 Inc. identity was exported as an encrypted P12 in memory and sent, with its random password and existing notarization credentials, to the protected `desktop-release` environment. No P12/password file was written. Required human review and the `main` branch restriction remain in place; repository variable `ONE_CI_SIGNING_ENABLED=true` now opts this repository into hosted signing.
+
+[Hosted run 40410680336](https://github.com/V75inc/integral-one/actions/runs/40410680336), source `2f25ccadd2e450932e948fe7bd469b1fa648ef21`, passed planning, actual signing/notarization and artifact assembly. Apple submission `51feea82-bfbe-41a4-94ab-bd13763b5b77` was Accepted. Verification passed 198 Node, 16 Python and all 2,246 UI tests, plus actual runtime/settings/backup/restart checks. The downloaded 0.1.7 ZIP has 151,770,007 bytes and SHA-256 `928f5edc8943dce3c7fd8fc6ec74d8ba0b50408c2226464e684ee43ee6300520`. Local signature, publisher/team, hardened runtime, Gatekeeper, stapled-ticket, source/package and manifest/update-hash checks passed. This hosted rebuild is a separate artifact from the fixed local ZIP; native installation/update acceptance was not repeated on its new ZIP bytes. The ASAR is identical to the fixed local 0.1.7 ASAR.
+
+Hosted run `40396366548` remains failed historical evidence of absent credentials. The intermediate run that skipped signing did not qualify signing. See [installer release](INSTALLER-RELEASE.md#configuration-failure-found-on-26-october). No tag, GitHub release, visibility change or production deployment was made.
 
 Clean activation, new-account signup and real browser sign-in/callback journeys passed in `0.1.6`; the corrected signed `0.1.7` also passed retained real-account activation and display-name checks as described above. Complete qualification on each advertised platform before publication. The updater-retention fixture used a synthetic account. Windows signing/native update acceptance is not established by this Mac run. Core rc35 requires a development prerelease, with the matching manifest, ZIP, update YAML, fixed bootstrap and notices published together after approval.
+
+
+## Final real sign-in and account-choice feedback
+
+The owner completed another real browser sign-in/callback in the exact local signed 0.1.7 product. The accepted account matched the existing new-signup profile's verified subject. Its controlled local display-name edit survived actual reauthentication and matched both the Core API and the sidebar. The original entry, installation identities/keys, setup key, account binding, timezone and pinned App also survived. The verified account name was then restored through Settings. A normal cold reopen without inspector/debugger or proxy flags retained activation and all acceptance data. Private account details are omitted.
+
+The owner reported confusing behavior when initially choosing a different account. An existing workspace deliberately rejects a different provider subject; its account and keys must not be relinked implicitly. Source candidate 0.1.8 improves that feedback: show the verified linked account, foreground/restore the account window on rejection, replace generic waiting instructions with a clear explanation, and provide an explicit-login retry plus offline access. Browser-open failures are also handled for the restart action. Callback state, issuer, audience, nonce/signature checks and local account binding remain enforced.
+
+Local 0.1.8 qualification includes 200 Node, 16 Python and 53 host tests, the composed UI build and 2,246 UI tests. A task-owned native Electron rehearsal with synthetic signed account proofs exercises a minimized wrong-account rejection, visible guidance, explicit-login retry and successful linked-account recovery with unchanged installation/key. It uses no real identity-provider login and does not replace the owner-performed real 0.1.7 journey. The development Mac package also passed native ad hoc signing, child-launcher/resource-seal verification, actual Core startup/session/profile-edit/cold-restart retention, and source/runtime/notices/package inspection. Its ASAR SHA-256 is `5375b107ecbc1e4e5a4c18d0ec11fefeaefd865c071261fcd7b58b79eb7c01a4`. These development checks do not establish Developer ID/notarization. The 0.1.8 signed package and separate-Mac acceptance remain pending.

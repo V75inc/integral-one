@@ -385,7 +385,8 @@ test("the local account page is a one-column gate and the preload starts the bro
     const start = source.indexOf(`function ${name}(`);
     assert.notEqual(start, -1, `${name} is missing`);
     let depth = 0;
-    for (let i = source.indexOf("{", start); i < source.length; i++) {
+    const signatureEnd = source.indexOf(")", start);
+    for (let i = source.indexOf("{", signatureEnd); i < source.length; i++) {
       if (source[i] === "{") depth++;
       else if (source[i] === "}") {
         depth--;
@@ -423,7 +424,7 @@ test("the local account page is a one-column gate and the preload starts the bro
     preview,
     /Account signup is unavailable in this preview\. Existing local data is preserved\./,
   );
-  assert.match(app, /context\.configured \? \(\s*<ConfiguredSignIn \/>/);
+  assert.match(app, /context\.configured \? \(\s*<ConfiguredSignIn linkedAccount=\{context\.linkedAccount\} \/>/);
   assert.match(app, /<UnconfiguredPreview \/>/);
   assert.match(app, /context\.canContinueOffline &&/);
   assert.match(app, /Continue offline/);

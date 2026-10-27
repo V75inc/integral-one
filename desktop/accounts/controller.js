@@ -154,14 +154,20 @@ function createController({
     );
     return true;
   }
+  function showSignInStatus(message, kind = "error") {
+    if (!window || window.isDestroyed()) return;
+    window.webContents.send("integral-one:account-status", { message, kind });
+    if (window.isMinimized()) window.restore();
+    window.show();
+    window.focus();
+  }
   async function receiveCallback(raw) {
     const url = callbackUrl(raw);
     if (!url || !attempt) return;
     if (url.searchParams.get("state") !== attempt.state) return;
     if (url.searchParams.has("error")) {
       const message = "Sign-in was cancelled or encountered an error in your browser. Try again.";
-      if (window && !window.isDestroyed())
-        window.webContents?.send?.("integral-one:account-status", { message });
+      showSignInStatus(message);
       return;
     }
     const code = url.searchParams.get("code");
@@ -173,13 +179,11 @@ function createController({
       state = loadState(home);
       complete();
     } catch (error) {
-      if (window && !window.isDestroyed())
-        window.webContents?.send?.("integral-one:account-status", {
-          message:
-            error?.message === LINKED_ACCOUNT
-              ? LINKED_ACCOUNT
-              : error?.message || "Sign-in exchange failed. Try again.",
-        });
+      const linked = error?.message === LINKED_ACCOUNT;
+      showSignInStatus(
+        linked ? LINKED_ACCOUNT : error?.message || "Sign-in exchange failed. Try again.",
+        linked ? "linked-account" : "error",
+      );
     }
   }
   handle("integral-one:activation-context", () => ({
@@ -191,6 +195,9 @@ function createController({
     stateError,
     returning: Boolean(state.receipt || state.localSetup),
     canContinueOffline: receiptValid,
+    // A verified local profile helps the owner choose the bound account.
+    // Never return the provider subject, setup proof or signing material.
+    linkedAccount: receiptValid ? linkedAccountHint() : null,
     recoveryNeeded:
       stateError ||
       Boolean((state.receipt || state.localSetup) && !receiptValid),
@@ -331,6 +338,12 @@ function createController({
     } catch {
       return null;
     }
+  }
+  function linkedAccountHint() {
+    const profile = accountProfile();
+    return profile?.email && !profile.email.endsWith("@integral.local")
+      ? profile.email
+      : profile?.name || null;
   }
   function writeSignedOut(value) {
     state = { ...state, signedOut: value };
