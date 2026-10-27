@@ -1,6 +1,8 @@
 # Signed Mac installer and updater qualification
 
-On 26 October 2026 the owner explicitly approved signing, notarization and local installer/updater testing, with publication held. The local candidates below used the Keychain route, without a private-key export during that qualification. The subsequent separately approved hosted setup is recorded below. No release was published.
+**27 October:** [0.1.8 is published as a development prerelease](https://github.com/V75inc/integral-one/releases/tag/v0.1.8), after owner approval and completed Mac acceptance. See [the final release record](#published-018-development-preview). Earlier pending statements below describe historical qualification stages.
+
+On 26 October 2026 the owner explicitly approved signing, notarization and local installer/updater testing, with publication held. The local candidates below used the Keychain route, without a private-key export during that qualification. The subsequent separately approved hosted setup is recorded below.
 
 ## Fixed candidate
 
@@ -169,3 +171,25 @@ The owner completed another real browser sign-in/callback in the exact local sig
 The owner reported confusing behavior when initially choosing a different account. An existing workspace deliberately rejects a different provider subject; its account and keys must not be relinked implicitly. Source candidate 0.1.8 improves that feedback: show the verified linked account, foreground/restore the account window on rejection, replace generic waiting instructions with a clear explanation, and provide an explicit-login retry plus offline access. Browser-open failures are also handled for the restart action. Callback state, issuer, audience, nonce/signature checks and local account binding remain enforced.
 
 Local 0.1.8 qualification includes 200 Node, 16 Python and 53 host tests, the composed UI build and 2,246 UI tests. A task-owned native Electron rehearsal with synthetic signed account proofs exercises a minimized wrong-account rejection, visible guidance, explicit-login retry and successful linked-account recovery with unchanged installation/key. It uses no real identity-provider login and does not replace the owner-performed real 0.1.7 journey. The development Mac package also passed native ad hoc signing, child-launcher/resource-seal verification, actual Core startup/session/profile-edit/cold-restart retention, and source/runtime/notices/package inspection. Its ASAR SHA-256 is `5375b107ecbc1e4e5a4c18d0ec11fefeaefd865c071261fcd7b58b79eb7c01a4`. These development checks do not establish Developer ID/notarization. The 0.1.8 signed package and separate-Mac acceptance remain pending.
+
+## Published 0.1.8 development preview
+
+The owner authorized publication on 27 October after the linked-account browser check passed. [Release v0.1.8](https://github.com/V75inc/integral-one/releases/tag/v0.1.8) is a development prerelease, with no stable/latest promotion. Its tag points to tested source `8c6aa324a3499c68355e4c433a4f3c28386f5d4b`. It contains only the qualified macOS arm64 installer, schema-2 manifests, update YAML, bootstrap scripts and legal notices. No Windows, Intel Mac or Linux installer is advertised.
+
+| Exact artifact | Value |
+| --- | --- |
+| One / Core / host | `0.1.8` / TestPyPI `0.1.1rc35` / `0.1.7-dev.14` |
+| ZIP | `integral-one-0.1.8-mac-arm64.zip` |
+| ZIP bytes / SHA-256 | `151771322` / `b60ec244b883819bbb16295b7d7babd9851d0209cc1a0cf594963e468936986c` |
+| ASAR SHA-256 | `5375b107ecbc1e4e5a4c18d0ec11fefeaefd865c071261fcd7b58b79eb7c01a4` |
+| Apple accepted submission | `8e405e4c-cb48-47c6-bc02-42f052e89901`, no issues; downloaded app CDHash matches the ticket |
+
+[Hosted run 40428145795](https://github.com/V75inc/integral-one/actions/runs/40428145795), attempt 2, passed 200 Node, 16 Python and 2,246 UI tests; runtime qualification; Developer ID signing/notarization; exact UI audit/package inspection; manifest generation and assembly. Attempt 1 signed correctly and Apple accepted it, but ticket stapling lost its network connection (error 68). The unchanged-source retry passed. Local deep/strict signatures, V75 publisher/team, hardened runtime, Gatekeeper, stapled ticket, source/runtime/notices, all 203 embedded UI hashes and manifest/update checksums passed.
+
+On the separate macOS 15.7.7 arm64 machine, the exact original signed 0.1.7 product updated to this exact ZIP and automatically relaunched without an explicit launch. Production discovery, backup, native SDK checksum/signature verification and TestPyPI publication metadata remained active; only unpublished GitHub transport and test consent were supplied externally. The original record, timezone, pin, account/installation keys and one additional cold backup passed. Both real-account test profiles were cold-backed-up and retained.
+
+The real new-signup profile then passed display-name/API/menu checks, visible retained record, sign-out/native-session denial, different-account rejection with unchanged signed setup and keys, and fresh linked-account browser sign-in with automatic workspace return. The owner confirmed that workspace account binding is intended. A normal cold reopen without debugging/proxy flags retained the account, keys and records. No account was relinked.
+
+Before publication, all 11 uploaded draft assets matched local names, sizes and SHA-256 digests. After publication, anonymous downloads of metadata, bootstrap scripts and notices matched their qualified bytes. The downloaded public bootstrap selected 0.1.8, validated the real TestPyPI pin, downloaded from GitHub and passed production checksum/publisher/Gatekeeper and staged-install checks. Only its destination and final launch were adapted to a task-owned installation; networking and integrity logic were unchanged. Live production updater discovery offered 0.1.8 to 0.1.7, verified the manifest/Core binding, and did not offer 0.1.8 to itself.
+
+macOS 14 is the declared support floor; this run did not separately test a macOS 14 machine. Windows signing/native update acceptance and a stable PyPI release remain separate. The preview privacy notice retains its stated production-review boundaries.

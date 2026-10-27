@@ -2,19 +2,19 @@
 
 **For desktop users. No Git, Node.js, Python or package manager required.**
 
-The commands below are the prepared public installation path. **They are not live yet:** the first stable signed release, production signup configuration and bootstrap assets still need to be published. Until then, a missing-release message is expected; `npm run setup` is not the end-user installer.
+The signed and notarized [0.1.8 development preview](https://github.com/V75inc/integral-one/releases/tag/v0.1.8) is available for Apple Silicon Macs. It includes Core rc35 from TestPyPI and uses the development update channel. A stable/latest release and Windows installer are not available. `npm run setup` is the contributor setup command.
 
 ## macOS — Apple Silicon, macOS 14 or newer
 
 Open **Terminal**, paste this line and press Return:
 
 ```sh
-curl -fsSL https://github.com/V75inc/integral-one/releases/latest/download/install.sh | /bin/bash
+curl -fsSL https://github.com/V75inc/integral-one/releases/download/v0.1.8/install.sh | /bin/bash -s -- --channel development
 ```
 
 Intel Macs are not supported by the current Core runtime. See [platform readiness](PLATFORM-READINESS.md).
 
-The installer detects your Mac, downloads the matching application, checks the release checksum and Apple publisher/notarization acceptance, installs into **Applications in your home folder**, then opens Integral One. It does not use sudo or alter macOS security settings. Quit a running Integral One before updating.
+The installer detects your Mac, selects the latest complete development release, downloads the matching application, checks the release checksum and Apple publisher/notarization acceptance, installs into **Applications in your home folder**, then opens Integral One. It does not use sudo or alter macOS security settings. Quit a running Integral One before updating. Initial runtime setup downloads managed Python automatically. Native acceptance was performed on macOS 15.7.7 arm64; macOS 14 is the declared support floor.
 
 ## Windows — x64 (later release)
 
@@ -36,14 +36,14 @@ Your files and records stay on your computer. Hosted AI requests send the necess
 
 ## Prefer a download button?
 
-Use [GitHub Releases](https://github.com/V75inc/integral-one/releases) when the signed release is available. The terminal command executes the bootstrap from that same release channel; you may download and inspect `install.sh` or `install.ps1` before running it. No release asset should ask you to disable OS security protections.
+Download the [signed Apple Silicon ZIP](https://github.com/V75inc/integral-one/releases/download/v0.1.8/integral-one-0.1.8-mac-arm64.zip), extract it and move Integral One to your Applications folder, or use the command above. You may download and inspect `install.sh` before running it. No release asset should ask you to disable OS security protections.
 
 Read [Privacy](../PRIVACY.md) and the [Code signing policy](../CODE_SIGNING.md).
 SignPath Foundation signing is being investigated; no approval is claimed.
 
 ## If installation stops
 
-- **No release available:** a stable public release has not been published, or GitHub cannot be reached. Retry later or check Releases.
+- **No release available:** check the selected channel and your connection. This preview needs `--channel development`; a stable/latest release has not been published.
 - **Quit Integral One:** close the running app and repeat the command.
 - **Checksum or signature failure:** stop and [report the problem](https://github.com/V75inc/integral-one/issues/new/choose). Nothing should require bypassing the check.
 - **Existing installation needs recovery:** keep the data directory and contact a maintainer. Do not delete records or encryption keys to reinstall.
@@ -52,11 +52,13 @@ The bootstrap replaces application files only. It does not provide a workspace b
 
 ## Development release candidates
 
-Development installers follow TestPyPI Core releases and are published as GitHub prereleases. Once a signed candidate is published, the bootstrap can select it directly:
+Development installers follow TestPyPI Core releases and are published as GitHub prereleases. The published Mac bootstrap selects the latest complete candidate in that channel:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/V75inc/integral-one/main/install/install.sh | /bin/bash -s -- --channel development
+curl -fsSL https://github.com/V75inc/integral-one/releases/download/v0.1.8/install.sh | /bin/bash -s -- --channel development
 ```
+
+The following Windows command is prepared for a future qualified Windows release; it cannot install the Mac-only 0.1.8 preview:
 
 ```powershell
 & ([scriptblock]::Create((irm https://raw.githubusercontent.com/V75inc/integral-one/main/install/install.ps1))) -Channel development

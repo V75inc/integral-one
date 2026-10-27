@@ -9,31 +9,27 @@ Integral One brings Apps, records and an AI coworker together in a personal desk
 - **One Integral account.** Simple signup today, with shared account identity planned for Integral Business.
 - **Open source.** Apache-2.0, built on [Integral Core](https://github.com/V75inc/integral-core).
 
-> **Release status:** development preview. Signed public installers are not available yet. The current [rc35 distribution qualification](docs/DISTRIBUTION-QUALIFICATION-2026-10-26.md) covers the menu, Logto, updater and local upgrade checks; signed native installation/update acceptance remains open.
+> **Release status:** [0.1.8 is available as a signed development preview](https://github.com/V75inc/integral-one/releases/tag/v0.1.8) for Apple Silicon Macs, with Core rc35 from TestPyPI. Installer, native update/automatic restart and real account checks passed. See [signed release qualification](docs/SIGNED-INSTALLER-QUALIFICATION-2026-10-26.md#published-018-development-preview).
 
 ## Get started
 
 ### One command for desktop users
 
-**Prepared for the first stable release; not live until signed release assets are published.** No Git, Node or Python installation is required for this path.
+The development preview is available now. No Git, Node or Python installation is required for this path. Initial runtime setup and account sign-in need internet.
 
 **Apple Silicon Macs, macOS 14+** — paste into Terminal:
 
 ```sh
-curl -fsSL https://github.com/V75inc/integral-one/releases/latest/download/install.sh | /bin/bash
+curl -fsSL https://github.com/V75inc/integral-one/releases/download/v0.1.8/install.sh | /bin/bash -s -- --channel development
 ```
 
-**Windows x64 — prepared for a later release**, pending Windows signing and qualification:
+The command selects the latest complete development release, verifies it, installs it for your OS account and opens Integral One. Complete signup in the app; first-run runtime setup is automatic. Apple security checks stay enabled. Quit Integral One before reinstalling.
 
-```powershell
-irm https://github.com/V75inc/integral-one/releases/latest/download/install.ps1 | iex
-```
-
-The initial release targets Apple Silicon Macs running macOS 14 or newer; Intel Mac support is blocked by Core runtime compatibility. See [platform readiness](docs/PLATFORM-READINESS.md). For this initial release, a Windows certificate is not required to publish the Mac installers. The command downloads the matching signed release, verifies it, installs it for your OS account and opens Integral One. Complete signup in the app; first-run runtime setup is automatic. Apple/Windows security checks stay enabled. Linux and Windows ARM64 are not yet qualified.
+Windows, Intel Mac and Linux installers are not included in this preview. See [platform readiness](docs/PLATFORM-READINESS.md). macOS 14 is the declared minimum; native release acceptance was performed on macOS 15.7.7 arm64.
 
 Development builds use TestPyPI and GitHub prereleases. The [development one-line commands](docs/INSTALL.md#development-release-candidates) select that channel without bypassing publisher verification. Installed builds check their channel automatically and provide **Help → Check for Updates…**; downloading and restarting each require your approval.
 
-See [installation and troubleshooting](docs/INSTALL.md), or download directly from [GitHub Releases](https://github.com/V75inc/integral-one/releases) when the signed release is available.
+See [installation and troubleshooting](docs/INSTALL.md), or download directly from [GitHub Releases](https://github.com/V75inc/integral-one/releases/tag/v0.1.8).
 
 ### For contributors
 
