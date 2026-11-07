@@ -37,6 +37,7 @@ export function useAgentiveWebSocket() {
 
     let cancelled = false;
     let attempt = 0;
+    let wasConnected = false;
     let pingInterval: ReturnType<typeof setInterval> | null = null;
     let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -91,8 +92,13 @@ export function useAgentiveWebSocket() {
           ws.close();
           return;
         }
+        const recovering = wasConnected || attempt > 0;
         attempt = 0;
         setConnected(true);
+        if (recovering) {
+          window.dispatchEvent(new Event('integral:agent-events-reconnected'));
+        }
+        wasConnected = true;
         stopPing();
         pingInterval = setInterval(() => {
           if (ws.readyState === WebSocket.OPEN) {

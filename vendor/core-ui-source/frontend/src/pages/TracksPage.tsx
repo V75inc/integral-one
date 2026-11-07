@@ -380,6 +380,7 @@ export function TracksPage() {
         <TrackModal
           open={showModal}
           onClose={() => setShowModal(false)}
+          onImported={reload}
           onCreated={async (track) => {
             const queryKey = [...tracksListQueryKey(''), workspaceId] as const;
             // A new account can still have its initial empty list request in

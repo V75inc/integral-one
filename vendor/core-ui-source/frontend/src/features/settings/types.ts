@@ -29,7 +29,7 @@ export interface AppearanceSettings {
 }
 
 /** Global retrieval (search) mode applied to every search surface. */
-export type RetrievalModeSetting = 'graph' | 'semantic' | 'hybrid';
+export type RetrievalModeSetting = 'lexical' | 'semantic' | 'hybrid';
 
 export interface RetrievalSettings {
   mode: RetrievalModeSetting;
@@ -44,7 +44,7 @@ export interface SettingsSnapshot {
 }
 
 export const DEFAULT_SETTINGS: SettingsSnapshot = {
-  schemaVersion: 3,
+  schemaVersion: 5,
   providers: {
     defaultProviderId: 'pydantic-ai-native',
   },
@@ -53,12 +53,12 @@ export const DEFAULT_SETTINGS: SettingsSnapshot = {
     entryDialogExpanded: false,
   },
   retrieval: {
-    mode: 'semantic',
+    mode: 'hybrid',
   },
 };
 
 export const RETRIEVAL_MODE_LABELS: Record<RetrievalModeSetting, string> = {
-  semantic: 'Semantic (default)',
-  hybrid: 'Hybrid',
-  graph: 'Graph (in-memory)',
+  semantic: 'Meaning',
+  hybrid: 'Hybrid (recommended)',
+  lexical: 'Keywords',
 };

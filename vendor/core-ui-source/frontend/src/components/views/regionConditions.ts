@@ -8,7 +8,12 @@
  */
 export type VisibleIf = {
   field: string;
-  equals: unknown;
+  /** Matches when the field equals this value. */
+  equals?: unknown;
+  /** Matches when the field equals any of these values. */
+  in?: unknown[];
+  /** Matches when the field equals none of these values. */
+  not_in?: unknown[];
 };
 
 /** true when `cond` is absent (always visible — the default, backward-
@@ -16,7 +21,10 @@ export type VisibleIf = {
  *  `values[cond.field] === cond.equals`. */
 export function isVisible(cond: VisibleIf | undefined, values: Record<string, unknown> | undefined): boolean {
   if (!cond) return true;
-  return values?.[cond.field] === cond.equals;
+  const value = values?.[cond.field];
+  if (Array.isArray(cond.in)) return cond.in.includes(value);
+  if (Array.isArray(cond.not_in)) return !cond.not_in.includes(value);
+  return value === cond.equals;
 }
 
 /** A field/column entry in a widget's config list — either a bare key

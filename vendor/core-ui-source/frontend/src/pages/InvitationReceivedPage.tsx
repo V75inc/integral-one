@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
-import { sharingApi } from '../api';
+import { authApi, sharingApi } from '../api';
+import { errorMessageFromAxios } from '../api/helpers';
 import type { MyInvitation } from '../api/sharing';
-import { Button, PageHeading, PageMeta, Skeleton } from '../components/ui';
+import { Button, PageMeta, Skeleton } from '../components/ui';
 import { Text } from '../ui';
 import { useToast } from '../context/ToastContext';
 import { useAuth } from '../context/AuthContext';
@@ -12,7 +13,7 @@ import { invitationAcceptanceMessage } from '../utils/invitationAcceptance';
 
 export function InvitationReceivedPage() {
   const { invitationId = '' } = useParams<{ invitationId: string }>();
-  const { user, loading: authLoading } = useAuth();
+  const { user, loading: authLoading, refreshUser } = useAuth();
   const { showToast } = useToast();
   const navigate = useNavigate();
   const qc = useQueryClient();
@@ -22,6 +23,30 @@ export function InvitationReceivedPage() {
   const [loading, setLoading] = useState(true);
   const [working, setWorking] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const beginVerification = async () => {
+    if (working) return;
+    setWorking(true);
+    const enterCode = () => navigate('/verify-email', {
+      state: { returnTo: `/invitations/received/${encodeURIComponent(invitationId)}` },
+    });
+    try {
+      const result = await authApi.resendVerification();
+      if (result.status === 'already_verified') {
+        await refreshUser();
+        return;
+      }
+      showToast(result.message || 'Verification code sent — check your inbox', 'success');
+      enterCode();
+    } catch (failure) {
+      const status = (failure as { response?: {status?: number} })?.response?.status;
+      showToast(errorMessageFromAxios(failure, 'Could not send a verification code. Try again shortly.'), status === 429 ? 'info' : 'error');
+      // A recently requested code remains usable during the resend cooldown.
+      if (status === 429) enterCode();
+    } finally {
+      setWorking(false);
+    }
+  };
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -92,16 +117,15 @@ export function InvitationReceivedPage() {
     return (
       <div className="min-h-screen flex items-center justify-center px-4">
         <div className="app-card max-w-md w-full p-6 text-center">
-          <PageHeading>Verify your email to continue</PageHeading>
+          <Text as="h1" variant="heading-lg" className="break-words">Verify your email</Text>
           <PageMeta as="p" className="mt-4">
-            Verify your email before viewing or accepting invitations. Once verified,
-            you’ll return here to review this invitation.
+            To accept this invitation, verify your email first. You’ll return here
+            to review and accept it.
           </PageMeta>
           <Button
             className="mt-6 w-full"
-            onClick={() => navigate('/verify-email', {
-              state: { returnTo: `/invitations/received/${encodeURIComponent(invitationId)}` },
-            })}
+            disabled={working}
+            onClick={() => void beginVerification()}
           >
             Verify email
           </Button>
@@ -122,7 +146,7 @@ export function InvitationReceivedPage() {
     return (
       <div className="min-h-screen flex items-center justify-center px-4">
         <div className="app-card max-w-md w-full p-6 text-center">
-          <PageHeading>Invitation</PageHeading>
+          <Text as="h1" variant="heading-lg" className="break-words">Invitation</Text>
           <p className="mt-4 text-sm text-[var(--danger-fg)]">
             {error || 'Invitation not found.'}
           </p>
@@ -142,7 +166,7 @@ export function InvitationReceivedPage() {
   return (
     <div className="min-h-screen flex items-center justify-center px-4">
       <div className="app-card max-w-md w-full p-6">
-        <PageHeading>Join {targetLabel}</PageHeading>
+        <Text as="h1" variant="heading-lg" className="break-words">Join {targetLabel}</Text>
         <PageMeta as="p">
           You've been invited to <strong>{targetLabel}</strong> as a{' '}
           <strong>{role}</strong>.

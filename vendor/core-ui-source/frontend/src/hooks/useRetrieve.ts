@@ -1,17 +1,8 @@
 /**
  * useRetrieve — small wrapper around the Phase 4 ``/api/retrieve`` endpoint.
  *
- * Reads the global ``retrieval.mode`` (graph | semantic | hybrid) from
- * Settings — the inline per-strip Mode dropdown was retired so the
- * choice is made once globally. ``semantic`` is the default and most
- * common path: vector similarity surfaces matches beyond the in-memory
- * list. ``graph`` keeps the in-memory substring filter (no API call).
- *
- * Consumers (FeedFilterStrip + TrackFilterStrip): pass a ``scope`` string
- * (e.g. ``"track:t-1"``, ``"app:a-1"``) and call ``run(query)`` when
- * the user submits in semantic / hybrid mode. Graph mode is intentionally
- * a no-op at the API level — callers fall back to their existing
- * in-memory filter.
+ * Reads the browser's lexical, semantic or hybrid preference. Feed and
+ * Track searches use the same scoped retrieval endpoint as agent tools.
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -22,6 +13,7 @@ import {
   type RetrievalResult,
 } from '../api/retrieve';
 import { useSettings } from '../features/settings/store';
+import { requiresAppQuery } from '../api/readBoundary';
 
 export type { RetrievalMode, RetrievalResult };
 
@@ -39,12 +31,13 @@ export interface UseRetrieveResult {
    *  inline. */
   mode: RetrievalMode;
   results: RetrievalResult[];
+  submittedQuery: string;
   /** True when the backend fell back from semantic/hybrid to graph search. */
   degraded: boolean;
   loading: boolean;
   error: string | null;
-  /** Run a retrieval against the current mode + scope. No-op when mode is
-   *  ``graph`` (results are cleared so consumers fall back to local filter). */
+  appQueryRequired: boolean;
+  /** Run a retrieval against the current mode and scope. */
   run: (query: string) => Promise<void>;
   /** Clear results + error (e.g. when the search input is emptied). */
   reset: () => void;
@@ -58,23 +51,23 @@ export function useRetrieve({
   const mode = settings.retrieval.mode as RetrievalMode;
 
   const [results, setResults] = useState<RetrievalResult[]>([]);
+  const [submittedQuery, setSubmittedQuery] = useState('');
   const [degraded, setDegraded] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [appQueryRequired, setAppQueryRequired] = useState(false);
 
   const generation = useRef(0);
 
-  // Clear results when mode flips to graph — the consumer's in-memory
-  // filter takes over and a stale results array would mis-filter the
-  // list. Also resets when switching from one retrieval mode to another
-  // (semantic ↔ hybrid) so the user doesn't see stale ranker output
-  // until they re-submit.
+  // Do not reuse results across modes, scopes, or authenticated workspaces.
   const reset = useCallback(() => {
     generation.current += 1;
     setResults([]);
+    setSubmittedQuery('');
     setDegraded(false);
     setError(null);
     setLoading(false);
+    setAppQueryRequired(false);
   }, []);
 
   useEffect(() => {
@@ -89,15 +82,13 @@ export function useRetrieve({
         reset();
         return;
       }
-      if (mode === 'graph') {
-        // Graph mode is the in-memory filter path — no API call needed.
-        reset();
-        return;
-      }
       const request = ++generation.current;
       setResults([]);
+      setSubmittedQuery(trimmed);
       setLoading(true);
       setError(null);
+      setDegraded(false);
+      setAppQueryRequired(false);
       try {
         const res = await retrieve({
           query: trimmed,
@@ -107,6 +98,7 @@ export function useRetrieve({
         if (request !== generation.current) return;
         setResults(res.results);
         setDegraded(Boolean(res.degraded));
+        setAppQueryRequired(requiresAppQuery(res));
       } catch (err) {
         if (request !== generation.current) return;
         const msg =
@@ -121,5 +113,5 @@ export function useRetrieve({
     [mode, scope, authorityKey, reset],
   );
 
-  return { mode, results, degraded, loading, error, run, reset };
+  return { mode, results, submittedQuery, degraded, loading, error, appQueryRequired, run, reset };
 }

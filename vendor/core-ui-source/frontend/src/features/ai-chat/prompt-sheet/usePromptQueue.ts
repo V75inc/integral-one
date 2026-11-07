@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useThreadRuntime } from '@assistant-ui/react';
+import { useQueryClient } from '@tanstack/react-query';
 
 import {
   blessStagingToken,
@@ -11,6 +12,7 @@ import {
   revokeStagingToken,
 } from '../../../api/agentive';
 import { useConfirm } from '../../../context/ConfirmContext';
+import { invalidateAfterAgentWrite } from '../../../services/graphMutationInvalidation';
 import { useChatActivity } from '../AIChatSurface';
 import type { PromptItem, PromptQueue } from './types';
 
@@ -48,6 +50,7 @@ export function usePromptQueue() {
     useChatActivity();
   const threadRuntime = useThreadRuntime();
   const confirm = useConfirm();
+  const queryClient = useQueryClient();
   const [queue, setQueue] = useState<PromptQueue | null>(null);
   const [open, setOpen] = useState(false);
   const [queueScope, setQueueScope] = useState(activeThreadId);
@@ -98,7 +101,9 @@ export function usePromptQueue() {
     const episode = resultQueue?.items.length ? resultQueue
       : reviewEpisode.current?.threadId === threadId ? reviewEpisode.current.queue : undefined;
     // Deduplicate one resolved review, not identical wording across new reviews.
-    const key = JSON.stringify([threadId, episode?.opened_at, episode?.items.map((item) => item.id), text]);
+    // Readback links can improve between the completion event and the action
+    // response. Their wording must not create a second receipt for one review.
+    const key = JSON.stringify([threadId, episode?.opened_at, episode?.items.map((item) => item.id), episode?.items.length ? undefined : text]);
     if (resumeRequired && resumedRefreshes.current.has(key)) return;
     if (resumeRequired) resumedRefreshes.current.add(key);
     if (resumedRefreshes.current.size > 64) resumedRefreshes.current.delete(resumedRefreshes.current.values().next().value!);
@@ -374,6 +379,9 @@ export function usePromptQueue() {
           return;
         }
         applicationConfirmed = stagedState === 'consumed' || blessRes.consumed === true;
+        if (applicationConfirmed) {
+          await invalidateAfterAgentWrite(queryClient, { staged, executeResult: exec });
+        }
         const res = await markPromptWrite({
           threadId: activeThreadId,
           token: current.token,
@@ -401,7 +409,7 @@ export function usePromptQueue() {
         setBusy(false);
       }
     },
-    [activeThreadId, applyQueueResult, busy, confirm, current],
+    [activeThreadId, applyQueueResult, busy, confirm, current, queryClient],
   );
 
   const rejectWrite = useCallback(async () => {

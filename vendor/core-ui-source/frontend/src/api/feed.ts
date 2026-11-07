@@ -7,6 +7,7 @@ import {
   unwrapApiDataEnvelope,
 } from './helpers';
 import { getTypeNameMapForTrack } from './entryTypes';
+import { requiresAppQuery } from './readBoundary';
 import type { Entry } from '../types';
 
 /** Page size for feed infinite scroll (backend max 100). */
@@ -17,6 +18,7 @@ export type FeedEntriesPage = {
   nextCursor: string | null;
   hasMore: boolean;
   total?: number;
+  appQueryRequired?: boolean;
 };
 
 function parsePagedPayload(data: unknown): {
@@ -24,6 +26,7 @@ function parsePagedPayload(data: unknown): {
   nextCursor: string | null;
   hasMore: boolean;
   total?: number;
+  appQueryRequired?: boolean;
 } {
   const inner = unwrapApiDataEnvelope(data);
   const d = inner;
@@ -36,7 +39,7 @@ function parsePagedPayload(data: unknown): {
       : null;
   const hasMore = Boolean(d.has_more);
   const total = typeof d.total === 'number' ? d.total : undefined;
-  return { rawItems, nextCursor: next, hasMore, total };
+  return { rawItems, nextCursor: next, hasMore, total, ...(requiresAppQuery(inner) ? { appQueryRequired: true } : {}) };
 }
 
 async function fetchFeedEntriesPageFromPath(
@@ -44,9 +47,9 @@ async function fetchFeedEntriesPageFromPath(
   params: Record<string, unknown>
 ): Promise<FeedEntriesPage> {
   const { data } = await apiClient.get(path, { params });
-  const { rawItems, nextCursor, hasMore, total } = parsePagedPayload(data);
+  const { rawItems, nextCursor, hasMore, total, appQueryRequired } = parsePagedPayload(data);
   const entries = await normalizeEntriesWithTypes(rawItems);
-  return { entries, nextCursor, hasMore, total };
+  return { entries, nextCursor, hasMore, total, ...(appQueryRequired ? { appQueryRequired } : {}) };
 }
 
 function cachedPrincipalId(): string | undefined {

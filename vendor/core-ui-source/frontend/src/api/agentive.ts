@@ -165,6 +165,21 @@ export async function revokeStagingToken(token: string): Promise<StagingResponse
   return res.data;
 }
 
+export interface EntryProposalFormItem {
+  operation_index: number;
+  revision: string;
+  track: import('../types').Track;
+  entry: import('../types').Entry;
+}
+
+export async function getEntryProposalForm(token: string): Promise<{ ok: boolean; entries?: EntryProposalFormItem[]; message?: string }> {
+  return (await api.get(`/agentive/staging/token/${encodeURIComponent(token)}/entry-form`)).data;
+}
+
+export async function reviseEntryProposal(token: string, item: EntryProposalFormItem, draft: { title: string; body: string; fields: Record<string, unknown>; tags: string[] }): Promise<StagingResponse> {
+  return (await api.post(`/agentive/staging/token/${encodeURIComponent(token)}/revise-entry`, { operation_index: item.operation_index, revision: item.revision, draft })).data;
+}
+
 export interface RollbackStatusResponse {
   ok: boolean;
   staging_token?: string;

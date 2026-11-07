@@ -6,6 +6,7 @@ import { compactMessageDebugPayload } from "../assistantMessagePresentation";
 
 vi.mock("../../../../context/ThemeContext", () => ({
   useTheme: () => ({ theme: "light" }),
+  useOptionalTheme: () => ({ theme: "light" }),
 }));
 
 describe("MessageDebugDialog", () => {

@@ -15,16 +15,14 @@ import {
 const PASSWORD_MIN_LENGTH = 12;
 
 /**
- * Step 2 of password recovery: user clicks the link from their email which
- * brings them here with `?token=...`. They enter a new password (twice for
- * confirmation), submit, and on success we redirect them to /login with a
- * toast prompting them to sign in with the new password.
+ * Shared password form for reset and first-time account activation. Each mode
+ * uses its own route and API endpoint so tokens cannot be used interchangeably.
  *
  * Backend errors come through with `error.response.data.detail.error_code`
  * — we map common cases (expired, invalid, attempts exceeded) to specific
  * UI states so the user understands whether to request a new link.
  */
-export function ResetPasswordPage() {
+function PasswordSetupPage({ activation = false }: { activation?: boolean }) {
   const navigate = useNavigate();
   const { showToast } = useToast();
   const [searchParams] = useSearchParams();
@@ -57,9 +55,15 @@ export function ResetPasswordPage() {
     if (!canSubmit) return;
     setLoading(true);
     try {
-      await authApi.resetPassword(token, password);
+      if (activation) await authApi.activateAccount(token, password);
+      else await authApi.resetPassword(token, password);
       setDone(true);
-      showToast('Password updated. Sign in with your new password.', 'success');
+      showToast(
+        activation
+          ? 'Account activated. You can now sign in.'
+          : 'Password updated. Sign in with your new password.',
+        'success',
+      );
       // Small delay so the toast is visible before navigation.
       setTimeout(() => navigate('/login', { replace: true }), 800);
     } catch (err: unknown) {
@@ -85,18 +89,22 @@ export function ResetPasswordPage() {
 
   return (
     <AuthPageLayout
-      title="Choose a new password"
-      description="Choose a new password to get back into your account."
+      title={activation ? 'Activate your Integral account' : 'Choose a new password'}
+      description={
+        activation
+          ? 'Set a password to get first-time access to your Integral account.'
+          : 'Choose a new password to get back into your account.'
+      }
     >
 
           {linkBroken ? (
-            <BrokenLink kind={linkBroken} />
+            <BrokenLink kind={linkBroken} activation={activation} />
           ) : done ? (
-            <Done />
+            <Done activation={activation} />
           ) : (
             <>
               <AuthPanelHeading>
-                Choose a new password
+                {activation ? 'Set your password' : 'Choose a new password'}
               </AuthPanelHeading>
               <PageMeta as="p">
                 Make it at least {PASSWORD_MIN_LENGTH} characters. You'll be
@@ -173,7 +181,7 @@ export function ResetPasswordPage() {
                   disabled={!canSubmit}
                   className="w-full mt-1"
                 >
-                  Set new password
+                  {activation ? 'Activate account' : 'Set new password'}
                 </Button>
               </form>
 
@@ -191,7 +199,21 @@ export function ResetPasswordPage() {
   );
 }
 
-function BrokenLink({ kind }: { kind: 'expired' | 'invalid' | 'attempts' }) {
+export function ResetPasswordPage() {
+  return <PasswordSetupPage />;
+}
+
+export function ActivateAccountPage() {
+  return <PasswordSetupPage activation />;
+}
+
+function BrokenLink({
+  kind,
+  activation,
+}: {
+  kind: 'expired' | 'invalid' | 'attempts';
+  activation: boolean;
+}) {
   const title =
     kind === 'expired'
       ? 'This link has expired'
@@ -200,10 +222,16 @@ function BrokenLink({ kind }: { kind: 'expired' | 'invalid' | 'attempts' }) {
       : 'This link is invalid';
   const body =
     kind === 'expired'
-      ? "Reset links expire 60 minutes after they're sent. Request a fresh one and we'll email it again."
+      ? activation
+        ? 'Activation links expire after 60 minutes. Contact your organization administrator for a new one.'
+        : "Reset links expire 60 minutes after they're sent. Request a fresh one and we'll email it again."
       : kind === 'attempts'
-      ? 'For your security, this link has been disabled. Request a new one to continue.'
-      : 'This link is no longer valid. It may have been used already, or copied incorrectly. Request a fresh link to continue.';
+      ? activation
+        ? 'For your security, this link has been disabled. Contact your organization administrator for a new one.'
+        : 'For your security, this link has been disabled. Request a new one to continue.'
+      : activation
+        ? 'This link is no longer valid. It may have been used already, or copied incorrectly. Contact your organization administrator for a new activation link.'
+        : 'This link is no longer valid. It may have been used already, or copied incorrectly. Request a fresh link to continue.';
 
   return (
     <>
@@ -215,7 +243,7 @@ function BrokenLink({ kind }: { kind: 'expired' | 'invalid' | 'attempts' }) {
       </PageMeta>
       <div className="mt-8">
         <Link
-          to="/forgot-password"
+          to={activation ? '/login' : '/forgot-password'}
           className="
             inline-flex items-center justify-center w-full
             px-4 py-2.5 text-sm font-medium
@@ -224,7 +252,7 @@ function BrokenLink({ kind }: { kind: 'expired' | 'invalid' | 'attempts' }) {
             hover:opacity-90 transition-opacity duration-fast
           "
         >
-          Request a new link
+        {activation ? 'Return to sign in' : 'Request a new link'}
         </Link>
       </div>
       <p className="mt-6 text-sm text-[var(--text-muted)]">
@@ -239,11 +267,11 @@ function BrokenLink({ kind }: { kind: 'expired' | 'invalid' | 'attempts' }) {
   );
 }
 
-function Done() {
+function Done({ activation }: { activation: boolean }) {
   return (
     <>
       <AuthPanelHeading>
-        Password updated
+        {activation ? 'Account activated' : 'Password updated'}
       </AuthPanelHeading>
       <PageMeta as="p">
         Redirecting you to sign in…

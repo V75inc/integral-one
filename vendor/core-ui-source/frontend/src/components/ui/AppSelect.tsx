@@ -37,6 +37,7 @@ export type AppSelectProps = {
   placeholder?: string;
   /** Opt-in type-ahead: a search box inside the open list filters the options. */
   searchable?: boolean;
+  onSearchChange?: (query: string) => void;
 };
 
 export function AppSelect({
@@ -50,6 +51,7 @@ export function AppSelect({
   className = '',
   placeholder,
   searchable = false,
+  onSearchChange,
 }: AppSelectProps) {
   const [open, setOpen] = useState(false);
   const [coords, setCoords] = useState<{
@@ -310,6 +312,7 @@ export function AppSelect({
             }}
             onChange={e => {
               setQuery(e.target.value);
+              onSearchChange?.(e.target.value);
               setActiveIndex(0);
               if (!open) setOpen(true);
             }}

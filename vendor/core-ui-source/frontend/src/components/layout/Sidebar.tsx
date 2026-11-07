@@ -26,6 +26,7 @@ import {
   ChevronDown,
   ChevronLeft,
   ChevronRight,
+  HelpCircle,
   ChevronsUpDown,
   Home as HomeIcon,
   LayoutGrid,
@@ -664,6 +665,17 @@ function SidebarAccountMenu({
             <UserIcon size={12} strokeWidth={LINE_ICON_STROKE} />
           </span>
           View profile
+        </button>
+        <button
+          type="button"
+          role="menuitem"
+          onClick={() => { setOpen(false); onDismissMobile(); navigate('/settings#help'); }}
+          className="w-full flex items-center gap-2.5 px-2 py-1.5 rounded-md text-left text-sm text-[var(--text)] hover:bg-[var(--panel-2)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus-ring-color)] transition-colors duration-fast"
+        >
+          <span className="inline-flex items-center justify-center w-[22px] h-[22px] rounded-md bg-[var(--panel-2)] text-[var(--text-muted)] shrink-0" aria-hidden>
+            <HelpCircle size={12} strokeWidth={LINE_ICON_STROKE} />
+          </span>
+          Help and getting started
         </button>
         {hostActions.map(action => (
           <button

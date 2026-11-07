@@ -250,6 +250,8 @@ export interface OperationalModelFieldSpec {
   /** When false, show a traditional label above the control (opt-out of seamless composer styling). */
   seamless?: boolean;
   group?: string;
+  /** Optional subsection heading within a form group. */
+  section?: string;
   order?: number;
   /** Field-type-specific validation knobs (min/max/step for number, pattern for text, etc.). */
   validation?: Record<string, unknown>;
@@ -278,6 +280,8 @@ export interface OperationalModelFieldSpec {
      */
     target?: 'entry' | 'track';
     target_entry_types?: string[];
+    target_app?: string;
+    allow_cross_app?: boolean;
     target_track_types?: string[];
     /** Phase 3.1 (ANC-02). When target='track', the template key under the
      * containing App's ``app.track_templates`` registry that the auto-

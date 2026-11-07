@@ -5,7 +5,8 @@
 
 import React from 'react';
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render as rtlRender, screen, fireEvent, waitFor } from '@testing-library/react';
+import { ConfirmProvider } from '../../../../context/ConfirmContext';
 
 vi.mock('../../../../api/routines', () => ({
   updateRoutine: vi.fn(),
@@ -16,6 +17,10 @@ vi.mock('../../../../api/routines', () => ({
 import * as routinesApi from '../../../../api/routines';
 import { ScheduledRow } from '../InboxView';
 import type { RoutineResponse } from '../../../../api/routines';
+
+function render(element: React.ReactElement) {
+  return rtlRender(<ConfirmProvider>{element}</ConfirmProvider>);
+}
 
 function baseRoutine(
   overrides: Partial<RoutineResponse> = {},
@@ -56,7 +61,6 @@ beforeEach(() => {
     id: 'r1',
     deleted: true,
   });
-  vi.spyOn(window, 'confirm').mockReturnValue(true);
 });
 
 afterEach(() => {
@@ -77,7 +81,6 @@ describe('ScheduledRow', () => {
         status: 'paused',
       });
     });
-    expect(window.confirm).not.toHaveBeenCalled();
     expect(onResolved).toHaveBeenCalled();
   });
 
@@ -106,25 +109,22 @@ describe('ScheduledRow', () => {
     );
 
     fireEvent.click(screen.getByLabelText('Stop scheduled task'));
+    expect(routinesApi.cancelRoutine).not.toHaveBeenCalled();
+    fireEvent.click(await screen.findByRole('button', { name: 'Stop task' }));
 
     await waitFor(() => {
       expect(routinesApi.cancelRoutine).toHaveBeenCalledWith('r1');
     });
-    expect(window.confirm).toHaveBeenCalled();
     expect(onResolved).toHaveBeenCalled();
   });
 
   it('does not stop when confirm is declined', async () => {
-    vi.mocked(window.confirm).mockReturnValue(false);
     render(
       <ScheduledRow routine={baseRoutine()} onResolved={vi.fn()} />,
     );
 
     fireEvent.click(screen.getByLabelText('Stop scheduled task'));
-
-    await waitFor(() => {
-      expect(window.confirm).toHaveBeenCalled();
-    });
+    fireEvent.click(await screen.findByRole('button', { name: 'Cancel' }));
     expect(routinesApi.cancelRoutine).not.toHaveBeenCalled();
   });
 
@@ -135,11 +135,20 @@ describe('ScheduledRow', () => {
     );
 
     fireEvent.click(screen.getByLabelText('Remove scheduled task'));
+    expect(routinesApi.deleteRoutine).not.toHaveBeenCalled();
+    fireEvent.click(await screen.findByRole('button', { name: 'Remove task' }));
 
     await waitFor(() => {
       expect(routinesApi.deleteRoutine).toHaveBeenCalledWith('r1');
     });
     expect(onResolved).toHaveBeenCalled();
+  });
+
+  it('allows a cancelled task to be removed', async () => {
+    render(<ScheduledRow routine={baseRoutine({ status: 'cancelled' })} onResolved={vi.fn()} />);
+    fireEvent.click(screen.getByLabelText('Remove scheduled task'));
+    fireEvent.click(await screen.findByRole('button', { name: 'Remove task' }));
+    await waitFor(() => expect(routinesApi.deleteRoutine).toHaveBeenCalledWith('r1'));
   });
 
   it('shows running now in the meta line', () => {

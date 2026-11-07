@@ -167,7 +167,7 @@ apiClient.interceptors.response.use(
     const config = err.config as RetryAwareConfig | undefined;
     const requestUrl = config?.url ?? '';
     // Credential failures belong to their form, never the previous account's refresh.
-    if (/\/auth\/(login|signup|forgot-password|reset-password)(?:$|\?)/.test(requestUrl)) return Promise.reject(err);
+    if (/\/auth\/(login|signup|forgot-password|reset-password|activate-account)(?:$|\?)/.test(requestUrl)) return Promise.reject(err);
     const onPublicSurface =
       typeof window !== 'undefined' && isPublicAuthPath(window.location.pathname);
 

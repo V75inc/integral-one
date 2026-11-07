@@ -14,6 +14,7 @@ import type {
   PendingAttachment,
 } from "@assistant-ui/react";
 import { createFileAttachmentAdapter } from "./fileAttachmentAdapter";
+import { MAX_IMAGE_BYTES } from "../../../utils/imageUploadLimits";
 
 export const ACCEPTED_IMAGE_TYPES = [
   "image/png",
@@ -23,7 +24,7 @@ export const ACCEPTED_IMAGE_TYPES = [
 ];
 
 /** ~5 MB — matches the backend per-image cap. */
-export const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
+export { MAX_IMAGE_BYTES };
 
 function readAsDataURL(file: File): Promise<string> {
   return new Promise((resolve, reject) => {

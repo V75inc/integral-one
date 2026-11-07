@@ -75,6 +75,8 @@ afterEach(() => {
 
 describe('useAgentiveWebSocket', () => {
   it('reconnects after a close, re-minting the ticket', async () => {
+    const reconnected = vi.fn();
+    window.addEventListener('integral:agent-events-reconnected', reconnected);
     const { result } = renderHook(() => useAgentiveWebSocket());
     await settle();
     expect(FakeWebSocket.instances).toHaveLength(1);
@@ -83,6 +85,7 @@ describe('useAgentiveWebSocket', () => {
 
     act(() => first.open());
     expect(result.current.connected).toBe(true);
+    expect(reconnected).not.toHaveBeenCalled();
 
     act(() => first.drop());
     expect(result.current.connected).toBe(false);
@@ -97,6 +100,8 @@ describe('useAgentiveWebSocket', () => {
 
     act(() => FakeWebSocket.instances[1].open());
     expect(result.current.connected).toBe(true);
+    expect(reconnected).toHaveBeenCalledTimes(1);
+    window.removeEventListener('integral:agent-events-reconnected', reconnected);
   });
 
   it('backs off between failed attempts', async () => {
@@ -119,6 +124,18 @@ describe('useAgentiveWebSocket', () => {
       await vi.advanceTimersByTimeAsync(1100);
     });
     expect(FakeWebSocket.instances).toHaveLength(3);
+  });
+
+  it('signals catch-up after the initial connection attempt failed', async () => {
+    const reconnected = vi.fn();
+    window.addEventListener('integral:agent-events-reconnected', reconnected);
+    renderHook(() => useAgentiveWebSocket());
+    await settle();
+    act(() => FakeWebSocket.instances[0].drop());
+    await act(async () => { await vi.advanceTimersByTimeAsync(1200); });
+    act(() => FakeWebSocket.instances[1].open());
+    expect(reconnected).toHaveBeenCalledTimes(1);
+    window.removeEventListener('integral:agent-events-reconnected', reconnected);
   });
 
   it('stops pinging a socket once it has closed', async () => {

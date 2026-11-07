@@ -58,6 +58,18 @@ const choices = [
 ];
 
 describe('single relation display and editing', () => {
+  it('uses a configured default label when clearing an optional relation', () => {
+    const change = vi.fn();
+    const optional = { ...field, required: false, placeholder: 'Use default' };
+    const view = render(<SeamlessField field={optional} value="current" onChange={change} relationChoices={choices} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Change Opportunity' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Opportunity' }));
+    fireEvent.click(screen.getByRole('option', { name: 'Use default' }));
+    expect(change).toHaveBeenCalledWith(null);
+    view.rerender(<SeamlessField field={optional} value={null} onChange={change} relationChoices={choices} />);
+    expect(screen.getByRole('button', { name: 'Opportunity' })).toHaveTextContent('Use default');
+  });
+
   it('shows one linked value and opens the selector only when editing', () => {
     const change = vi.fn();
     render(<SeamlessField field={field} value="current" onChange={change} relationChoices={choices} />);

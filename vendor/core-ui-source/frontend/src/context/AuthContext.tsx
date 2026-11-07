@@ -43,6 +43,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [token, setToken] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [profileVerified, setProfileVerified] = useState(false);
+  const [uiSessionEpoch, setUiSessionEpoch] = useState(0);
   const queryClient = useQueryClient();
   const { pathname } = useLocation();
   const publicPage = isPublicAuthPath(pathname);
@@ -61,6 +62,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     installActivityListeners();
 
     const onLogout = () => {
+      setUiSessionEpoch(epoch => epoch + 1);
       enableSessionRecovery(null);
       setToken(null);
       setUser(null);
@@ -268,6 +270,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // Retire local authority immediately, including while the idle lock is open.
     // Revocation uses the captured token so a late response cannot affect a new login.
     const accessToken = localStorage.getItem('t75_token');
+    setUiSessionEpoch(epoch => epoch + 1);
     clearTokens();
     enableSessionRecovery(null);
     setToken(null);
@@ -304,7 +307,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   );
 
   return <Ctx.Provider value={value}>
-    {children}
+    {/* Session-owned providers and portals must not outlive their principal.
+        Keep this key stable across token renewal and profile edits. */}
+    <React.Fragment key={`${uiSessionEpoch}:${user?.id ?? 'signed-out'}`}>{children}</React.Fragment>
     {!isHostManagedSession() && !publicPage && profileVerified && recovery && user && <SessionRenewalDialog mode={recovery} user={user}
       onSignOut={() => { void logout(); }}
       onResume={(tokens, verifiedUser) => {

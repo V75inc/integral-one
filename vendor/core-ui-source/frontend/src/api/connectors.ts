@@ -622,6 +622,9 @@ export const connectorsApi = {
     const { data } = await api.post<QuickBooksCallbackResponse>(
       '/agentive/connectors/quickbooks/callback',
       body,
+      // Cold `npx github:` build of the QuickBooks MCP server runs inside
+      // this request and can take longer than the shared 120s client budget.
+      { timeout: 180_000 },
     );
     return data;
   },

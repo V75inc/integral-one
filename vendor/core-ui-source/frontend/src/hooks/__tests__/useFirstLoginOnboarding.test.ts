@@ -32,7 +32,7 @@ vi.mock('../../features/settings/hooks/useAgentiveCapability', () => ({
 
 // Mock the optional auth context so tests pick the user shape they need.
 const mockAuth = {
-  user: null as { onboarded_at?: string | null } | null,
+  user: null as { id: string; onboarded_at?: string | null } | null,
   loading: false
 };
 vi.mock('../../context/AuthContext', () => ({
@@ -48,21 +48,21 @@ beforeEach(() => {
 
 describe('useFirstLoginOnboarding', () => {
   it('returns shouldOnboard=false when user.onboarded_at is set', () => {
-    mockAuth.user = { onboarded_at: '2026-05-01T00:00:00Z' };
+    mockAuth.user = { id: 'user-1', onboarded_at: '2026-05-01T00:00:00Z' };
     const { result } = renderHook(() => useFirstLoginOnboarding());
     expect(result.current.shouldOnboard).toBe(false);
     expect(result.current.agentiveEnabled).toBe(true);
   });
 
   it('returns shouldOnboard=true when user.onboarded_at is null', () => {
-    mockAuth.user = { onboarded_at: null };
+    mockAuth.user = { id: 'user-1', onboarded_at: null };
     const { result } = renderHook(() => useFirstLoginOnboarding());
     expect(result.current.shouldOnboard).toBe(true);
     expect(result.current.agentiveEnabled).toBe(true);
   });
 
   it('dismiss() flips shouldOnboard to false', () => {
-    mockAuth.user = { onboarded_at: null };
+    mockAuth.user = { id: 'user-1', onboarded_at: null };
     const { result } = renderHook(() => useFirstLoginOnboarding());
     expect(result.current.shouldOnboard).toBe(true);
     act(() => {
@@ -72,7 +72,7 @@ describe('useFirstLoginOnboarding', () => {
   });
 
   it('dismiss persists across a fresh mount (durable, not per-tab)', () => {
-    mockAuth.user = { onboarded_at: null };
+    mockAuth.user = { id: 'user-1', onboarded_at: null };
     const first = renderHook(() => useFirstLoginOnboarding());
     act(() => {
       first.result.current.dismiss();
@@ -82,6 +82,30 @@ describe('useFirstLoginOnboarding', () => {
     // A brand-new hook instance (as a new tab would create) still skips.
     const second = renderHook(() => useFirstLoginOnboarding());
     expect(second.result.current.shouldOnboard).toBe(false);
-    expect(localStorage.getItem('integral.onboarding.dismissed')).toBe('1');
+    expect(localStorage.getItem('integral.onboarding.dismissed:user-1')).toBe('1');
+  });
+
+  it('does not dismiss guidance for another user on the same device', () => {
+    mockAuth.user = { id: 'user-1', onboarded_at: null };
+    const { result, rerender } = renderHook(() => useFirstLoginOnboarding());
+    act(() => result.current.dismiss());
+    expect(result.current.shouldOnboard).toBe(false);
+    mockAuth.user = { id: 'user-2', onboarded_at: null };
+    rerender();
+    expect(result.current.shouldOnboard).toBe(true);
+    mockAuth.user = { id: 'user-1', onboarded_at: null };
+    rerender();
+    expect(result.current.shouldOnboard).toBe(false);
+  });
+
+  it('honors a dismissal made in another tab for the same user', () => {
+    mockAuth.user = { id: 'user-1', onboarded_at: null };
+    const { result } = renderHook(() => useFirstLoginOnboarding());
+    act(() => {
+      window.dispatchEvent(new StorageEvent('storage', {
+        key: 'integral.onboarding.dismissed:user-1', newValue: '1',
+      }));
+    });
+    expect(result.current.shouldOnboard).toBe(false);
   });
 });

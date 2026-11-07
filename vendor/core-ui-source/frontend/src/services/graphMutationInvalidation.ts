@@ -10,6 +10,7 @@ import type { ActivityEvent } from '../utils/changeEvent';
 
 export const ENTRY_REFETCH_EVENT = 'integral:entry-refetch';
 export const COMMENT_REFETCH_EVENT = 'integral:comment-refetch';
+export const APP_DELETED_EVENT = 'integral:app-deleted';
 
 const ENTRY_WRITE_KINDS = new Set([
   'create_entry',
@@ -370,6 +371,13 @@ export async function invalidateAfterAgentWrite(
 
   if (APP_WRITE_KINDS.has(kind)) {
     const appId = appIdFromStaged(staged);
+    const result = asRecord(executeResult);
+    const removed = result && !result.error && result.ok !== false && result.skipped !== true && result.filed !== false
+      && (result.deleted === true || result.deleted_app_id === appId
+        || result.uninstalled === true || result.status === 'uninstalled');
+    if (kind === 'delete_app' && appId && removed) {
+      window.dispatchEvent(new CustomEvent(APP_DELETED_EVENT, { detail: { appId } }));
+    }
     await Promise.all([
       invalidateFeedCaches(qc),
       invalidateWorkspaceListCaches(qc),

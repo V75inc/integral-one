@@ -40,6 +40,7 @@ import {
   type EntryComposeSeed
 } from '../components/entries/EntryComposer';
 import { useRetrieve } from '../hooks/useRetrieve';
+import { RecordReadBoundaryNotice } from '../components/entries/RecordReadBoundaryNotice';
 import { useSearchResultEntries } from '../hooks/useSearchResultEntries';
 import { useOpenEntryModalRefetch } from '../hooks/useOpenEntryModalRefetch';
 import { EntryDetail } from '../components/entries/EntryDetail';
@@ -201,15 +202,18 @@ export function TrackDetailPage() {
 
   // Retrieval — Track-detail search is SCOPED TO THIS TRACK (Feed
   // search is global; see FeedPage). Mode is read from global Settings
-  // (Settings → Search → Mode); ``semantic`` is the v1.1 default and
+  // (Settings → Search → Mode); hybrid is the default and
   // surfaces matches across this track by similarity; ``hybrid``
   // RRF-fuses vector + traversal; ``graph`` keeps the in-memory
   // substring filter on the loaded entries.
   const {
     mode: retrievalMode,
     results: retrievalResults,
+    submittedQuery: retrievalQuery,
     loading: retrievalLoading,
     error: retrievalError,
+    degraded: retrievalDegraded,
+    appQueryRequired: retrievalAppQueryRequired,
     run: runRetrieval,
     reset: resetRetrieval
   } = useRetrieve({ scope: id ? `track:${id}` : undefined, authorityKey: `${scope?.workspaceId}:${user?.id}` });
@@ -638,7 +642,7 @@ export function TrackDetailPage() {
   const isPagesView = activeView?.type === 'wiki';
 
   const semanticMode =
-    retrievalMode === 'semantic' || retrievalMode === 'hybrid';
+    retrievalMode === 'semantic' || retrievalMode === 'hybrid' || retrievalMode === 'lexical';
   const retrievalIdOrder = useMemo(
     () => retrievalResults.map(r => r.entry_id),
     [retrievalResults]
@@ -805,7 +809,7 @@ export function TrackDetailPage() {
     if (!el) return;
     const obs = new IntersectionObserver(
       ([first]) => {
-        if (first?.isIntersecting && hasNextPage && !isFetchingNextPage && !isFetchNextPageError && !(semanticMode && trackSearch.trim())) {
+        if (first?.isIntersecting && hasNextPage && !isFetchingNextPage && !isFetchNextPageError && !(semanticMode && retrievalQuery)) {
           fetchNextPage();
         }
       },
@@ -813,7 +817,7 @@ export function TrackDetailPage() {
     );
     obs.observe(el);
     return () => obs.disconnect();
-  }, [hasNextPage, isFetchingNextPage, isFetchNextPageError, semanticMode, trackSearch, fetchNextPage]);
+  }, [hasNextPage, isFetchingNextPage, isFetchNextPageError, semanticMode, retrievalQuery, fetchNextPage]);
 
   const metaLoading = trackDetailQuery.isPending;
   const loadedEntryPageCount =
@@ -832,7 +836,7 @@ export function TrackDetailPage() {
 
   const filteredEntries = useMemo(() => {
     let list: Entry[];
-    if (semanticMode && retrievalResults.length > 0) {
+    if (semanticMode && retrievalQuery) {
       const byId = new Map(allEntries.map(e => [e.id, e]));
       list = retrievalIdOrder
         .map(eid => byId.get(eid))
@@ -848,23 +852,6 @@ export function TrackDetailPage() {
       const allowed = new Set(viewTypeKeys.map(k => k.toLowerCase().trim()));
       list = list.filter(e => allowed.has((e.type || '').toLowerCase().trim()));
     }
-    const useInMemorySearch =
-      !semanticMode ||
-      Boolean(retrievalError) ||
-      (semanticMode &&
-        retrievalResults.length === 0 &&
-        trackSearch.trim().length > 0);
-    if (useInMemorySearch) {
-      const q = trackSearch.trim().toLowerCase();
-      if (q) {
-        list = list.filter(e => {
-          const title = (e.title || '').toLowerCase();
-          const body = (e.body || '').toLowerCase();
-          const type = (e.type || '').toLowerCase();
-          return title.includes(q) || body.includes(q) || type.includes(q);
-        });
-      }
-    }
     return entriesMatchingTags(list, isPagesView ? [] : filterTags);
   }, [
     allEntries,
@@ -872,6 +859,7 @@ export function TrackDetailPage() {
     isPagesView,
     filterType,
     trackSearch,
+    retrievalQuery,
     semanticMode,
     retrievalError,
     retrievalIdOrder,
@@ -1694,6 +1682,9 @@ export function TrackDetailPage() {
       : trackCrumbs
   );
 
+  const appQueryRequired = retrievalAppQueryRequired
+    || Boolean(matchedPage?.appQueryRequired)
+    || Boolean(entriesData?.pages.some(page => page.appQueryRequired));
   const emptyStateContent = entryResultsLoading ? (
     <div className="space-y-4">
       {[1, 2, 3].map(i => (
@@ -1870,6 +1861,9 @@ export function TrackDetailPage() {
           runRetrieval={runRetrieval}
           retrievalLoading={retrievalLoading}
           retrievalError={retrievalError}
+          retrievalDegraded={retrievalDegraded ? (retrievalMode === 'lexical'
+            ? 'The search index is unavailable. Showing limited keyword results.'
+            : 'Meaning-based search is unavailable. Showing keyword results.') : null}
           canCreateEntry={canCreateEntryViaToolbar}
           track={track}
           activeView={activeView}
@@ -1898,12 +1892,15 @@ export function TrackDetailPage() {
           onEntryCreate={handleEntryCreate}
           entryTypes={(entryTypesQuery.data ?? []) as EntryTypeNode[]}
           trackEntryTypeFields={trackEntryTypeFields}
-          hasNextPage={hasNextPage && !(semanticMode && Boolean(trackSearch.trim()))}
+          hasNextPage={hasNextPage && !(semanticMode && Boolean(retrievalQuery))}
           isFetchingNextPage={isFetchingNextPage}
           fetchNextPage={() => {
             void fetchNextPage();
           }}
           emptyStateContent={emptyStateContent}
+          recordReadBoundaryNotice={appQueryRequired && !entryResultsLoading ? (
+            <RecordReadBoundaryNotice appId={track?.app?.id} searching={Boolean(retrievalQuery)} />
+          ) : undefined}
           trackEntriesSentinelRef={trackEntriesSentinelRef}
         />
 

@@ -7,9 +7,11 @@ import { Input, Surface, Text } from '../../ui';
 import { documentsApi } from './api';
 import { useDocumentTypes } from './useDocumentTypes';
 import { useToast } from '../../context/ToastContext';
+import { useConfirm } from '../../context/ConfirmContext';
 import { agentiveErrorMessage } from '../../api/helpers';
 
 export function DocumentTypesPanel() {
+  const confirm = useConfirm();
   const qc = useQueryClient();
   const { showToast } = useToast();
   const typesQ = useDocumentTypes();
@@ -83,15 +85,10 @@ export function DocumentTypesPanel() {
                     type="button"
                     className="text-xs text-[var(--danger-fg)] hover:underline disabled:opacity-50"
                     disabled={deleteM.isPending}
-                    onClick={() => {
-                      if (
-                        !window.confirm(
-                          `Delete “${dt.title}”? Templates using this code must be updated first.`,
-                        )
-                      ) {
-                        return;
+                    onClick={async () => {
+                      if (await confirm({ title: 'Delete document type?', message: `Delete “${dt.title}”? Templates using this code must be updated first.`, confirmLabel: 'Delete', variant: 'danger' })) {
+                        deleteM.mutate(dt.id);
                       }
-                      deleteM.mutate(dt.id);
                     }}
                   >
                     Delete

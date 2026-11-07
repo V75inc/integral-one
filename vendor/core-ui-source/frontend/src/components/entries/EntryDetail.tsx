@@ -1,3 +1,5 @@
+import { useEntryHostRefresh } from '../../hooks/useEntryHostRefresh';
+import { errorMessageFromAxios } from '../../api/helpers';
 import { tagFilterHref } from '../../utils/tagFilters';
 import { EntryInlineImageGallery } from './AttachmentGallery';
 import { mergeComments } from '../../utils/commentTree';
@@ -956,6 +958,14 @@ export function EntryDetail({
     [anchoredTrackId]
   );
 
+  // A button bar in the related views changes the record from outside this form
+  // (a status moves, a job finishes); reload it so the bar shows the new state.
+  const applyHostRefresh = useCallback((refreshed: Entry) => {
+    setEntry(refreshed);
+    onUpdate?.(refreshed);
+  }, [onUpdate]);
+  const refreshHostEntry = useEntryHostRefresh(entry.id, activeWorkspace?.id, applyHostRefresh);
+
   const primaryRelatedViewsNode =
     user && !parentEntry ? (
       <RelatedViewsSection
@@ -970,6 +980,7 @@ export function EntryDetail({
         onEntryOpen={handleEmbeddedEntryOpen}
         onEntryPersist={canEdit ? handleEmbeddedEntryPersist : undefined}
         onEntryCreate={canEdit ? handleEmbeddedEntryCreate : undefined}
+        onHostChanged={refreshHostEntry}
         isEditor={canEdit}
         appId={relatedViewAppId}
         heading={null}
@@ -1088,12 +1099,14 @@ export function EntryDetail({
     showToast(pendingMsg, 'info');
     try {
       const uploaded: AttachmentRecord[] = [];
+      const failures: string[] = [];
       if (files.length === 1) {
         uploaded.push(await attachmentsApi.smartUploadForEntry(entry.id, files[0]));
       } else {
         const result = await attachmentsApi.uploadManyForEntry(entry.id, files);
         result.results.forEach(r => {
           if ('attachment' in r) uploaded.push(r.attachment);
+          else failures.push(`${r.filename ? `${r.filename}: ` : ''}${r.error}`);
         });
       }
       if (uploaded.length) {
@@ -1110,11 +1123,12 @@ export function EntryDetail({
             : `${uploaded.length} attachments uploaded`,
           'success'
         );
-      } else {
+      } else if (!failures.length) {
         showToast('Upload failed', 'error');
       }
+      if (failures.length) showToast(failures.join('; '), 'error');
     } catch (e) {
-      const msg = e instanceof Error ? e.message : 'Upload failed';
+      const msg = errorMessageFromAxios(e, 'Upload failed');
       showToast(msg, 'error');
     }
   };
@@ -1977,6 +1991,7 @@ export function EntryDetail({
                   onEntryOpen={handleEmbeddedEntryOpen}
                   onEntryPersist={canEdit ? handleEmbeddedEntryPersist : undefined}
                   onEntryCreate={canEdit ? handleEmbeddedEntryCreate : undefined}
+                  onHostChanged={refreshHostEntry}
                   isEditor={canEdit}
                   appId={relatedViewAppId}
                 />

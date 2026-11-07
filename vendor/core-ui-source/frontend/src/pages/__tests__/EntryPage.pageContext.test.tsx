@@ -1,6 +1,6 @@
 import React, { useEffect } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, render, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import '@testing-library/jest-dom/vitest';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 
@@ -21,6 +21,7 @@ vi.mock('../../components/entries/EntryDetail', () => ({
 }));
 
 import { EntryPage } from '../EntryPage';
+import { IntegralMarkdownLink } from '../../components/ui/IntegralMarkdownLink';
 
 let seen: ReturnType<typeof useChatPageFocus> | null = null;
 function Probe() {
@@ -72,5 +73,37 @@ describe('EntryPage page context', () => {
     renderPage();
     await waitFor(() => expect(getEntry).toHaveBeenCalled());
     expect(seen?.focusedEntryId).toBeNull();
+  });
+
+  it.each([true, false])('opens a repaired citation through the entry API and honors its access result (allowed=%s)', async allowed => {
+    if (allowed) {
+      getEntry.mockResolvedValue({ id: 'n.Entry.abc', track_id: 'n.Track.actual', title: 'Sample record' });
+    } else {
+      getEntry.mockRejectedValue(new Error('403'));
+    }
+    render(
+      <ChatPageFocusProvider>
+        <Probe />
+        <MemoryRouter initialEntries={['/']}>
+          <Routes>
+            <Route path="/" element={<IntegralMarkdownLink href="/tracks/n.Entry.abc">Saved record</IntegralMarkdownLink>} />
+            <Route path="entries/:entryId" element={<EntryPage />} />
+            <Route path="tracks/:trackId" element={<div>Wrong track destination</div>} />
+          </Routes>
+        </MemoryRouter>
+      </ChatPageFocusProvider>,
+    );
+    fireEvent.click(screen.getByRole('link', { name: 'Saved record' }));
+    await waitFor(() => expect(getEntry).toHaveBeenCalledWith('n.Entry.abc'));
+    expect(screen.queryByText('Wrong track destination')).not.toBeInTheDocument();
+    if (allowed) {
+      await screen.findByTestId('entry-detail');
+      expect(seen?.focusedEntryId).toBe('n.Entry.abc');
+      expect(seen?.focusedTrackId).toBe('n.Track.actual');
+    } else {
+      await screen.findByText('Entry not found or you no longer have access.');
+      expect(screen.queryByTestId('entry-detail')).not.toBeInTheDocument();
+      expect(seen?.focusedEntryId).toBeNull();
+    }
   });
 });

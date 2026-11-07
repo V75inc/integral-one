@@ -231,7 +231,12 @@ function createRuntimeManager({ app, resources, channel, bundledCore, request = 
   }
   async function installOnce() {
     const selected = staged(), runtime = getRuntime();
-    if (!selected || !runtime?.owned || runtime.home !== home) throw new Error("This app must own the workspace before updating.");
+    // Core reports a canonical path (for example, /private/tmp on macOS).
+    // Resolve parent aliases without accepting a symlink as the home itself.
+    const canonicalHome = value => path.join(fs.realpathSync(path.dirname(value)), path.basename(value));
+    if (!selected || !runtime?.owned || !runtime.home || canonicalHome(runtime.home) !== canonicalHome(home)) {
+      throw new Error("This app must own the workspace before updating.");
+    }
     const before = identity(home), backupDirectory = await prepareForInstall();
     if (!runtime.stopped) throw new Error("Workspace stop did not complete.");
     const snapshot = path.join(path.dirname(home), ".one-runtime-snapshot-" + crypto.randomUUID());

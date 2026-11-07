@@ -44,6 +44,31 @@ describe('IntegralMarkdownLink', () => {
     expect(html).toContain(`href="${expected}"`);
     expect(html).not.toContain('target="_blank"');
   });
+
+  it.each([
+    ['/tracks/n.Entry.saved', '/entries/n.Entry.saved'],
+    ['/apps/n.Entry.saved?tab=notes#detail', '/entries/n.Entry.saved?tab=notes#detail'],
+    ['/entries/n.Track.saved', '/tracks/n.Track.saved'],
+    ['/apps/n.Track.saved', '/tracks/n.Track.saved'],
+    ['/tracks/n.WorkspaceApp.saved', '/apps/n.WorkspaceApp.saved'],
+    ['/entries/n.WorkspaceApp.saved', '/apps/n.WorkspaceApp.saved'],
+  ])('uses the typed resource destination when the model confuses the collection in %s', (href, expected) => {
+    expect(renderLink(href, 'Saved resource')).toContain(`href="${expected}"`);
+  });
+
+  it('repairs wrong-collection citations on recognized origins without localizing other installations', () => {
+    vi.stubGlobal('location', new URL('https://workspace.example.test'));
+    for (const origin of ['https://workspace.example.test', 'https://integral.example', 'https://integral.ai']) {
+      const html = renderLink(`${origin}/tracks/n.Entry.saved#detail`);
+      expect(html).toContain('href="/entries/n.Entry.saved#detail"');
+      expect(html).not.toContain('target="_blank"');
+    }
+    const external = renderLink('https://another-workspace.example/tracks/n.Entry.saved');
+    expect(external).toContain('href="https://another-workspace.example/tracks/n.Entry.saved"');
+    expect(external).toContain('target="_blank"');
+    expect(renderLink('/tracks/arbitrary')).toContain('href="/tracks/arbitrary"');
+    expect(renderLink('/help/n.Entry.saved')).toContain('href="/help/n.Entry.saved"');
+  });
   it('does not activate the surrounding entry card when a link is clicked', () => {
     const openEntry = vi.fn();
     const clickLink = vi.fn();
@@ -82,6 +107,9 @@ describe('IntegralMarkdownLink', () => {
     expect(isInternalAppHref('//apps/n.WorkspaceApp.smoke')).toBe(true);
     expect(isInternalAppHref('//entries.example.com/n.Entry.smoke')).toBe(false);
     expect(isInternalAppHref('//entries/arbitrary-path')).toBe(false);
+    // A mismatched protocol-relative path can name another host. Preserve
+    // that ambiguity instead of expanding the existing double-slash repair.
+    expect(renderLink('//tracks/n.Entry.saved')).toContain('target="_blank"');
     expect(renderLink('//example.com/docs')).toContain('target="_blank"');
   });
 
@@ -104,7 +132,7 @@ describe('IntegralMarkdownLink', () => {
   });
 
   it('repairs typed local-placeholder citations while leaving external links external', () => {
-    for (const origin of ['https://integral.local', 'http://integral.local', 'https://integral.app']) {
+    for (const origin of ['https://integral.local', 'http://integral.local', 'https://integral.app', 'https://integral.example', 'http://integral.example']) {
       const html = renderLink(`${origin}/tracks/n.Track.saved?entry=n.Entry.saved#section`);
       expect(html).toContain('href="/tracks/n.Track.saved?entry=n.Entry.saved#section"');
       expect(html).not.toContain('target="_blank"');
@@ -119,10 +147,32 @@ describe('IntegralMarkdownLink', () => {
       'https://user:secret@integral.local/tracks/n.Track.saved',
       'https://foreign.example/tracks/n.Track.saved',
       'https://integral.ai//foreign.example/path',
+      'https://integral.example/help',
+      'https://integral.example/tracks/arbitrary',
+      'https://integral.example.evil.test/tracks/n.Track.saved',
+      'https://integral.example:444/tracks/n.Track.saved',
+      'https://user:secret@integral.example/tracks/n.Track.saved',
+      'https://integral.example//foreign.example/tracks/n.Track.saved',
     ]) {
       expect(renderLink(href)).toContain('target="_blank"');
     }
   });
+
+  it.each(['https://workspace.example.test', 'http://localhost:9141'])(
+    'repairs restored placeholder citations on deployment %s without changing their resource',
+    origin => {
+      vi.stubGlobal('location', new URL(origin));
+      for (const path of [
+        '/tracks/n.Track.saved?entry=n.Entry.saved#notes',
+        '/apps/n.WorkspaceApp.saved?section=dashboards&dashboard_id=n.Dashboard.saved',
+        '/entries/n.Entry.saved',
+      ]) {
+        const html = renderLink(`https://integral.example${path}`);
+        expect(html).toContain(`href="${path.replace(/&/g, '&amp;')}"`);
+        expect(html).not.toContain('target="_blank"');
+      }
+    },
+  );
 
   it('ignores renderer-supplied new-tab targets for local links', () => {
     const html = renderToStaticMarkup(<MemoryRouter>

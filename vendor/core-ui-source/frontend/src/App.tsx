@@ -38,6 +38,11 @@ const ResetPasswordPage = lazy(() =>
     default: m.ResetPasswordPage,
   })),
 );
+const ActivateAccountPage = lazy(() =>
+  import('./pages/ResetPasswordPage').then((m) => ({
+    default: m.ActivateAccountPage,
+  })),
+);
 const VerifyEmailPage = lazy(() =>
   import('./pages/VerifyEmailPage').then((m) => ({
     default: m.VerifyEmailPage,
@@ -290,6 +295,7 @@ export default function App() {
       <Route path="/credentials-delivery-verify" element={<CredentialsDeliveryPage />} />
       <Route path="/credentials-delivery-verify.html" element={<CredentialsDeliveryPage />} />
       <Route path="/reset-password" element={singleUser ? <HostAccessPage /> : <ResetPasswordPage />} />
+      <Route path="/activate-account" element={singleUser ? <HostAccessPage /> : <ActivateAccountPage />} />
       <Route path="/verify-email" element={singleUser ? <HostAccessPage /> : <VerifyEmailPage />} />
       <Route
         path="/invitations/received/:invitationId"

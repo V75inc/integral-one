@@ -1,7 +1,7 @@
 import { Button } from '../ui';
 import { Skeleton } from '../ui';
 import { Surface, IconButton } from '../../ui';
-import { useEffect, useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
 import {
   Pause,
@@ -18,6 +18,7 @@ import { LINE_ICON_STROKE } from '../ui';
 import { Input, Textarea, Select, Text } from '../../ui';
 import { Field } from '../../patterns';
 import { FormDialog } from '../../templates';
+import { useConfirm } from '../../context/ConfirmContext';
 import { formatRelativeTime } from '../../utils';
 import {
   buildCronFromPreset,
@@ -30,6 +31,7 @@ import {
 } from '../../utils/scheduleCron';
 import {
   cancelRoutine,
+  deleteRoutine,
   getRoutineActivity,
   updateRoutine,
   type RoutineActivityEvent,
@@ -45,6 +47,7 @@ interface RoutinesListBodyProps {
   error: string | null;
   onRetry(): void;
   onChanged?(): void;
+  selectedRoutineId?: string;
 }
 
 export function RoutinesListBody({
@@ -53,7 +56,34 @@ export function RoutinesListBody({
   error,
   onRetry,
   onChanged,
+  selectedRoutineId,
 }: RoutinesListBodyProps) {
+  const confirm = useConfirm();
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [clearing, setClearing] = useState(false);
+  const [clearError, setClearError] = useState<string | null>(null);
+  const eligible = rows.filter(r => r.status === 'cancelled' || r.status === 'completed');
+  const selectedRows = eligible.filter(r => selected.has(r.id));
+  const clearSelected = async () => {
+    if (!selectedRows.length || clearing) return;
+    if (!await confirm({
+      title: 'Remove background tasks?',
+      message: `Permanently remove ${selectedRows.length} selected completed or cancelled ${selectedRows.length === 1 ? 'task' : 'tasks'}? Their conversations and receipts will remain.`,
+      confirmLabel: 'Remove tasks',
+      variant: 'danger',
+    })) return;
+    setClearing(true);
+    setClearError(null);
+    const failures: string[] = [];
+    for (const row of selectedRows) {
+      try { await deleteRoutine(row.id); }
+      catch { failures.push(row.id); }
+    }
+    setSelected(new Set(failures));
+    if (failures.length) setClearError(`${failures.length} ${failures.length === 1 ? 'task could' : 'tasks could'} not be removed. Try again.`);
+    setClearing(false);
+    onChanged?.();
+  };
   if (error) {
     return (
       <div
@@ -84,11 +114,31 @@ export function RoutinesListBody({
 
   return (
     <div className="space-y-2">
+      {eligible.length > 0 && (
+        <div className="flex flex-wrap items-center gap-3">
+          <Button type="button" variant="outline" size="sm" disabled={clearing} onClick={() => setSelected(new Set(eligible.map(r => r.id)))}>
+            Select all completed and cancelled
+          </Button>
+          <Button type="button" variant="outline" size="sm" disabled={clearing || !selectedRows.length} onClick={() => void clearSelected()}>
+            Remove selected ({selectedRows.length})
+          </Button>
+          {clearError && <div role="alert"><Text as="p" tone="danger" variant="body-sm">{clearError}</Text></div>}
+        </div>
+      )}
       {rows.map(routine => (
         <RoutineRow
           key={routine.id}
           routine={routine}
+          highlighted={routine.id === selectedRoutineId}
           onChanged={onChanged}
+          selected={selected.has(routine.id)}
+          selectable={routine.status === 'cancelled' || routine.status === 'completed'}
+          onSelect={() => setSelected(previous => {
+            const next = new Set(previous);
+            if (next.has(routine.id)) next.delete(routine.id); else next.add(routine.id);
+            return next;
+          })}
+          selectionDisabled={clearing}
         />
       ))}
     </div>
@@ -113,14 +163,32 @@ function statusDotClass(status: string): string {
 function RoutineRow({
   routine,
   onChanged,
+  selected,
+  selectable,
+  onSelect,
+  selectionDisabled,
+  highlighted,
 }: {
   routine: RoutineResponse;
   onChanged?: () => void;
+  selected: boolean;
+  selectable: boolean;
+  onSelect(): void;
+  selectionDisabled: boolean;
+  highlighted: boolean;
 }) {
+  const confirm = useConfirm();
   const [busy, setBusy] = useState(false);
   const [rowError, setRowError] = useState<string | null>(null);
   const [editOpen, setEditOpen] = useState(false);
-  const [activityOpen, setActivityOpen] = useState(false);
+  const [activityOpen, setActivityOpen] = useState(highlighted);
+  const rowRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!highlighted) return;
+    setActivityOpen(true);
+    rowRef.current?.scrollIntoView?.({ block: 'center' });
+    rowRef.current?.focus({ preventScroll: true });
+  }, [highlighted]);
 
   const isTerminal =
     routine.status === 'cancelled' || routine.status === 'completed';
@@ -157,9 +225,7 @@ function RoutineRow({
 
   const handleCancel = async () => {
     if (busy || !canCancel) return;
-    const ok = window.confirm(
-      'Cancel this background task? It will stop running on its schedule.',
-    );
+    const ok = await confirm({ title: 'Stop background task?', message: 'This task will stop running on its schedule.', confirmLabel: 'Stop task', variant: 'danger' });
     if (!ok) return;
     setBusy(true);
     setRowError(null);
@@ -177,14 +243,19 @@ function RoutineRow({
 
   return (
     <>
-      <Surface as="div" tone="panel" border="default" radius="card">
+      <Surface as="div" tone="panel" border="default" radius="card"
+        ref={rowRef} id={`routine-${routine.id}`} tabIndex={highlighted ? -1 : undefined}
+        aria-label={highlighted ? `Selected routine: ${routine.instruction}` : undefined}
+        className={highlighted ? 'ring-2 ring-[var(--brand-accent)] ring-offset-2 ring-offset-[var(--surface-1)]' : undefined}>
         <div className="flex items-start gap-4 p-4">
+          {selectable && <input type="checkbox" aria-label={`Select ${routine.instruction}`} checked={selected} disabled={selectionDisabled} onChange={onSelect} />}
           <div
             className={`mt-1.5 h-2.5 w-2.5 shrink-0 rounded-full ${statusDotClass(routine.status)}`}
             aria-hidden
           />
           <div className="min-w-0 flex-1">
-            <Text as="p" variant="body" tone="default" weight="medium" className="line-clamp-2">
+            {highlighted && <Text as="p" variant="meta" tone="muted" className="mb-1">Linked routine</Text>}
+            <Text as="p" variant="body" tone="default" weight="medium" className={activityOpen ? "whitespace-pre-wrap break-words" : "line-clamp-2"}>
               {routine.instruction}
             </Text>
             <Text as="p" variant="body-sm" tone="muted" className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1">
@@ -244,10 +315,12 @@ function RoutineRow({
               <Button
                 type="button"
                 onClick={() => setActivityOpen(v => !v)}
+                aria-expanded={activityOpen}
+                aria-controls={`routine-activity-${routine.id}`}
                 size="xs" variant="ghost"
               >
                 <History size={12} strokeWidth={LINE_ICON_STROKE} />
-                Activity
+                Details & activity
                 {activityOpen ? (
                   <ChevronUp size={12} strokeWidth={LINE_ICON_STROKE} />
                 ) : (
@@ -345,7 +418,7 @@ function RoutineActivityPanel({ routineId }: { routineId: string }) {
   }, [routineId]);
 
   return (
-    <Surface as="div" tone="panel-2" backgroundOpacity={40} border="none" radius="none" className="border-t border-[var(--panel-border)] px-4 py-3">
+    <Surface id={`routine-activity-${routineId}`} as="div" tone="panel-2" backgroundOpacity={40} border="none" radius="none" className="border-t border-[var(--panel-border)] px-4 py-3">
       {loading && (
         <Text as="p" variant="body-sm" tone="subtle" className="">Loading activity…</Text>
       )}
@@ -356,13 +429,13 @@ function RoutineActivityPanel({ routineId }: { routineId: string }) {
       )}
       {!loading && !error && data && (
         <div className="space-y-3">
-          {data.write_scope_links.length > 0 && (
+          {(data.context_links ?? data.write_scope_links).length > 0 && (
             <div>
               <Text as="p" variant="meta" tone="subtle" weight="medium" className="mb-1.5 uppercase tracking-wide">
-                Allowed targets
+                Related to
               </Text>
               <div className="flex flex-wrap gap-1.5">
-                {data.write_scope_links.map(link => (
+                {(data.context_links ?? data.write_scope_links).map(link => (
                   <ActivityLinkChip key={`${link.kind}:${link.id}`} link={link} />
                 ))}
               </div>

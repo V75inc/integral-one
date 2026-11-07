@@ -53,3 +53,8 @@ export function useTheme() {
   if (!ctx) throw new Error('useTheme must be used within ThemeProvider');
   return ctx;
 }
+
+/** For reusable components that can also render outside the app shell. */
+export function useOptionalTheme() {
+  return useContext(ThemeContext);
+}

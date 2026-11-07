@@ -9,6 +9,9 @@
  * comes back online or the user next interacts.
  */
 import React from 'react';
+import { createPortal } from 'react-dom';
+import { fireEvent } from '@testing-library/react';
+import { ConfirmProvider, useConfirm } from '../ConfirmContext';
 import { MemoryRouter, useNavigate } from 'react-router-dom';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { act, render, renderHook, waitFor, cleanup, screen } from '@testing-library/react';
@@ -237,4 +240,72 @@ it('retires the local account immediately while remote signout is still pending'
   expect(requestSessionRecovery('renew')).toBe(false);
   await waitFor(() => expect(authApi.logout).toHaveBeenCalledWith('captured-token'));
   await act(async () => { finish(undefined as never); await pending; });
+});
+
+
+describe('session-owned dialogs', () => {
+  it.each(['expired', 'sign-out'])('clears all portals and cancels confirmation on %s', async mode => {
+    vi.mocked(authApi.me).mockResolvedValue(cachedUser as never);
+    const performDelete = vi.fn();
+    function Dialogs() {
+      const { user, logout } = useAuth();
+      const confirm = useConfirm();
+      const [editing, setEditing] = React.useState(false);
+      if (!user) return <p>Signed out</p>;
+      return <>
+        <button onClick={() => setEditing(true)}>Edit record</button>
+        <button onClick={() => { void (async () => {
+          if (await confirm({ title: 'Delete this App?', message: 'Private App details' })) performDelete();
+        })(); }}>Delete App</button>
+        <button onClick={() => { void logout(); }}>Sign out</button>
+        {editing && createPortal(<div role="dialog" aria-label="Edit record">Private record details</div>, document.body)}
+      </>;
+    }
+    render(<ConfirmProvider><Dialogs /></ConfirmProvider>, { wrapper });
+    await waitFor(() => expect(screen.getByText('Delete App')).toBeInTheDocument());
+    fireEvent.click(screen.getByText('Edit record'));
+    fireEvent.click(screen.getByText('Delete App'));
+    expect(screen.getAllByRole('dialog')).toHaveLength(2);
+    vi.mocked(getAccessToken).mockReturnValueOnce('refreshed-access');
+    await act(async () => { window.dispatchEvent(new Event('integral:tokens-updated')); });
+    expect(screen.getAllByRole('dialog')).toHaveLength(2);
+    await act(async () => {
+      if (mode === 'expired') window.dispatchEvent(new Event('integral:logout'));
+      else fireEvent.click(screen.getByText('Sign out'));
+    });
+    expect(screen.getByText('Signed out')).toBeInTheDocument();
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(document.body).not.toHaveTextContent('Private App details');
+    expect(document.body).not.toHaveTextContent('Private record details');
+    expect(performDelete).not.toHaveBeenCalled();
+    expect(document.body.style.overflow).not.toBe('hidden');
+  });
+});
+
+
+it('cancels old confirmation even if the same account signs back in during the logout batch', async () => {
+  vi.mocked(authApi.me).mockResolvedValue(cachedUser as never);
+  vi.mocked(authApi.login).mockResolvedValueOnce({ access_token: 'new-session' } as never);
+  let signIn!: () => Promise<void>;
+  const performDelete = vi.fn();
+  function Dialogs() {
+    const { user, login } = useAuth();
+    signIn = () => login(cachedUser.email, 'synthetic-password');
+    const confirm = useConfirm();
+    if (!user) return <p>Signed out</p>;
+    return <button onClick={() => { void (async () => {
+      if (await confirm({ title: 'Old confirmation', message: 'Old session' })) performDelete();
+    })(); }}>Request deletion</button>;
+  }
+  render(<ConfirmProvider><Dialogs /></ConfirmProvider>, { wrapper });
+  await waitFor(() => expect(screen.getByText('Request deletion')).toBeInTheDocument());
+  fireEvent.click(screen.getByText('Request deletion'));
+  expect(screen.getByRole('dialog')).toBeInTheDocument();
+  await act(async () => {
+    window.dispatchEvent(new Event('integral:logout'));
+    await signIn();
+  });
+  expect(screen.getByText('Request deletion')).toBeInTheDocument();
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  expect(performDelete).not.toHaveBeenCalled();
 });

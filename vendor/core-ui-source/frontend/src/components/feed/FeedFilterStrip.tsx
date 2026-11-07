@@ -4,6 +4,7 @@ import { AppSelect } from '../ui/AppSelect';
 import { Button } from '../ui/Button';
 import { LINE_ICON_STROKE } from '../ui/IconWell';
 import type { App, Track, Tag } from '../../types';
+import { useLiveKeywordSearch } from '../../hooks/useLiveKeywordSearch';
 
 /**
  * FeedFilterStrip — horizontal filter bar that replaces the right-rail
@@ -55,6 +56,7 @@ interface FeedFilterStripProps {
    *  button and routes Enter through ``onRetrievalSearch``. When false
    *  the strip degrades to a pure in-memory filter. */
   retrievalActive?: boolean;
+  liveKeywordSearch?: boolean;
   /** Submit handler invoked when the user presses Enter in the search
    *  input OR clicks the primary Search button. Receives the raw query —
    *  the consumer trims and calls /api/retrieve. */
@@ -66,6 +68,7 @@ interface FeedFilterStripProps {
    *  fails. The strip renders it inline so the user sees the failure at
    *  the search site. */
   retrievalError?: string | null;
+  retrievalDegraded?: string | null;
 }
 
 export function FeedFilterStrip({
@@ -90,10 +93,13 @@ export function FeedFilterStrip({
   setFilterAuthor,
   onClearAll,
   retrievalActive = false,
+  liveKeywordSearch = false,
   onRetrievalSearch,
   retrievalLoading = false,
   retrievalError = null,
+  retrievalDegraded = null,
 }: FeedFilterStripProps) {
+  const submitSearch = useLiveKeywordSearch(feedSearch, retrievalActive && liveKeywordSearch, onRetrievalSearch);
   const [popoverOpen, setPopoverOpen] = useState(false);
   const popoverRef = useRef<HTMLDivElement | null>(null);
 
@@ -183,29 +189,9 @@ export function FeedFilterStrip({
   const handleSearchKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter' && retrievalActive && onRetrievalSearch) {
       e.preventDefault();
-      onRetrievalSearch(feedSearch);
+      submitSearch(feedSearch);
     }
   };
-
-  // B-FEED-01: debounced live retrieval search. Previously the input only
-  // fired the retrieval query on Enter or button click — typing alone did
-  // nothing, which most users read as "search broken". 350ms debounce
-  // balances responsiveness with not hammering the retrieval endpoint.
-  const lastLiveQueryRef = useRef<string>('');
-  useEffect(() => {
-    if (!retrievalActive || !onRetrievalSearch) return;
-    const trimmed = feedSearch.trim();
-    if (trimmed === lastLiveQueryRef.current) return;
-    if (trimmed === '') {
-      lastLiveQueryRef.current = '';
-      return;
-    }
-    const handle = window.setTimeout(() => {
-      lastLiveQueryRef.current = trimmed;
-      onRetrievalSearch(feedSearch);
-    }, 350);
-    return () => window.clearTimeout(handle);
-  }, [feedSearch, retrievalActive, onRetrievalSearch]);
 
   return (
     /* Single inline row at every width: [search...] [Search] [Filters ▾] [Clear].
@@ -257,7 +243,7 @@ export function FeedFilterStrip({
             variant="primary"
             size="md"
             loading={retrievalLoading}
-            onClick={() => onRetrievalSearch(feedSearch)}
+            onClick={() => submitSearch(feedSearch)}
             disabled={!feedSearch.trim()}
             aria-label={retrievalLoading ? 'Searching' : 'Search'}
             className="shrink-0 self-stretch !px-3 !py-0"
@@ -406,6 +392,11 @@ export function FeedFilterStrip({
 
       {/* Retrieval error envelope — rendered beneath the strip so the
           failure surfaces at the search site instead of as a toast. */}
+      {retrievalDegraded && !retrievalError ? (
+        <p role="status" className="text-xs text-[var(--text-muted)]">
+          {retrievalDegraded}
+        </p>
+      ) : null}
       {retrievalError ? (
         <div
           role="alert"

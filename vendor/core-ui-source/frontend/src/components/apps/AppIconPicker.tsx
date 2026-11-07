@@ -1,6 +1,7 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import { APP_ICONS, AppIcon, Text } from '../../ui';
 import { Button } from '../ui';
+import { MAX_IMAGE_BYTES } from '../../utils/imageUploadLimits';
 
 export function AppIconPicker({ name, value, onChange, onProcessing }: {
   name: string;
@@ -16,7 +17,7 @@ export function AppIconPicker({ name, value, onChange, onProcessing }: {
   async function upload(file?: File) {
     if (!file) return;
     setError('');
-    if (!['image/png', 'image/jpeg', 'image/webp'].includes(file.type) || file.size > 5 * 1024 * 1024) {
+    if (!['image/png', 'image/jpeg', 'image/webp'].includes(file.type) || file.size > MAX_IMAGE_BYTES) {
       setError('Choose a PNG, JPEG or WebP image smaller than 5 MB.');
       return;
     }

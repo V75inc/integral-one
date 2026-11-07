@@ -8,7 +8,10 @@ export function isInternalAppHref(href: string | undefined): boolean {
 }
 
 function typedResourcePath(path: string): string {
-  const match = /^\/(n\.(Track|Entry|WorkspaceApp)\.[A-Za-z0-9_-]+)([?#].*)?$/.exec(path);
+  // A model can use the right canonical ID under the wrong Core collection.
+  // Resolve only the ID's route kind; the destination API still checks access.
+  // Never guess a parent Track or reinterpret arbitrary paths/opaque IDs.
+  const match = /^\/(?:(?:tracks|entries|apps)\/)?(n\.(Track|Entry|WorkspaceApp)\.[A-Za-z0-9_-]+)([?#].*)?$/.exec(path);
   if (!match) return path;
   const routes: Record<string, string> = { Track: 'tracks', Entry: 'entries', WorkspaceApp: 'apps' };
   return `/${routes[match[2]]}/${match[1]}${match[3] ?? ''}`;
@@ -19,10 +22,11 @@ function internalAppHref(href: string | undefined): string | undefined {
   if (!isSafeHref(href)) return undefined;
   const trimmed = href!.trim();
   const typedRecordPath = /^\/(?:entries\/n\.Entry\.|tracks\/n\.Track\.|apps\/n\.WorkspaceApp\.)[^/\s?#]+$/;
+  const typedCoreCollectionPath = /^\/(?:entries|tracks|apps)\/n\.(?:Entry|Track|WorkspaceApp)\.[A-Za-z0-9_-]+$/;
   // Repair model-added double slashes only for typed record paths. Other
   // protocol-relative URLs still refer to external hosts.
   if (trimmed.startsWith('//') && typedRecordPath.test(trimmed.slice(1).split(/[?#]/, 1)[0])) {
-    return trimmed.slice(1);
+    return typedResourcePath(trimmed.slice(1));
   }
   if (trimmed.startsWith('/') && !trimmed.startsWith('//')) return typedResourcePath(trimmed);
 
@@ -37,11 +41,11 @@ function internalAppHref(href: string | undefined): string | undefined {
     // Historical answers used these placeholder hosts. Only known Core record
     // routes can be repaired; unrelated websites and other installations stay
     // external. Never infer authority from a resource ID in a link.
-    const placeholderOrigin = ['https://integral.app', 'https://integral.local', 'http://integral.local'].includes(url.origin);
-    if (placeholderOrigin && typedRecordPath.test(url.pathname)) return localPath;
+    const placeholderOrigin = ['https://integral.app', 'https://integral.local', 'http://integral.local', 'https://integral.example', 'http://integral.example'].includes(url.origin);
+    if (placeholderOrigin && typedCoreCollectionPath.test(url.pathname)) return typedResourcePath(localPath);
     // Preserve compatibility with the public host normalization used by older
     // markdown clients, without accepting credentials or nonstandard ports.
-    if (url.origin === 'https://integral.ai') return localPath;
+    if (url.origin === 'https://integral.ai') return typedResourcePath(localPath);
   } catch {
     // Leave malformed/external URLs to the safe external-link renderer.
   }

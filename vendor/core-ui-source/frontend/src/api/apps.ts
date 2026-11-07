@@ -1,6 +1,7 @@
 import apiClient from './client';
 import { unwrapResource } from './helpers';
 import type { OperationalModelNode, App, Track } from '../types';
+import type { WorkItemStatus } from './workItems';
 
 export interface BatchInstallEntry {
   library_cp_id: string;
@@ -113,7 +114,9 @@ export const appsApi = {
       .then(r => unwrapResource<App>(r.data, 'app')),
   updateFromLibrary: (appId: string) =>
     apiClient
-      .post<LifecycleWorkResponse>(`/apps/${appId}/update-from-library`, {})
+      .post<{ status: WorkItemStatus; work_item_id: string }>(
+        `/apps/${appId}/update-from-library`, {}
+      )
       .then(r => r.data),
   delete: (id: string) => apiClient.delete(`/apps/${id}`),
   listTracks: async (appId: string): Promise<Track[]> => {

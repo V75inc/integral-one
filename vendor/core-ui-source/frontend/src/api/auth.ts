@@ -85,6 +85,14 @@ export const authApi = {
       .post('/auth/reset-password', { token, password })
       .then(r => r.data),
 
+  activateAccount: (
+    token: string,
+    password: string,
+  ): Promise<{ ok: boolean; message: string }> =>
+    apiClient
+      .post('/auth/activate-account', { token, password })
+      .then(r => r.data),
+
   /** Consume a 6-digit verification OTP. Resolves with `{ ok: true }` on
    *  success; throws an axios error on 4xx with `error_code`. */
   verifyEmail: (code: string): Promise<{ ok: boolean; message: string }> =>
@@ -92,7 +100,7 @@ export const authApi = {
 
   /** Generate and resend a fresh verification OTP to the authenticated
    *  user's registered email address. */
-  resendVerification: (): Promise<{ ok: boolean; message: string }> =>
+  resendVerification: (): Promise<{ ok: boolean; status?: 'sent' | 'already_verified'; message: string }> =>
     apiClient.post('/auth/resend-verification').then(r => r.data),
 
   changePassword: (

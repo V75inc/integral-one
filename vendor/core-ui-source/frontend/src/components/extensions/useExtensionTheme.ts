@@ -5,7 +5,11 @@ function snapshot(): Record<string, string> {
   const root = document.documentElement;
   const style = getComputedStyle(root);
   const values: Record<string, string> = {
-    colorScheme: root.classList.contains('dark') ? 'dark' : 'light',
+    // Core marks dark mode with ``theme-dark`` (ThemeContext); ``dark`` is kept for older hosts.
+    colorScheme:
+      root.classList.contains('theme-dark') || root.classList.contains('dark')
+        ? 'dark'
+        : 'light',
     fontFamily: style.fontFamily || 'system-ui, sans-serif',
   };
   for (const key of ['--bg', '--panel', '--panel-2', '--text', '--text-muted', '--text-subtle', '--brand-accent', '--panel-border', '--radius-card', '--radius-input']) {

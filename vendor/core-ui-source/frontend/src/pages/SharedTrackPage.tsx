@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import type { ReactNode } from 'react';
 import { useParams, useSearchParams, useNavigate } from 'react-router-dom';
 import {
   Plus, CheckCircle2,
@@ -452,7 +453,7 @@ export function SharedTrackPage({ memberFormMode = false }: { memberFormMode?: b
         ? { token, entryId: assignedEntryId }
         : undefined;
 
-    return step.fields.map((fieldItem: any) => {
+    const renderFieldItem = (fieldItem: any): ReactNode => {
       if (fieldItem.type === 'contract_review') {
         if (!assignedEntryId) {
           return (
@@ -597,6 +598,27 @@ export function SharedTrackPage({ memberFormMode = false }: { memberFormMode?: b
           </div>
         </div>
       );
+    };
+
+    let previousSection = '';
+    return step.fields.flatMap((fieldItem: any, index: number) => {
+      const section = fieldItem.type === 'custom'
+        ? String(fieldItem.spec?.section || '').trim()
+        : '';
+      const heading = section && section !== previousSection ? (
+        <Text
+          key={`section-${index}`}
+          as="h3"
+          variant="heading-sm"
+          weight="semibold"
+          className="border-b border-[var(--panel-border)] pb-2"
+        >
+          {section}
+        </Text>
+      ) : null;
+      previousSection = section;
+      const field = renderFieldItem(fieldItem);
+      return heading ? [heading, field] : [field];
     });
   };
 

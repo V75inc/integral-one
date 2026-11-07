@@ -1,16 +1,8 @@
 /**
  * Phase 9 Plan 09-05 (ONBD-01) — first-login onboarding mount decision.
  *
- * Reads the authenticated User's `onboarded_at`. When `null/undefined`
- * AND the user hasn't dismissed the modal this session, returns
- * `shouldOnboard: true`. The agentive capability probe gates which
- * surface Layout mounts:
- *
- *   - A2 (`agentiveEnabled === true`)  → ``<OnboardingModal />`` hosting
- *     the agentive ChatThread seeded with the `integral_onboard_user`
- *     prompt.
- *   - A5 (`agentiveEnabled === false`) → ``<OnboardingGetStartedBanner />``
- *     pointing the user at Settings → Get started. No broken UI.
+ * Reads the authenticated User's `onboarded_at` and the device-local
+ * dismissal for that user to decide whether to show first-time guidance.
  *
  * The dismiss flag is persisted in **localStorage** so an explicit Skip
  * sticks across tabs and sessions on this device even when `onboarded_at`
@@ -36,29 +28,29 @@ const DISMISS_KEY = 'integral.onboarding.dismissed';
 // Module-level subscribers — every hook instance registers a setter
 // here so a dismiss() call from ANY instance propagates to ALL
 // instances in the same tab.
-const _subscribers: Set<(v: boolean) => void> = new Set();
+const _subscribers: Set<(key: string, v: boolean) => void> = new Set();
 
-function _readDismissed(): boolean {
+function _readDismissed(key: string): boolean {
   try {
-    return localStorage.getItem(DISMISS_KEY) === '1';
+    return localStorage.getItem(key) === '1';
   } catch {
     return false;
   }
 }
 
-function _broadcastDismiss(value: boolean): void {
+function _broadcastDismiss(key: string, value: boolean): void {
   try {
     if (value) {
-      localStorage.setItem(DISMISS_KEY, '1');
+      localStorage.setItem(key, '1');
     } else {
-      localStorage.removeItem(DISMISS_KEY);
+      localStorage.removeItem(key);
     }
   } catch {
     /* ignore quota / privacy-mode errors */
   }
   for (const fn of _subscribers) {
     try {
-      fn(value);
+      fn(key, value);
     } catch {
       /* never let one bad subscriber block the rest */
     }
@@ -74,23 +66,33 @@ export interface FirstLoginOnboardingState {
 export function useFirstLoginOnboarding(): FirstLoginOnboardingState {
   const auth = useAuthOptional();
   const { enabled: agentiveEnabled } = useAgentiveCapability();
-  const [dismissed, setDismissed] = useState<boolean>(() => _readDismissed());
+  const user = auth?.user ?? null;
+  const key = user?.id ? `${DISMISS_KEY}:${user.id}` : '';
+  const [dismissal, setDismissal] = useState(() => ({ key, value: key ? _readDismissed(key) : false }));
+  const dismissed = dismissal.key === key ? dismissal.value : Boolean(key && _readDismissed(key));
 
   // Subscribe to module-level broadcasts so a dismiss() call from a
   // peer hook instance (e.g. the one inside OnboardingModal) flips
   // THIS instance's state too.
   useEffect(() => {
-    _subscribers.add(setDismissed);
-    return () => {
-      _subscribers.delete(setDismissed);
+    const update = (updatedKey: string, value: boolean) => {
+      if (updatedKey === key) setDismissal({ key, value });
     };
-  }, []);
+    const onStorage = (event: StorageEvent) => {
+      if (event.key === key) update(key, event.newValue === '1');
+    };
+    _subscribers.add(update);
+    window.addEventListener('storage', onStorage);
+    return () => {
+      _subscribers.delete(update);
+      window.removeEventListener('storage', onStorage);
+    };
+  }, [key]);
 
   const dismiss = useCallback(() => {
-    _broadcastDismiss(true);
-  }, []);
+    if (key) _broadcastDismiss(key, true);
+  }, [key]);
 
-  const user = auth?.user ?? null;
   const isLoading = auth?.loading ?? false;
   const onboardedAt = user?.onboarded_at ?? null;
   const hireGatesActive =

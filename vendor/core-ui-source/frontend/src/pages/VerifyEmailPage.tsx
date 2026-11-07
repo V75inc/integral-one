@@ -4,6 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import { Button, Logo } from '../components/ui';
 import { authApi } from '../api';
+import { agentiveErrorMessage } from '../api/helpers';
 
 const FIELD_INPUT_CLASSES = `
   w-full px-3.5 py-2.5
@@ -62,10 +63,14 @@ export function VerifyEmailPage() {
   const handleResend = async () => {
     setResending(true);
     try {
-      await authApi.resendVerification();
-      showToast('Verification code sent — check your inbox', 'success');
-    } catch {
-      showToast('Could not send code. Try again shortly.', 'error');
+      const result = await authApi.resendVerification();
+      showToast(result.message || 'Verification code sent — check your inbox', 'success');
+      if (result.status === 'already_verified') {
+        await refreshUser();
+        navigate(returnTo, { replace: true });
+      }
+    } catch (error) {
+      showToast(agentiveErrorMessage(error, 'Could not send code. Try again shortly.'), 'error');
     } finally {
       setResending(false);
     }

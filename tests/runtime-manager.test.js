@@ -51,6 +51,17 @@ test("activation uses the reviewed uv, probes the new engine and retains account
   assert.ok(JSON.parse(f.environment.INTEGRAL_CORE_ARGS).some(value => value.includes(path.join("runtime-updates", "releases", "0.1.1rc36-"))));
   assert.equal(active.state().pending, null); assert.ok(fs.existsSync(active.state().previous.snapshot));
 });
+test("an alternate parent path can update the same owned home, but a different home is refused", async t => {
+  const f = fixture(t); await f.boot(); await f.manager.stage(f.candidate);
+  const alias = path.join(f.dir, "alias");
+  fs.symlinkSync(f.userData, alias, "junction");
+  f.runtime.home = path.join(alias, "other");
+  await assert.rejects(f.manager.install(), /must own/);
+  assert.equal(f.counts().backups, 0);
+  f.runtime.home = path.join(alias, "core");
+  await f.manager.install();
+  assert.equal(f.counts().backups, 1);
+});
 test("a failed trial restores the old runtime and complete cold home while retaining the failed copy", async t => {
   const f = fixture(t); await f.boot(); await f.manager.stage(f.candidate); await f.manager.install(); f.fail();
   const active = await f.restart(); assert.equal(active.currentCore(), "0.1.1rc35"); assert.ok(active.recovery());

@@ -90,6 +90,7 @@ export interface RoutineActivityResponse {
   thread_id: string;
   events: RoutineActivityEvent[];
   write_scope_links: RoutineActivityLink[];
+  context_links?: RoutineActivityLink[];
 }
 
 export interface ListRoutinesParams {

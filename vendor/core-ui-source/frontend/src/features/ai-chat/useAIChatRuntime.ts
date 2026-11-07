@@ -564,6 +564,9 @@ function persistedToMessage(m: AIChatPersistedMessage): ThreadMessageLike {
             tps?: number;
           };
           interactPayload?: Record<string, unknown>;
+          interact_payload?: Record<string, unknown>;
+          origin?: string;
+          routine_id?: string;
           finalContent?: string;
           finalPayload?: Record<string, unknown>;
           error?: { code?: string; message?: string } | null;
@@ -571,7 +574,13 @@ function persistedToMessage(m: AIChatPersistedMessage): ThreadMessageLike {
       | undefined;
     const pmSteps = Array.isArray(pm?.steps) ? pm!.steps : [];
     const pmTiming = pm?.timing;
-    const pmInteract = pm?.interactPayload;
+    // Literal reminders and older scheduled turns persist origin at the top
+    // level. Retain only their recorded identity for schedule navigation.
+    const pmInteract = pm?.interactPayload ?? pm?.interact_payload ?? (
+      pm?.origin === 'routine_task'
+        ? { origin: pm.origin, routine_id: pm.routine_id }
+        : undefined
+    );
     const pmFinalContent = pm?.finalContent;
     const pmFinalPayload = pm?.finalPayload;
     const toolCallCount = content.filter(
@@ -1372,8 +1381,17 @@ export function useAIChatRuntime(
       void loadThread(threadId);
     };
     window.addEventListener("integral:thread-stream-update", handler);
+    // A completed background turn can arrive while the socket is down.
+    // Catch up the visible conversation on reconnect without overwriting a
+    // locally streaming turn; loadThread performs the normal merge guards.
+    const onReconnect = () => {
+      const threadId = activeThreadIdRef.current;
+      if (threadId && !threadId.startsWith("local-")) void loadThread(threadId);
+    };
+    window.addEventListener("integral:agent-events-reconnected", onReconnect);
     return () => {
       window.removeEventListener("integral:thread-stream-update", handler);
+      window.removeEventListener("integral:agent-events-reconnected", onReconnect);
     };
   }, [provider.serverPersisted, loadThread]);
 

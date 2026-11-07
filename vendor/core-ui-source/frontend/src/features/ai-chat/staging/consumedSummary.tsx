@@ -200,7 +200,7 @@ export function extractConsumedNav(executeResult: unknown, staged: StagedChange)
   const links = asRecord(executeResult)?.result_links;
   if (Array.isArray(links)) nav.resultLinks = links.filter((item): item is ResultLink => {
     const link = asRecord(item);
-    return !!link && typeof link.url === 'string' && /^\/(apps|tracks|entries)\//.test(link.url)
+    return !!link && typeof link.url === 'string' && (/^\/(apps|tracks|entries)\//.test(link.url) || /^\/background-tasks\?routine=[^&#\s]+#scheduled-routines$/.test(link.url))
       && typeof link.id === 'string' && typeof link.label === 'string' && typeof link.kind === 'string';
   });
   return nav;

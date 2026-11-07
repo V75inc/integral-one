@@ -41,6 +41,9 @@ export interface StagedChange {
   requires_strong_confirmation?: boolean;
   /** How the decision was recorded, when a decision has been made. */
   decision_source?: string | null;
+  can_edit_entries?: boolean;
+  supersedes_token?: string | null;
+  superseded_by?: string | null;
   /** One-sentence agent-narrated headline (e.g., "Create entry “Foo” in Marketing"). */
   summary: string;
   /** Markdown body for the approval card. */

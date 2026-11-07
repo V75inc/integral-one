@@ -17,4 +17,11 @@ Use the shared UI system rather than duplicating typography and surface literals
 
 Auth uses a static canonical outline. The split-square logo geometry has no frame. Review narrow screens and keyboard interaction as well as desktop output.
 
+Application-wide notices and welcome guidance use `useSystemNotifications` and
+the shared `SystemNotificationBar`. One notice is visible at a time; guidance
+yields to verification, updates and operational alerts. Avoid separate sticky
+status strips in the shell: the sidebar, assistant dock and viewport heights
+share the bar's measured `--system-bar-h` offset. Remove account-specific notices
+on unmount or sign-out. Queuing a notice behind another is not user dismissal.
+
 Read the [user guide](../docs/user-guide/README.md), [view palette](../docs/operational-models/VIEW_PALETTE.md), and [architecture](../docs/product/ARCHITECTURE.md). Browser readback is required for experience claims; a build alone does not establish them.

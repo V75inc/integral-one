@@ -62,6 +62,8 @@ export type RelatedViewsSectionProps = {
   onEntryPersist?: ViewWidgetProps['onEntryPersist'];
   onEntryCreate?: ViewWidgetProps['onEntryCreate'];
   onViewUpdate?: ViewWidgetProps['onViewUpdate'];
+  /** Reloads the host entry. Passed to bindings so a button bar can show the record's new status. */
+  onHostChanged?: () => void | Promise<void>;
   isEditor?: boolean;
   /**
    * Owning app id. Extension views embedded here have no ``track`` prop, so
@@ -100,6 +102,7 @@ export function RelatedViewsSection({
   onEntryPersist,
   onEntryCreate,
   onViewUpdate,
+  onHostChanged,
   isEditor,
   appId,
   heading = 'Related',
@@ -166,6 +169,7 @@ export function RelatedViewsSection({
           entryValues: entry.custom_fields,
           __refreshKey: refreshNonce,
           onActionComplete: bumpRefresh,
+          ...(onHostChanged ? { onHostChanged } : {}),
         },
       };
     })

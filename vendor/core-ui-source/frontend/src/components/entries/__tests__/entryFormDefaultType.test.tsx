@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { renderHook, waitFor, act } from '@testing-library/react';
+import { render, renderHook, waitFor, act } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import React from 'react';
 import {
@@ -11,7 +11,9 @@ import {
   useEntryExpandedForm,
 } from '../EntryFormExpanded';
 import { entryTypesForTrackQueryKey, tagsForTrackQueryKey } from '../../../queryKeys';
-import type { EntryTypeNode, Track } from '../../../types';
+import type { EntryTypeNode, OperationalModelFieldSpec, Track } from '../../../types';
+import { toolsApi } from '../../../api/tools';
+import { ToastProvider } from '../../../context/ToastContext';
 
 vi.mock('../../../api', () => ({
   attachmentsApi: {},
@@ -124,6 +126,45 @@ describe('entryTypeSlug', () => {
 describe('useEntryExpandedForm create default type', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+  });
+
+  it.each(['file', 'files', 'document'])('keeps %s upload controls out of proposal forms', async type => {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    seedQueries(client);
+    const {result, rerender} = renderHook(({proposalOnly}) => useEntryExpandedForm({
+      mode: 'edit', enabled: true, proposalOnly, track: stubTrack,
+      tracksList: [], needsTrackPicker: false, showToast: vi.fn(),
+      initialEntry: {id: 'entry-proposal', track_id: trackId, title: 'Reviewed record', type: 'note', custom_fields: {}, tags: []} as never,
+    }), {wrapper: wrapper(client), initialProps: {proposalOnly: true}});
+    await waitFor(() => expect(result.current.type).toBe('note'));
+    const field: OperationalModelFieldSpec = {key: 'document', name: 'Document', type, ...(type === 'document' ? {composite: {base: 'file'}} : {})};
+    const form = render(<ToastProvider>{result.current.renderDynamicField(field)}</ToastProvider>);
+    expect(form.container.querySelector('input[type="file"]')).toBeNull();
+    // Control: ordinary forms still offer attachment selection.
+    rerender({proposalOnly: false});
+    form.rerender(<ToastProvider>{result.current.renderDynamicField(field)}</ToastProvider>);
+    expect(form.container.querySelector('input[type="file"]')).not.toBeNull();
+  });
+
+  it('validates proposal drafts without invoking a preview/default tool or writer', async () => {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    client.setQueryData(entryTypesForTrackQueryKey(trackId), [{...entryTypes[0], form_schema: {fields: [{key: 'serial', name: 'Serial', type: 'text', required: true, validation: {preview_default_tool: 'app.preview_serial'}}]}}]);
+    client.setQueryData(tagsForTrackQueryKey(trackId), []);
+    const tool = vi.spyOn(toolsApi, 'call').mockResolvedValue({output: {auto_generate: true, number: 'RESERVED-002'}} as never);
+    const {result, rerender, unmount} = renderHook(({proposalOnly}) => useEntryExpandedForm({
+      mode: 'edit', enabled: true, proposalOnly, track: stubTrack,
+      tracksList: [], needsTrackPicker: false, showToast: vi.fn(),
+      initialEntry: {id: 'entry-proposal', track_id: trackId, title: 'Reviewed record', body: 'Reviewed body', type: 'note', custom_fields: {serial: 'PROPOSED-001'}, tags: []} as never,
+    }), {wrapper: wrapper(client), initialProps: {proposalOnly: true}});
+    await waitFor(() => expect(result.current.fieldValues.serial).toBe('PROPOSED-001'));
+    let draft: ReturnType<NonNullable<typeof result.current.getValidatedDraft>>;
+    act(() => { draft = result.current.getValidatedDraft?.() ?? null; });
+    expect(draft!).toEqual({title: 'Reviewed record', body: 'Reviewed body', fields: {serial: 'PROPOSED-001'}, tags: []});
+    expect(tool).not.toHaveBeenCalled();
+    // Control: the ordinary editor still uses its declared preview facility.
+    rerender({proposalOnly: false});
+    await waitFor(() => expect(tool).toHaveBeenCalledWith('app.preview_serial', {}));
+    unmount(); tool.mockRestore();
   });
 
   it('updates type when view default changes on the same track', async () => {

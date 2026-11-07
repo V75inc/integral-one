@@ -4,7 +4,7 @@
  * The hook now sources its mode from global Settings (Settings → Search
  * → Mode) instead of URL query params. The per-strip inline Mode
  * dropdown was retired so the choice is made once and applied
- * everywhere. ``semantic`` is the default. These tests mock the
+ * everywhere. ``hybrid`` is the default. These tests mock the
  * settings store so each scenario can pin the active mode.
  */
 import React from 'react';
@@ -22,7 +22,7 @@ vi.mock('../../api/retrieve', () => ({
 }));
 
 // Settings mock — each test sets the desired mode before mounting.
-let currentMode: 'graph' | 'semantic' | 'hybrid' = 'semantic';
+let currentMode: 'lexical' | 'semantic' | 'hybrid' = 'semantic';
 vi.mock('../../features/settings/store', () => ({
   useSettings: () => [
     { retrieval: { mode: currentMode } },
@@ -53,16 +53,69 @@ beforeEach(() => {
 });
 
 describe('useRetrieve()', () => {
-  it('reads mode from global settings — semantic by default', () => {
+  it('preserves restricted App coverage and clears it on workspace change and reset', async () => {
+    vi.mocked(retrieveApi.retrieve).mockResolvedValue({
+      results: [], dropped_for_permission: 0, mode: 'semantic', requested_mode: 'semantic',
+      degraded: false, candidates_examined: 1, boundary: { declared_query_required: true },
+    });
+    const { result, rerender } = renderHook(
+      ({ workspace }) => useRetrieve({ authorityKey: workspace }),
+      { initialProps: { workspace: 'first' }, wrapper: wrapper() },
+    );
+    await act(async () => { await result.current.run('receipt'); });
+    expect(result.current.appQueryRequired).toBe(true);
+    rerender({ workspace: 'second' });
+    expect(result.current.appQueryRequired).toBe(false);
+    await act(async () => { await result.current.run('receipt'); });
+    expect(result.current.appQueryRequired).toBe(true);
+    act(() => result.current.reset());
+    expect(result.current.appQueryRequired).toBe(false);
+  });
+
+  it('does not let an old restricted response contaminate a newer open search', async () => {
+    let finishOld!: (value: retrieveApi.RetrieveResponse) => void;
+    vi.mocked(retrieveApi.retrieve)
+      .mockImplementationOnce(() => new Promise(resolve => { finishOld = resolve; }))
+      .mockResolvedValueOnce({ results: [], dropped_for_permission: 0, mode: 'semantic',
+        requested_mode: 'semantic', degraded: false, candidates_examined: 0 });
+    const { result } = renderHook(() => useRetrieve(), { wrapper: wrapper() });
+    let old!: Promise<void>;
+    act(() => { old = result.current.run('old search'); });
+    await act(async () => { await result.current.run('new search'); });
+    await act(async () => {
+      finishOld({ results: [], dropped_for_permission: 0, mode: 'semantic',
+        requested_mode: 'semantic', degraded: false, candidates_examined: 1,
+        boundary: { declared_query_required: true } });
+      await old;
+    });
+    expect(result.current.submittedQuery).toBe('new search');
+    expect(result.current.appQueryRequired).toBe(false);
+  });
+
+  it('clears previous read restrictions when a later search fails', async () => {
+    vi.mocked(retrieveApi.retrieve)
+      .mockResolvedValueOnce({ results: [], dropped_for_permission: 0, mode: 'semantic',
+        requested_mode: 'semantic', degraded: false, candidates_examined: 1,
+        boundary: { declared_query_required: true } })
+      .mockRejectedValueOnce(new Error('Unavailable'));
+    const { result } = renderHook(() => useRetrieve(), { wrapper: wrapper() });
+    await act(async () => { await result.current.run('receipt'); });
+    expect(result.current.appQueryRequired).toBe(true);
+    await act(async () => { await result.current.run('other'); });
+    expect(result.current.appQueryRequired).toBe(false);
+    expect(result.current.error).toBe('Unavailable');
+  });
+
+  it('reads a semantic mode from global settings', () => {
     currentMode = 'semantic';
     const { result } = renderHook(() => useRetrieve(), { wrapper: wrapper() });
     expect(result.current.mode).toBe('semantic');
   });
 
-  it('honors a Settings-driven graph mode', () => {
-    currentMode = 'graph';
+  it('honors a Settings-driven lexical mode', () => {
+    currentMode = 'lexical';
     const { result } = renderHook(() => useRetrieve(), { wrapper: wrapper() });
-    expect(result.current.mode).toBe('graph');
+    expect(result.current.mode).toBe('lexical');
   });
 
   it('honors a Settings-driven hybrid mode', () => {
@@ -71,13 +124,13 @@ describe('useRetrieve()', () => {
     expect(result.current.mode).toBe('hybrid');
   });
 
-  it('run() is a no-op in graph mode (no API call)', async () => {
-    currentMode = 'graph';
+  it('sends lexical search to the retrieval service', async () => {
+    currentMode = 'lexical';
     const { result } = renderHook(() => useRetrieve(), { wrapper: wrapper() });
     await act(async () => {
       await result.current.run('hello');
     });
-    expect(retrieveApi.retrieve).not.toHaveBeenCalled();
+    expect(retrieveApi.retrieve).toHaveBeenCalledWith({ query: 'hello', scope: undefined, mode: 'lexical' });
     expect(result.current.results).toEqual([]);
   });
 

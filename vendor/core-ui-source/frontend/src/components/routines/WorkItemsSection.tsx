@@ -1,7 +1,8 @@
 import { useSingleFlight } from '../../hooks/useSingleFlight';
 import { useSerialPolling } from '../../hooks/useSerialPolling';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { RefreshCw } from 'lucide-react';
+import { ChevronDown, ChevronUp, RefreshCw } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import { Button, LINE_ICON_STROKE } from '../ui';
 import { Surface, Text } from '../../ui';
 import { workItemsApi, type WorkItemStatusResponse } from '../../api/workItems';
@@ -46,26 +47,30 @@ export function WorkItemsSection({ workspaceId }: { workspaceId: string }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const generation = useRef(0);
+  const mounted = useRef(false);
+  useEffect(() => {
+    mounted.current = true;
+    return () => { mounted.current = false; };
+  }, []);
   const load = useSingleFlight(useCallback(async (after?: string) => {
     const current = ++generation.current;
     setLoading(true);
     setError(null);
     try {
       const result = await workItemsApi.list(workspaceId, after);
-      if (current !== generation.current) return;
+      if (!mounted.current || current !== generation.current) return;
       setItems(previous => after ? [...previous, ...result.items.filter(item =>
         !previous.some(old => old.work_item_id === item.work_item_id))] : result.items);
       setCursor(result.next_cursor);
     } catch (err) {
-      if (current === generation.current)
+      if (mounted.current && current === generation.current)
         setError(err instanceof Error ? err.message : 'Could not load work status');
     } finally {
-      if (current === generation.current) setLoading(false);
+      if (mounted.current && current === generation.current) setLoading(false);
     }
   }, [workspaceId]));
   useEffect(() => {
     void load();
-    return () => { generation.current += 1; };
   }, [load]);
   useSerialPolling(load, 5000, items.some(item =>
     item.kind !== 'routine_turn' && item.kind !== 'chat_turn' && !terminal.has(item.status)));
@@ -116,6 +121,7 @@ export function WorkItemsSection({ workspaceId }: { workspaceId: string }) {
             </div>
             <Text as="p" variant="meta" tone="subtle" className="mt-0.5">Updated {formatRelativeTime(item.updated_at)} · Attempt {item.attempt}</Text>
             {workProgress(item)}
+            <WorkItemDetails item={item} />
             {item.failure && <Text as="p" variant="body-sm" tone="danger" className="mt-1">{item.failure.message || item.failure.code}</Text>}
             {item.next_attempt_at && item.status === 'retry_wait' && <Text as="p" variant="meta" className="mt-1">Next attempt: {formatRelativeTime(item.next_attempt_at)}</Text>}
           </div>
@@ -124,4 +130,43 @@ export function WorkItemsSection({ workspaceId }: { workspaceId: string }) {
       {cursor && <Button className="mt-2" disabled={loading} onClick={() => void load(cursor)}>Load more tasks</Button>}
     </div>
   </Surface>;
+}
+
+
+function WorkItemDetails({ item }: { item: WorkItemStatusResponse }) {
+  const [open, setOpen] = useState(false);
+  const [detail, setDetail] = useState<WorkItemStatusResponse | null>(null);
+  const [error, setError] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const request = useRef(0);
+  const load = async () => {
+    const generation = ++request.current;
+    setLoading(true);
+    setError(false);
+    try {
+      const result = await workItemsApi.get(item.work_item_id);
+      if (generation === request.current) setDetail(result);
+    } catch { if (generation === request.current) setError(true); }
+    finally { if (generation === request.current) setLoading(false); }
+  };
+  useEffect(() => () => { request.current += 1; }, []);
+  return <div className="mt-2">
+    <Button variant="ghost" size="xs" aria-expanded={open}
+      onClick={() => { setOpen(!open); if (!open) void load(); }}>
+      Task details {open ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+    </Button>
+    {open && <div className="mt-2 space-y-2 border-l border-[var(--panel-border)] pl-3">
+      {loading && <div role="status"><Text as="p" variant="meta">Loading task details…</Text></div>}
+      {error && <div role="alert"><Text as="p" variant="meta" tone="muted">Task details could not be loaded.</Text><Button variant="ghost" size="xs" onClick={() => void load()}>Retry details</Button></div>}
+      {!loading && !error && detail && <>
+        {(detail.context_links?.length ?? 0) > 0 ? <>
+          <Text as="p" variant="meta" tone="muted">Related to</Text>
+          <div className="flex flex-wrap gap-2">{detail.context_links?.map(link => <Link key={`${link.kind}:${link.id}`} to={link.href}
+            className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-[var(--link)] hover:underline">
+            <Text as="span" variant="meta" tone="inherit"><span className="capitalize">{link.kind}:</span> {link.label}</Text>
+          </Link>)}</div>
+        </> : <Text as="p" variant="meta" tone="muted">No linked App or Track is available.</Text>}
+      </>}
+    </div>}
+  </div>;
 }

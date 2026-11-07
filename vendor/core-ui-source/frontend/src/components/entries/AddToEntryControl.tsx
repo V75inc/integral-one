@@ -9,7 +9,8 @@ import { Button } from '../ui/Button';
  *
  * Shape:
  *   ┌────────────────────────────────────────────────────────┐
- *   │  Drop files or links to attach     [📎]  [🔗]          │
+ *   │  Add to this entry                       [📎] [🔗]    │
+ *   │  Drop files here or use the attachment buttons.       │
  *   └────────────────────────────────────────────────────────┘
  *
  * One visual treatment shared by the entry composer (edit mode) and
@@ -43,10 +44,10 @@ interface AddToEntryControlProps {
   allowUrlReference?: boolean;
   /** Main row text. Defaults to "Add to this entry". */
   label?: string;
-  /** Inline drag-hint shown beside the primary label in a smaller,
+  /** Drag-hint shown beneath the primary label in a smaller,
    *  quieter type. Hidden when the surface is in `isDragActive`
    *  state (where the primary label takes over with "Drop to attach").
-   *  Defaults to "drop files or links to attach". Pass `null` to
+   *  Defaults to instructions for the available actions. Pass `null` to
    *  suppress entirely. */
   dragHint?: string | null;
   /** Optional small print rendered beneath the main row. */
@@ -125,27 +126,22 @@ export function AddToEntryControl({
           react-dropzone's `open()` work consistently. */}
       <input {...getInputProps()} />
 
-      <div className="flex items-center gap-3 px-3 py-2.5 min-h-[2.75rem]">
-        {/* Three-column layout:
-              [ primary label ]   [ centered drag hint ]   [ icons ]
-            The label hugs the left edge, the icons hug the right
-            edge, and the muted drag hint sits centered in the
-            remaining space. Hidden during `isDragActive` — the
-            primary slot then carries the full "Drop to attach"
-            confirmation. */}
-        <span className="text-sm font-semibold text-[var(--text)] shrink-0">
-          {isDragActive ? 'Drop to attach' : label || 'Add to this entry'}
-        </span>
-        {!isDragActive && dragHint !== null && (
-          <span className="flex-1 min-w-0 truncate text-center text-xs text-[var(--text-subtle)]">
-            {dragHint ?? 'drop files or links to attach'}
-          </span>
-        )}
-        {(isDragActive || dragHint === null) && (
-          // Spacer keeps the icons pinned to the right edge in states
-          // where the centered hint slot is absent.
-          <span className="flex-1" aria-hidden />
-        )}
+      <div className="flex items-center gap-3 px-4 py-4 min-h-24">
+        <div className="flex-1 min-w-0 space-y-1">
+          <p className="text-sm font-semibold text-[var(--text)] break-words">
+            {isDragActive ? 'Drop to attach' : label || 'Add to this entry'}
+          </p>
+          {!isDragActive && dragHint !== null && (
+            <p className="text-xs text-[var(--text-subtle)] break-words">
+              {dragHint ??
+                (allowFileUpload
+                  ? 'Drop files here or use the attachment buttons.'
+                  : showLinkButton
+                    ? 'Use the link button to attach a web address.'
+                    : 'Attachments are unavailable.')}
+            </p>
+          )}
+        </div>
         <div className="flex items-center gap-0.5 shrink-0">
           {allowFileUpload && (
             <button
