@@ -92,6 +92,7 @@ import { deriveRelationLabelPatch } from '../../utils/relationFieldSync';
 import { findEntryTypeBySlug } from '../../utils/entryMetaFields';
 import {
   buildCustomFieldsForEntryType,
+  diffCustomFields,
   resolveFieldValuesForEntryType,
   filterEntryTypeSlugsForView,
   resolveCreateDefaultEntryType,
@@ -331,6 +332,12 @@ export function useEntryExpandedForm(
   // accepts finished File[] / link tuples via `addPendingFiles` and
   // `addLinkAttachment` below.
   const baselineEntryRef = useRef<Entry | null | undefined>(initialEntry);
+  // Bind edits to the snapshot that seeded the draft. Background refetches
+  // must not silently promote an unsaved draft to a newer revision.
+  const editRevisionsRef = useRef({
+    record: initialEntry?.record_revision,
+    schema: initialEntry?.schema_revision,
+  });
   const relationEntriesByIdRef = useRef<Map<string, Entry>>(new Map());
   const pendingCustomFieldSeedRef = useRef<Record<string, unknown> | undefined>(
     initialCustomFields
@@ -355,6 +362,10 @@ export function useEntryExpandedForm(
 
   useEffect(() => {
     if (!enabled || mode !== 'edit' || !initialEntry) return;
+    editRevisionsRef.current = {
+      record: initialEntry.record_revision,
+      schema: initialEntry.schema_revision,
+    };
     setTitle(initialEntry.title || '');
     setBody(initialEntry.body || '');
     setType(slug(String(initialEntry.type || 'post')));
@@ -1555,17 +1566,23 @@ export function useEntryExpandedForm(
       const linkExtras: Record<string, unknown> = {};
       if (linkPreviewPatch) {
         Object.assign(linkExtras, linkPreviewPatch);
-      } else if (!firstUrl) {
+      } else if (!firstUrl && baseline.custom_fields?._link_preview != null) {
         linkExtras._link_preview = null;
-      } else if (dismissedPreviewUrl && dismissedPreviewUrl === firstUrl) {
+      } else if (
+        dismissedPreviewUrl && dismissedPreviewUrl === firstUrl &&
+        baseline.custom_fields?._link_preview != null
+      ) {
         linkExtras._link_preview = null;
       }
-      const custom_fields = buildCustomFieldsForEntryType(
-        dynamicFields,
-        fieldValues,
-        baseline.custom_fields,
-        linkExtras,
-        { changedOnly: true }
+      const custom_fields = diffCustomFields(
+        buildCustomFieldsForEntryType(
+          dynamicFields,
+          fieldValues,
+          baseline.custom_fields,
+          linkExtras,
+          { changedOnly: true }
+        ),
+        baseline.custom_fields || {}
       );
       if (slug(String(type || selectedType?.name || '')) === 'sprint') {
         // Task.sprint is SoT — do not persist Sprint.tasks (dual REFERENCES).
@@ -1579,10 +1596,18 @@ export function useEntryExpandedForm(
           undefined,
         body: bodyEnabled ? body : undefined,
         description: bodyEnabled ? body : undefined,
-        custom_fields,
-        type_id: selectedTypeId || undefined,
+        ...(Object.keys(custom_fields).length ? { custom_fields } : {}),
+        ...(selectedTypeId && selectedTypeId !== baseline.type_id
+          ? { type_id: selectedTypeId } : {}),
+        expected_record_revision: editRevisionsRef.current.record,
+        expected_schema_revision: editRevisionsRef.current.schema,
         tags: selectedTagIds
       });
+
+      editRevisionsRef.current = {
+        record: updated.record_revision,
+        schema: updated.schema_revision,
+      };
 
       // Synchronize Task.sprint backlinks for sprint task membership
       if (slug(String(type || selectedType?.name || '')) === 'sprint') {

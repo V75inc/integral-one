@@ -658,6 +658,8 @@ export interface Entry {
   /** Present when the entry's track is contained in an App (feed / track entries / get). */
   app?: App;
   type: string;
+  /** Stored EntryType identity, when supplied by the record export. */
+  type_id?: string;
   title?: string;
   body?: string;
   attachment_ids?: string[];

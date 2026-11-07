@@ -153,7 +153,11 @@ export const tracksApi = {
     id: string,
     params?: Record<string, unknown>
   ): Promise<TrackEntriesPage> => {
-    const merged = { limit: FEED_PAGE_LIMIT, ...params };
+    const merged = {
+      limit: FEED_PAGE_LIMIT,
+      ...params,
+      include_total: params?.include_total ?? !params?.cursor,
+    };
     const { data } = await apiClient.get(`/tracks/${id}/entries`, {
       params: merged,
     });

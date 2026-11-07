@@ -16,6 +16,8 @@ export async function fetchAllByCursor(
   while (hasMore) {
     const reqParams = {
       ...(params || {}),
+      // This helper returns records only; its cursor already proves continuation.
+      include_total: params?.include_total ?? false,
       limit: 100,
       cursor,
     };

@@ -96,7 +96,11 @@ export const feedApi = {
   getEntriesPage: async (
     params?: Record<string, unknown>
   ): Promise<FeedEntriesPage> => {
-    const merged = { limit: FEED_PAGE_LIMIT, ...params };
+    const merged = {
+      limit: FEED_PAGE_LIMIT,
+      ...params,
+      include_total: params?.include_total ?? !params?.cursor,
+    };
     try {
       return await fetchFeedEntriesPageFromPath('/feed_entries', merged);
     } catch (error) {
