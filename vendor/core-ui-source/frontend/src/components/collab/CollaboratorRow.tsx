@@ -177,7 +177,8 @@ function RoleMenu({
 }: RoleMenuProps) {
   const [open, setOpen] = useState(false);
   const [coords, setCoords] = useState<{
-    top: number;
+    top?: number;
+    bottom?: number;
     left: number;
     minWidth: number;
     maxH: number;
@@ -191,9 +192,14 @@ function RoleMenu({
     if (!el || typeof window === 'undefined') return;
     const r = el.getBoundingClientRect();
     const pad = 8;
-    const maxH = Math.max(180, Math.min(360, window.innerHeight - r.bottom - pad));
+    const below = Math.max(0, window.innerHeight - r.bottom - pad - 4);
+    const above = Math.max(0, r.top - pad - 4);
+    const openAbove = below < 180 && above > below;
+    const maxH = Math.max(0, Math.min(360, openAbove ? above : below));
     setCoords({
-      top: r.bottom + 4,
+      ...(openAbove
+        ? { bottom: window.innerHeight - r.top + 4 }
+        : { top: r.bottom + 4 }),
       left: r.left,
       minWidth: Math.max(r.width, 240),
       maxH,
@@ -268,6 +274,7 @@ function RoleMenu({
       className="fixed z-popover overflow-y-auto rounded-[var(--radius-card)] border border-[var(--panel-border)] bg-[var(--panel)] py-1 shadow-[var(--shadow-pop)]"
       style={{
         top: coords.top,
+        bottom: coords.bottom,
         left: coords.left,
         minWidth: coords.minWidth,
         maxHeight: coords.maxH,
@@ -412,7 +419,7 @@ function RoleMenu({
           aria-hidden
         />
       </button>
-      {menu ? createPortal(menu, document.body) : null}
+      {menu ? createPortal(menu, triggerRef.current?.closest('[role="dialog"]') ?? document.body) : null}
     </>
   );
 }

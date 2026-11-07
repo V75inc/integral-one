@@ -7,6 +7,7 @@ import {
   type AttachmentRecord,
 } from '../../api/attachments';
 import { publicSharingApi } from '../../api/sharing';
+import { errorMessageFromAxios } from '../../api/helpers';
 import { memberAssignedFormApi } from '../../features/memberAssignedForm/memberAssignedFormApi';
 import { useToast } from '../../context/ToastContext';
 import { LINE_ICON_STROKE } from '../ui/IconWell';
@@ -290,7 +291,7 @@ export function SeamlessFileFieldInner({
           } catch (fileErr) {
             setPendingNames(prev => prev.filter(n => n !== file.name));
             showToast(
-              fileErr instanceof Error ? fileErr.message : 'Upload failed',
+              errorMessageFromAxios(fileErr, 'Upload failed'),
               'error',
             );
           }

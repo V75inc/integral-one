@@ -1,5 +1,6 @@
 import { accessControlApi } from '../api/accessControl';
 import { useDeployment } from '../hooks/useDeployment';
+import { useAppDeletionNavigation } from '../hooks/useAppDeletionNavigation';
 import { AppIcon } from '../ui';
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { ResourceAccessReview } from '../components/access/ResourceAccessReview';
@@ -112,6 +113,7 @@ export function AppDetailPage() {
   const { collaboration } = useDeployment();
   const { scope: activeHomeScope } = useScope();
   const { appId } = useParams<{ appId: string }>();
+  useAppDeletionNavigation(appId);
   const navigate = useNavigate();
   const { user: me } = useAuth();
   const { visit: visitRecent } = useRecents();
@@ -520,10 +522,16 @@ export function AppDetailPage() {
     if (!ok) return;
     try {
       const work = await appsApi.updateFromLibrary(appId);
+      if (['failed', 'cancelled', 'expired', 'dead_letter'].includes(work.status)) {
+        showToast('The previous App update did not complete. No new update was queued.', 'error');
+        return;
+      }
       showToast(
         work.status === 'queued'
           ? `App update queued (${work.work_item_id})`
-          : `App update submitted (${work.work_item_id})`,
+          : work.status === 'succeeded'
+            ? 'App update already completed.'
+            : `App update is already in progress (${work.work_item_id})`,
         'success'
       );
     } catch (e: unknown) {
@@ -1059,6 +1067,7 @@ export function AppDetailPage() {
         open={showTrackModal}
         onClose={() => setShowTrackModal(false)}
         appId={appId}
+        onImported={() => { void load(); }}
         onCreated={async () => {
           load();
         }}

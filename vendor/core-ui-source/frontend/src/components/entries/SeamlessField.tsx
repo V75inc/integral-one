@@ -19,6 +19,9 @@ import {
 import { projectComputedValues } from './computedExpression';
 import type { RelationNavContext } from './relations/routeForRelationTarget';
 import { ExternalLabelContext } from './fieldLabelContext';
+import { useContributionLifecycle } from './contributionLifecycle';
+import { useExperienceMode } from './experienceModeContext';
+import { RelatedRecordControl, type RelatedRecordConfig } from './RelatedRecordControl';
 
 /** Resolve a single relation id via the shared cache when the picker's
  *  preloaded opts don't cover it (cross-track relation, late preload, etc.).
@@ -68,6 +71,7 @@ export interface SeamlessFieldProps {
   enumLabels?: Record<string, string>;
   /** Opt-in type-ahead for select fields: a search box filters the options. */
   searchable?: boolean;
+  onRelationSearch?: (query: string) => void;
   /**
    * Required for ``file`` / ``files`` field types — the inline file
    * picker uploads against this entry id before binding the
@@ -91,6 +95,31 @@ function resolveEnumOptionLabel(
   const custom = enumLabels?.[opt];
   if (custom?.trim()) return custom.trim();
   return humanizeEnumValue(opt);
+}
+
+/**
+ * Number inputs must let the user clear the box while typing. Coercing an
+ * empty string to 0 on every keystroke redisplays "0" and the next digits land
+ * after it ("01231"). Empty is held as null while editing and settled to 0 on
+ * blur, which keeps the previous empty-means-zero outcome.
+ */
+function numberFromInput(raw: string): number | null {
+  return raw === '' ? null : Number(raw);
+}
+
+/** Display-only number formats a field can ask for with ``widget``. */
+function groupedNumberFormat(widget: unknown): Intl.NumberFormatOptions | null {
+  if (widget === 'currency' || widget === 'amount') {
+    return { minimumFractionDigits: 2, maximumFractionDigits: 2 };
+  }
+  if (widget === 'number' || widget === 'grouped') return { maximumFractionDigits: 2 };
+  return null;
+}
+
+function formatGrouped(value: unknown, options: Intl.NumberFormatOptions): unknown {
+  if (value == null || value === '') return value;
+  const n = Number(value);
+  return Number.isFinite(n) ? new Intl.NumberFormat(undefined, options).format(n) : value;
 }
 
 function hasMeaningfulValue(value: unknown, fieldType: string): boolean {
@@ -400,9 +429,14 @@ function LegacyField(props: SeamlessFieldProps) {
           onChange={e =>
             onChange(
               field.type === 'number'
-                ? Number(e.target.value || 0)
+                ? numberFromInput(e.target.value)
                 : e.target.value
             )
+          }
+          onBlur={
+            field.type === 'number' && v == null
+              ? () => onChange(0)
+              : undefined
           }
           onWheel={
             inputType === 'number'
@@ -610,6 +644,8 @@ function SeamlessRelationSingleInner({
   readonly,
   onNavigate,
   navContext,
+  searchable,
+  onSearchChange,
 }: {
   externalLabel?: boolean;
   field: OperationalModelFieldSpec;
@@ -621,6 +657,8 @@ function SeamlessRelationSingleInner({
   readonly: boolean;
   onNavigate?: () => void;
   navContext?: RelationNavContext | null;
+  searchable?: boolean;
+  onSearchChange?: (query: string) => void;
 }) {
   const hasValue = hasMeaningfulValue(value, field.type);
   const [hovered, setHovered] = useState(false);
@@ -701,6 +739,8 @@ function SeamlessRelationSingleInner({
             className="min-w-0 w-full max-w-full border-0 bg-transparent px-0 py-1 font-normal shadow-none focus:ring-0"
             value={currentId}
             onValueChange={val => { onChange(val || null); setEditing(false); }}
+            searchable={searchable}
+            onSearchChange={onSearchChange}
             disabled={readonly}
             placeholder={placeholder}
             options={[
@@ -795,11 +835,14 @@ function SeamlessTextLikeInner({
         value={str}
         onChange={e =>
           onChange(
-            field.type === 'number' ? Number(e.target.value || 0) : e.target.value
+            field.type === 'number' ? numberFromInput(e.target.value) : e.target.value
           )
         }
         onFocus={() => setIsFocused(true)}
-        onBlur={() => setIsFocused(false)}
+        onBlur={() => {
+          setIsFocused(false);
+          if (field.type === 'number' && value == null) onChange(0);
+        }}
         // Native number inputs also change value on mouse-wheel scroll while
         // focused — surprising when a cell just happens to sit under the
         // cursor during a page scroll. Blur on wheel so scrolling always
@@ -1155,6 +1198,8 @@ function SeamlessFieldInner(props: SeamlessFieldProps) {
         readonly={readonly}
         onNavigate={onNavigate}
         navContext={navContext}
+        searchable={searchable}
+        onSearchChange={props.onRelationSearch}
       />
     );
   }
@@ -1172,11 +1217,14 @@ function SeamlessFieldInner(props: SeamlessFieldProps) {
   }
 
   if (field.type === 'text' || field.type === 'number') {
-    const inputType = field.type === 'number' ? 'number' : 'text';
+    // A read-only number with a money / grouped widget reads as 4,473,333.33,
+    // not 4473333.33. Editing keeps the plain number input.
+    const grouped = field.type === 'number' && (field.readonly || readonly) ? groupedNumberFormat(field.widget) : null;
+    const inputType = field.type === 'number' && !grouped ? 'number' : 'text';
     return (
       <SeamlessTextLikeInner
         field={field}
-        value={value}
+        value={grouped ? formatGrouped(value, grouped) : value}
         onChange={onChange}
         placeholder={placeholder}
         readonly={readonly}
@@ -1274,9 +1322,23 @@ function SeamlessFieldInner(props: SeamlessFieldProps) {
  * without each one threading the prop.
  */
 export function SeamlessField(props: SeamlessFieldProps) {
+  const mode = useExperienceMode();
+  const lifecycle = useContributionLifecycle();
+  // Required or populated data remains visible in Simple mode, including
+  // errors/settings that need a decision. This is presentation only.
+  if (mode === 'simple' && props.field.validation?.advanced === true &&
+      !props.field.required && !hasMeaningfulValue(props.value, props.field.type)) return null;
+  const create = props.field.validation?.create_related as RelatedRecordConfig | undefined;
+  const related = props.field.type === 'relation' && !props.field.relation?.many &&
+    lifecycle?.appId && lifecycle.onDraftPatch && create &&
+    typeof create.kind === 'string' && typeof create.form_operation === 'string' &&
+    typeof create.create_operation === 'string';
+  const control = related
+    ? <RelatedRecordControl key={`${lifecycle?.appId}:${props.field.key}`} props={props} config={create!} renderField={SeamlessFieldInner} />
+    : <SeamlessFieldInner {...props} />;
   return (
     <ExternalLabelContext.Provider value={Boolean(props.externalLabel)}>
-      <SeamlessFieldInner {...props} />
+      {props.field.help ? <div className="space-y-1">{control}<Text variant="body-sm" tone="muted">{props.field.help}</Text></div> : control}
     </ExternalLabelContext.Provider>
   );
 }

@@ -2,7 +2,7 @@
  * Taggable composer wired to assistant-ui thread composer state.
  */
 import { useAui, useAuiState } from "@assistant-ui/react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 
 import { TaggableComposer } from "../../../components/chat/TaggableComposer";
 import { useChatEntityRefsOptional } from "../../../context/ChatEntityRefsContext";
@@ -12,6 +12,8 @@ import { useComposerDictationActions } from "../../speech/ComposerDictationConte
 import { useAuthOptional } from "../../../context/AuthContext";
 import { useScope } from "../../../context/ScopeContext";
 import { consumePendingChatInput, OPEN_AI_CHAT_EVENT } from "../chatHandoff";
+import { Text } from "../../../ui";
+import { CHAT_MESSAGE_LENGTH_HINT, chatMessageTooLong } from "../messageLength";
 
 type AuiTaggableComposerProps = Omit<
   React.TextareaHTMLAttributes<HTMLTextAreaElement>,
@@ -36,6 +38,8 @@ export function AuiTaggableComposer({
   const { activeThreadId, composerReady, isRunning } = useChatActivity();
   const composerText = useAuiState((s) => s.composer.text ?? "");
   const [localValue, setLocalValue] = useState(composerText);
+  const lengthHintId = useId();
+  const messageTooLong = chatMessageTooLong(localValue);
   // The composer is one box for the whole surface. Switching chats (including
   // New conversation, and the thread created by the first send) must drop the
   // previous draft, or the next message is glued onto it.
@@ -79,7 +83,7 @@ export function AuiTaggableComposer({
         if (input.submit && (!input.workspaceId || input.workspaceId !== scope?.workspaceId || !input.principalId || input.principalId !== principalId)) return;
         setLocalValue(input.text);
         aui.composer().setText(input.text);
-        if (input.submit) {
+        if (input.submit && !chatMessageTooLong(input.text)) {
           setEntityRefs([]);
           entityRefsCtx?.setPendingEntityRefs([]);
           entityRefsCtx?.flushPendingEntityRefs();
@@ -120,6 +124,9 @@ export function AuiTaggableComposer({
   );
 
   const sendNow = useCallback(() => {
+    // Dictation can add words after submit was requested. Validate the live
+    // composer before consuming references or clearing any draft state.
+    if (chatMessageTooLong(aui.composer().getState().text)) return;
     entityRefsCtx?.setPendingEntityRefs(entityRefsRef.current);
     entityRefsCtx?.flushPendingEntityRefs();
     onSendAttempt?.();
@@ -149,6 +156,7 @@ export function AuiTaggableComposer({
   }, [dictation, handleSubmit]);
 
   return (
+    <>
     <TaggableComposer
       ref={dictation?.registerTextarea}
       value={localValue}
@@ -163,6 +171,12 @@ export function AuiTaggableComposer({
       rows={rows}
       autoFocus={autoFocus}
       aria-label={ariaLabel}
+      aria-invalid={messageTooLong || undefined}
+      aria-describedby={messageTooLong ? lengthHintId : undefined}
     />
+    {messageTooLong && <div id={lengthHintId} role="alert">
+      <Text as="p" variant="meta" tone="danger">{CHAT_MESSAGE_LENGTH_HINT}</Text>
+    </div>}
+    </>
   );
 }

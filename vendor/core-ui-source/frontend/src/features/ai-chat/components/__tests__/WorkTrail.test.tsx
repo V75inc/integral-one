@@ -14,6 +14,12 @@ vi.mock('../../AIChatSurface', () => ({useChatActivity: () => ({activityText: 'R
 import { WorkTrail } from '../Thread';
 
 describe('activity disclosure', () => {
+  it('does not present human proposal edits as model or tool activity', () => {
+    state.message.metadata = {custom: {interactPayload: {origin: 'human_proposal_revision'}}};
+    const {container} = render(<WorkTrail><span>Human edit artifact</span></WorkTrail>);
+    expect(container).toBeEmptyDOMElement();
+    state.message.metadata = {};
+  });
   it('shows model, turn duration and abbreviated tokens before expanding exact usage', () => {
     state.message.status.type = 'complete';
     state.message.parts = [{type: 'tool-call'}, {type: 'tool-call'}];

@@ -36,6 +36,7 @@ export interface PromptStagedWriteItem {
   diff_human?: unknown;
   diff_machine?: unknown;
   staged_state?: string;
+  can_edit_entries?: boolean;
   last_error?: { message?: string; error_code?: string };
   completed_operations?: number;
   autonomy_grant_used?: boolean;

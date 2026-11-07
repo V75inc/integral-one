@@ -2,14 +2,19 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { PromptSheetHost } from '../PromptSheet';
 import { usePromptQueue } from '../usePromptQueue';
+import type { PromptStagedWriteItem } from '../types';
+import { ToastProvider } from '../../../../context/ToastContext';
 
 vi.mock('../usePromptQueue', () => ({
   usePromptQueue: vi.fn(),
 }));
+vi.mock('../../../../components/entries/relations/RelationValue', () => ({
+  RelationValue: ({ value }: { value: string }) => <a href={`/entries/${value}`}>Selected record</a>,
+}));
 
 const approveWrite = vi.fn(async () => undefined);
 
-function renderPendingWrite(failed = false) {
+function renderPendingWrite(failed = false, extra: Partial<PromptStagedWriteItem> = {}, busy = false) {
   vi.mocked(usePromptQueue).mockReturnValue({
     open: true,
     current: {
@@ -20,6 +25,7 @@ function renderPendingWrite(failed = false) {
       write_kind: 'create_entry',
       summary: 'Create entry “Sample Widget”',
       ...(failed ? {staged_state: 'blessed', last_error: {message: 'Validation failed'}, completed_operations: 2} : {}),
+      ...extra,
     },
     page: {
       total: 1,
@@ -29,7 +35,7 @@ function renderPendingWrite(failed = false) {
       prev: vi.fn(),
       next: vi.fn(),
     },
-    busy: false,
+    busy,
     error: null,
     approveWrite,
     rejectWrite: vi.fn(async () => undefined),
@@ -37,9 +43,9 @@ function renderPendingWrite(failed = false) {
   } as never);
 
   render(
-    <PromptSheetHost>
+    <ToastProvider><PromptSheetHost>
       {({ sheet }) => <>{sheet}</>}
-    </PromptSheetHost>,
+    </PromptSheetHost></ToastProvider>,
   );
 }
 
@@ -62,6 +68,35 @@ describe('PromptSheet staged-write approval', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Approve' }));
 
     expect(approveWrite).toHaveBeenCalledOnce();
+  });
+
+  it('does not flash a failure message while an approved change is applying', () => {
+    renderPendingWrite(false, {staged_state:'blessed'}, true);
+    expect(screen.getByText('Applying this change…')).toBeVisible();
+    expect(screen.getByRole('button', {name:'Applying…'})).toBeDisabled();
+    expect(screen.queryByText('This change needs attention')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', {name:'Retry application'})).not.toBeInTheDocument();
+  });
+
+  it('reviews the literal batch inputs in the active chat approval sheet', () => {
+    const child = (entry: string, value: number) => ({ kind: 'call_workspace_tool', summary: 'Apply selected change',
+      diff_machine: { op: 'call_workspace_tool', input: { entry_id: entry, value } },
+    });
+    renderPendingWrite(false, { write_kind: 'batch', diff_human: 'Narrated value 999',
+      diff_machine: { operations: [child('n.Entry.first', 12), child('n.Entry.second', 27)] },
+    });
+    expect(screen.getByText('12')).toBeVisible();
+    expect(screen.getByText('27')).toBeVisible();
+    expect(screen.getAllByRole('link', { name: 'Selected record' })).toHaveLength(2);
+    expect(approveWrite).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'Approve' }));
+    expect(approveWrite).toHaveBeenCalledOnce();
+  });
+
+  it('ignores malformed command inputs without blocking the approval controls', () => {
+    renderPendingWrite(false, { write_kind: 'batch', diff_machine: [] });
+    expect(screen.queryByText('Review change details')).toBeNull();
+    expect(screen.getByRole('button', { name: 'Approve' })).toBeEnabled();
   });
 });
 

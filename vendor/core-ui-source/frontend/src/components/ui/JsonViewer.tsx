@@ -1,4 +1,5 @@
 import React, { useState, useCallback, useMemo, useEffect, useRef } from "react";
+import { useOptionalTheme } from "../../context/ThemeContext";
 import {
   ChevronRight,
   ChevronDown,
@@ -16,7 +17,7 @@ interface JsonViewerProps {
   defaultExpandDepth?: number;
   /** Max height of the scroll area (CSS value). Default '60vh'. */
   maxHeight?: string;
-  /** Dark mode palette. Default false. */
+  /** Override the application theme when needed. */
   dark?: boolean;
 }
 
@@ -366,11 +367,13 @@ const JsonViewer: React.FC<JsonViewerProps> = ({
   data,
   defaultExpandDepth = 1,
   maxHeight = "60vh",
-  dark = false
+  dark
 }) => {
+  const theme = useOptionalTheme();
+  const isDark = dark ?? theme?.theme === "dark";
   const [searchTerm, setSearchTerm] = useState("");
   const { status: copyAllStatus, copy: copyAll } = useJsonCopy(data);
-  const palette = dark ? DARK : LIGHT;
+  const palette = isDark ? DARK : LIGHT;
 
   const handleCopyAll = useCallback(() => {
     void copyAll();
@@ -396,7 +399,7 @@ const JsonViewer: React.FC<JsonViewerProps> = ({
           alignItems: "center",
           gap: 8,
           padding: "8px 10px",
-          borderBottom: `1px solid ${dark ? "#21262d" : "#e2e8f0"}`,
+          borderBottom: `1px solid ${isDark ? "#21262d" : "#e2e8f0"}`,
           position: "sticky",
           top: 0,
           backgroundColor: palette.bg,
@@ -425,10 +428,10 @@ const JsonViewer: React.FC<JsonViewerProps> = ({
               padding: "5px 8px 5px 26px",
               fontSize: 12,
               fontFamily: "inherit",
-              border: `1px solid ${dark ? "#30363d" : "#cbd5e1"}`,
+              border: `1px solid ${isDark ? "#30363d" : "#cbd5e1"}`,
               borderRadius: 6,
-              backgroundColor: dark ? "#0d1117" : "#ffffff",
-              color: dark ? "#c9d1d9" : "#1e293b",
+              backgroundColor: isDark ? "#0d1117" : "#ffffff",
+              color: isDark ? "#c9d1d9" : "#1e293b",
               outline: "none"
             }}
           />
@@ -453,10 +456,10 @@ const JsonViewer: React.FC<JsonViewerProps> = ({
             padding: "5px 10px",
             fontSize: 11,
             fontWeight: 500,
-            border: `1px solid ${dark ? "#30363d" : "#cbd5e1"}`,
+            border: `1px solid ${isDark ? "#30363d" : "#cbd5e1"}`,
             borderRadius: 6,
-            backgroundColor: dark ? "#21262d" : "#f8fafc",
-            color: dark ? "#c9d1d9" : "#475569",
+            backgroundColor: isDark ? "#21262d" : "#f8fafc",
+            color: isDark ? "#c9d1d9" : "#475569",
             cursor: "pointer",
             whiteSpace: "nowrap"
           }}
@@ -502,7 +505,7 @@ const JsonViewer: React.FC<JsonViewerProps> = ({
       <div
         style={{
           padding: "6px 12px",
-          borderTop: `1px solid ${dark ? "#21262d" : "#e2e8f0"}`,
+          borderTop: `1px solid ${isDark ? "#21262d" : "#e2e8f0"}`,
           fontSize: 10.5,
           color: palette.muted
         }}

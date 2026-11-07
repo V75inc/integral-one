@@ -84,6 +84,10 @@ export function requireOperationOutput(result: AppOperationInvokeResponse): AppO
 export type ExtensionNavigationTarget = { kind: 'app' | 'track' | 'entry' | 'dashboard'; id: string };
 
 export const extensionsApi = {
+  async listOperations(appId: string): Promise<{ operations: Array<{ key: string; allowed?: boolean }> }> {
+    const { data } = await apiClient.get(`/extensions/${appId}/operations`);
+    return data;
+  },
   async resolveNavigation(appId: string, target: ExtensionNavigationTarget): Promise<{ path: string }> {
     const { data } = await apiClient.post(`/extensions/${appId}/navigate`, target);
     return data;

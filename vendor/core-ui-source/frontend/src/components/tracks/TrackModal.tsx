@@ -6,6 +6,7 @@ import { Plus, Upload } from 'lucide-react';
 import type { VisibilityChoice } from '../ui';
 import { Input, Textarea, Surface, Text } from '../../ui';
 import { ImportPackageModal } from '../library/ImportPackageModal';
+import { ResourceTransferDialog } from '../portability/ResourceTransferDialog';
 import { filterWorkspaceVisibleLibraryPackages } from '../apps/appBundleMatching';
 import { getManifestScopeKind } from '../../lib/operationalModelManifest';
 import { FormDialog, StepDialog } from '../../templates';
@@ -43,6 +44,7 @@ interface TrackModalProps {
   open: boolean;
   onClose(): void;
   onCreated(track: Track): void | Promise<void>;
+  onImported?(): void;
   editTrack?: Track | null;
   /** When creating from an App, locks placement to that App. */
   appId?: string;
@@ -52,6 +54,7 @@ export function TrackModal({
   open,
   onClose,
   onCreated,
+  onImported,
   editTrack,
   appId,
 }: TrackModalProps) {
@@ -77,6 +80,7 @@ export function TrackModal({
   const [operationalModelChoice, setOperationalModelChoice] = useState('');
   const [chosenParentAppId, setChosenParentAppId] = useState(appId || '');
   const [importOpen, setImportOpen] = useState(false);
+  const [transferOpen, setTransferOpen] = useState(false);
   const [detailId, setDetailId] = useState<string | null>(null);
   const detailProfile = libraryPackages.find(profile => profile.id === detailId);
   const [libraryRevision, setLibraryRevision] = useState(0);
@@ -129,6 +133,7 @@ export function TrackModal({
     if (open) {
       setStep('profile');
       setImportOpen(false);
+      setTransferOpen(false);
       setDetailId(null);
       setOperationalModelChoice('');
       setChosenParentAppId(appId || '');
@@ -409,6 +414,7 @@ export function TrackModal({
                 {scope?.workspaceId && <Button variant="outline" size="sm"
                   icon={<Upload size={16} strokeWidth={LINE_ICON_STROKE} />}
                   onClick={() => setImportOpen(true)}>Import template</Button>}
+                {scope?.workspaceId && <Button variant="outline" size="sm" onClick={() => setTransferOpen(true)}>Import / export Tracks</Button>}
               </div>
               {libraryError && <div role="alert" className="space-y-2">
                 <Text variant="body-sm" tone="danger">{libraryError}</Text>
@@ -480,6 +486,7 @@ export function TrackModal({
         </Modal.Footer>
       </>}
     </StepDialog>
+    {scope?.workspaceId && <ResourceTransferDialog key={`transfer:${scope.workspaceId}:${destinationAppId}`} open={open && transferOpen} workspaceId={scope.workspaceId} kind="track" appId={destinationKind === 'app' ? destinationAppId : undefined} onClose={() => setTransferOpen(false)} onImported={() => { void invalidateWorkspaceListCaches(queryClient); void queryClient.invalidateQueries({ queryKey: ['tracks'] }); onImported?.(); }} />}
     {scope?.workspaceId && <ImportPackageModal key={scope.workspaceId}
       open={open && importOpen} workspaceId={scope.workspaceId} expectedScope="track"
       onClose={() => setImportOpen(false)}

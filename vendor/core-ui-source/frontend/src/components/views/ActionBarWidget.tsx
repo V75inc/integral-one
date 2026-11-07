@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { useSerialPolling } from '../../hooks/useSerialPolling';
 import { ChevronDown } from 'lucide-react';
 import { Button } from '../ui/Button';
 import { Surface, Text } from '../../ui';
@@ -9,6 +10,7 @@ import { attachmentsApi } from '../../api/attachments';
 import { entriesApi, entryTypesApi } from '../../api';
 import { actionFileToFile, downloadActionFile, isActionFile } from '../../api/actionFiles';
 import { requestOpenCompanionChat } from '../../features/ai-chat/chatHandoff';
+import { useScopeOptional } from '../../context/ScopeContext';
 import { isVisible, type VisibleIf } from './regionConditions';
 import type { ViewWidgetProps } from './types';
 
@@ -69,6 +71,17 @@ export interface ActionBarButtonSpec {
    * system.
    */
   disabled_if?: VisibleIf;
+  /** Hides the button unless the host entry's field matches, e.g.
+   *  `{field: 'status', in: ['waiting_for_approval']}` so only the one next step
+   *  is offered. Absent `entryValues` never hides (fail-open, like disabled_if). */
+  visible_if?: VisibleIf;
+  /** Why the button is greyed out, shown on hover when ``disabled_if`` matches. */
+  disabled_reason?: string;
+  /** 'end' puts the button in the right-hand group with the actions that move
+   *  the record forward; the default 'start' keeps it on the left. */
+  placement?: 'start' | 'end';
+  /** Disabled, with an explanation, unless the viewer is a workspace owner or admin. */
+  requires_admin?: boolean;
 }
 
 interface ClientActionArgs {
@@ -197,15 +210,22 @@ function ActionBarDropdownButton({
 }
 
 export function ActionBarWidget({ view, entries }: ViewWidgetProps) {
+  const scope = useScopeOptional();
+  const viewerRole = scope?.activeWorkspace?.your_role;
+  // Unknown role never blocks (the server enforces admin-only actions regardless).
+  const viewerIsAdmin = viewerRole === undefined || viewerRole === 'owner' || viewerRole === 'admin';
   const confirm = useConfirm();
   const { showToast } = useToast();
   const [runningKey, setRunningKey] = useState<string | null>(null);
 
   const config = (view.config || {}) as Record<string, unknown>;
   const bindings = (config.__bindings || {}) as Record<string, unknown>;
-  const buttons = (bindings.buttons ?? config.buttons ?? []) as ActionBarButtonSpec[];
+  const allButtons = (bindings.buttons ?? config.buttons ?? []) as ActionBarButtonSpec[];
   const entryId = typeof bindings.entryId === 'string' ? bindings.entryId : undefined;
   const entryValues = bindings.entryValues as Record<string, unknown> | undefined;
+  const buttons = allButtons.filter(
+    b => !b.visible_if || !entryValues || isVisible(b.visible_if, entryValues)
+  );
   // Bumps RelatedViewsSection's shared refreshNonce (see that file's own
   // docstring) — a tool call is a side effect entirely outside the normal
   // entry-mutation callbacks, so nothing else on the page would otherwise
@@ -214,6 +234,23 @@ export function ActionBarWidget({ view, entries }: ViewWidgetProps) {
     typeof bindings.onActionComplete === 'function'
       ? (bindings.onActionComplete as () => void)
       : undefined;
+  const onHostChanged =
+    typeof bindings.onHostChanged === 'function' ? (bindings.onHostChanged as () => void | Promise<void>) : undefined;
+  // While the record's field matches this (e.g. status is "finalizing"), keep reloading
+  // it so the buttons follow a change made by a background job.
+  const refreshWhile = bindings.refresh_while as VisibleIf | undefined;
+  const polling = !!refreshWhile && !!onHostChanged && isVisible(refreshWhile, entryValues);
+  const refreshInFlight = useRef(false);
+  const refreshHost = useCallback(async () => {
+    if (refreshInFlight.current) return;
+    refreshInFlight.current = true;
+    try {
+      await onHostChanged?.();
+    } finally {
+      refreshInFlight.current = false;
+    }
+  }, [onHostChanged]);
+  useSerialPolling(refreshHost, 4000, polling);
 
   if (!buttons.length) return null;
 
@@ -222,7 +259,8 @@ export function ActionBarWidget({ view, entries }: ViewWidgetProps) {
     // exactly backwards for a disabled check, which must default to
     // "no condition = never disabled" (false). Only defer to isVisible's
     // actual equality match once a disabled_if is actually present.
-    !!button.disabled_if && isVisible(button.disabled_if, entryValues);
+    (!!button.disabled_if && isVisible(button.disabled_if, entryValues)) ||
+    (!!button.requires_admin && !viewerIsAdmin);
 
   const run = async (button: ActionBarButtonSpec, extraInput?: Record<string, unknown>) => {
     if (isStatusDisabled(button)) return;
@@ -335,6 +373,7 @@ export function ActionBarWidget({ view, entries }: ViewWidgetProps) {
       const summary = typeof output.summary === 'string' ? output.summary.trim().slice(0, 500) : '';
       showToast(summary || `${button.label} complete`, 'success');
       onActionComplete?.();
+      onHostChanged?.();
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Action failed';
       showToast(message, 'error');
@@ -347,14 +386,22 @@ export function ActionBarWidget({ view, entries }: ViewWidgetProps) {
   // side from everything else, matching the normal UI convention of
   // keeping destructive actions visually separated from the primary
   // workflow instead of bunched in with them in declaration order.
-  const mainButtons = buttons.filter(b => b.style !== 'danger');
-  const dangerButtons = buttons.filter(b => b.style === 'danger');
+  const mainButtons = buttons.filter(b => b.style !== 'danger' && b.placement !== 'end');
+  // Right-hand group: actions that move the record forward, then destructive ones.
+  const dangerButtons = [
+    ...buttons.filter(b => b.style !== 'danger' && b.placement === 'end'),
+    ...buttons.filter(b => b.style === 'danger'),
+  ];
 
   const renderButton = (button: ActionBarButtonSpec) => {
     const statusDisabled = isStatusDisabled(button);
     const disabled = statusDisabled || (runningKey !== null && runningKey !== button.key);
     const title = statusDisabled
-      ? button.confirm_message || `"${button.label}" is disabled for this record's current status.`
+      ? button.requires_admin && !viewerIsAdmin
+        ? 'Only workspace admins can do this.'
+        : button.disabled_reason ||
+          button.confirm_message ||
+          `"${button.label}" is disabled for this record's current status.`
       : undefined;
     if (button.options?.length) {
       return (
@@ -387,7 +434,7 @@ export function ActionBarWidget({ view, entries }: ViewWidgetProps) {
     <div className="flex flex-wrap items-center justify-between gap-2 py-2" data-testid="action-bar-widget">
       <div className="flex flex-wrap items-center gap-2">{mainButtons.map(renderButton)}</div>
       {dangerButtons.length > 0 && (
-        <div className="flex flex-wrap items-center gap-2">{dangerButtons.map(renderButton)}</div>
+        <div className="ml-auto flex flex-wrap items-center gap-2">{dangerButtons.map(renderButton)}</div>
       )}
     </div>
   );

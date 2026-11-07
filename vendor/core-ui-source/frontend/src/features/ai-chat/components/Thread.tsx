@@ -1,3 +1,4 @@
+import { RoutineRunLink } from './RoutineRunLink';
 import { CollapsibleUserMessage } from './CollapsibleUserMessage';
 import { ConversationModelPicker } from './ConversationModelPicker';
 import { ExpandableChatError } from "./ExpandableChatError";
@@ -51,6 +52,7 @@ import type { PartState } from "@assistant-ui/react";
 import { useScope } from "../../../context/ScopeContext";
 import { getComposerAccessory } from "../../../host/registry";
 import { sanitizeMarkdownHref } from "../../../utils/safeHref";
+import { IntegralMarkdownLink } from "../../../components/ui/IntegralMarkdownLink";
 import { useChatActivity } from "../AIChatSurface";
 import { THREAD_ALREADY_RESPONDING } from "../threadSessionRegistry";
 import { PromptSheetHost } from "../prompt-sheet/PromptSheet";
@@ -399,6 +401,9 @@ export function latestActiveTool(parts: readonly {
  * activity and the steps. A manual expansion survives completion.
  */
 export function WorkTrail({ children }: { children: ReactNode }) {
+  const humanRevision = useAuiState((s) =>
+    (s.message.metadata?.custom as { interactPayload?: { origin?: string } } | undefined)?.interactPayload?.origin === 'human_proposal_revision',
+  );
   const running = useAuiState((s) => s.message.status?.type === "running");
   const interruptedReason = useAuiState((s) =>
     s.message.status?.type === "incomplete" ? s.message.status.reason : undefined,
@@ -429,6 +434,9 @@ export function WorkTrail({ children }: { children: ReactNode }) {
     }),
   );
   const [open, setOpen] = useState(false);
+
+  // A host-saved human edit is an audit artifact, not a model/tool round.
+  if (humanRevision) return null;
 
   const live = liveWorkSynopsis(
     activityText ?? statusLabel,
@@ -500,24 +508,8 @@ const assistantMessageGroupBy = (part: PartState) => {
 // routine_task_scheduler.py). Badge them distinctly so a proactive run
 // doesn't read as something the user asked for in this session.
 function RoutineRunBadge() {
-  const origin = useAuiState(
-    (s) =>
-      (
-        s.message.metadata?.custom as {
-          interactPayload?: { origin?: string };
-        }
-      )?.interactPayload?.origin,
-  );
-  if (origin !== "routine_task") return null;
-  return (
-    <div
-      data-slot="aui_routine-run-badge"
-      className="mb-1 inline-flex items-center gap-1 rounded-full bg-[var(--surface-2)] px-2 py-0.5 text-[11px] font-medium text-[var(--text-muted)]"
-    >
-      <span aria-hidden="true">{"🕐"}</span>
-      Scheduled routine
-    </div>
-  );
+  const metadata = useAuiState(s => s.message.metadata?.custom);
+  return <RoutineRunLink metadata={metadata} />;
 }
 
 function AssistantMessage() {
@@ -702,10 +694,8 @@ export function SourceView({ part }: { part: { url?: string; title?: string } })
     );
   }
   return (
-    <a
+    <IntegralMarkdownLink
       href={href}
-      target="_blank"
-      rel="noopener noreferrer"
       className="
         inline-flex items-center gap-1.5 rounded-[var(--radius-input)]
         border border-[var(--border-subtle)] bg-[var(--panel)]
@@ -715,7 +705,7 @@ export function SourceView({ part }: { part: { url?: string; title?: string } })
     >
       <ExternalLinkIcon size={12} />
       {label}
-    </a>
+    </IntegralMarkdownLink>
   );
 }
 

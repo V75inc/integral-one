@@ -5,9 +5,7 @@
  * ``useRetrieve`` hook (frontend/src/hooks/useRetrieve.ts), which is
  * mounted by the FeedFilterStrip + TrackFilterStrip strips on
  * FeedPage and TrackDetailPage. (The standalone RetrievalSearchBox
- * component was retired during the Phase 7 UX consolidation —
- * graph | semantic | hybrid mode now lives inline next to the
- * existing feed/track search inputs.)
+ * component was retired; Feed and Track use the mode in Search settings.)
  */
 
 import api from './client';
@@ -15,13 +13,13 @@ import type { Provenance } from '../types';
 
 // ── Wire types (mirror backend/app/schemas/retrieve.py) ────────────────
 
-export type RetrievalMode = 'graph' | 'semantic' | 'hybrid';
+export type RetrievalMode = 'graph' | 'lexical' | 'semantic' | 'hybrid';
 
 export interface RetrievalResult {
   entry_id: string;
   track_id: string;
   score: number;
-  mode_origin: Array<'graph' | 'semantic'>;
+  mode_origin: Array<'graph' | 'lexical' | 'semantic'>;
   provenance?: Provenance | null;
   snippet?: string | null;
 }
@@ -41,6 +39,7 @@ export interface RetrieveResponse {
   requested_mode: RetrievalMode;
   degraded: boolean;
   candidates_examined: number;
+  boundary?: { declared_query_required?: boolean } | null;
 }
 
 // ── Endpoint ──────────────────────────────────────────────

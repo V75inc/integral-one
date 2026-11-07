@@ -23,6 +23,7 @@ import {
   type PageSizeKey,
 } from './documentTheme';
 import { useToast } from '../../context/ToastContext';
+import { useConfirm } from '../../context/ConfirmContext';
 import { agentiveErrorMessage } from '../../api/helpers';
 import {
   formatFieldRefDisplay,
@@ -84,6 +85,7 @@ function syncTokenMetadata(
 }
 
 export function DocumentTemplateEditorPage() {
+  const confirm = useConfirm();
   const { workspaceId = '', templateId = '' } = useParams();
   const navigate = useNavigate();
   const qc = useQueryClient();
@@ -443,15 +445,10 @@ export function DocumentTemplateEditorPage() {
             <Button
               variant="danger"
               disabled={deleteM.isPending}
-              onClick={() => {
-                if (
-                  !window.confirm(
-                    `Delete “${tmpl?.name || 'this template'}”? This cannot be undone.`,
-                  )
-                ) {
-                  return;
+              onClick={async () => {
+                if (await confirm({ title: 'Delete template?', message: `Delete “${tmpl?.name || 'this template'}”? This cannot be undone.`, confirmLabel: 'Delete', variant: 'danger' })) {
+                  deleteM.mutate();
                 }
-                deleteM.mutate();
               }}
             >
               Delete

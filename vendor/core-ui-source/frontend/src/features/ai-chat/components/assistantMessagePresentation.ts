@@ -45,8 +45,9 @@ export function compactMessageDebugPayload(
  * arbitrary AI answers, saved history, or the original debug payload. */
 export function friendlyAssistantText(text: string): string {
   const legacy = "I couldn't verify a complete answer from the available results. I stopped further tool use for this turn. We can continue in this chat using the results already obtained.";
-  return text.trim() === legacy
-    ? "I ran into a problem and couldn't finish your request. Before trying again, check this chat for any changes awaiting your approval and review anything already saved. You can ask me to pick up where we left off."
+  const generic = "I ran into a problem and couldn't finish your request. Before trying again, check this chat for any changes awaiting your approval and review anything already saved. You can ask me to pick up where we left off.";
+  return text.trim() === legacy || text.trim() === generic
+    ? "I couldn't complete your request within this turn. Review the saved results and any changes awaiting approval in this chat before asking me to continue. A pending approval is not a saved change."
     : text;
 }
 

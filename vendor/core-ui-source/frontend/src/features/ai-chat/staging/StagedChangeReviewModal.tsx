@@ -1,16 +1,16 @@
 import { CheckIcon, Sparkles, X } from 'lucide-react';
-import { useEffect, useMemo } from 'react';
+import { useEffect } from 'react';
 import { Modal } from '../../../components/ui/Modal';
 import JsonViewer from '../../../components/ui/JsonViewer';
-import { MarkdownContent } from '../../../components/ui/MarkdownContent';
 import { Text } from '../../../ui';
 import { AppHomePreview } from '../../app-dashboards/AppHomePreview';
 import type { AppHome } from '../../../api/dashboards';
 import { diffBodyWithoutSummary } from './diffBodyWithoutSummary';
-import { operationInput, StagedOperationInputs } from './StagedOperationInputs';
+import { ApprovalRequestContent } from './ApprovalRequestContent';
 import type { StagedChange } from './types';
 import type { UseStagedChangeResult } from './useStagedChange';
 import './staging.css';
+import { EditEntryProposal } from './EditEntryProposal';
 
 /**
  * Room to actually read a staged change before approving it.
@@ -36,6 +36,7 @@ export interface StagedChangeReviewModalProps {
    * two renderings.
    */
   controls: UseStagedChangeResult;
+  onRevised?: (staged: StagedChange) => void;
 }
 
 export function StagedChangeReviewModal({
@@ -43,16 +44,10 @@ export function StagedChangeReviewModal({
   open,
   onClose,
   controls,
+  onRevised,
 }: StagedChangeReviewModalProps) {
   const { status, error, isBlessed, isTerminal, bless, revoke } = controls;
   const busy = status.kind === 'loading';
-  const diffBody = useMemo(
-    () => diffBodyWithoutSummary(staged.summary, staged.diff_human),
-    [staged.summary, staged.diff_human],
-  );
-  const input = operationInput(staged);
-  const review = staged.diff_machine?.review as { description?: unknown } | undefined;
-  const description = typeof review?.description === 'string' ? review.description : null;
 
   // Close once the change is settled — leaving a modal open over a change that
   // no longer exists invites a second click on a dead button.
@@ -65,35 +60,11 @@ export function StagedChangeReviewModal({
       open={open}
       onClose={onClose}
       titleIcon={<Sparkles size={14} aria-hidden />}
-      title={
-        <span className="min-w-0 break-words">{staged.summary}</span>
-      }
+      title={isBlessed ? 'This change needs attention' : 'Allow this change?'}
     >
       <Modal.Body>
         <div className="flex flex-col gap-4">
-          <div>
-            <Text variant="meta" tone="subtle" as="p" className="mb-1 block uppercase tracking-[0.08em]">
-              Change
-            </Text>
-            <div className="staged-review-diff text-sm">
-              {input ? (
-                <div className="flex min-w-0 flex-col gap-4">
-                  {description !== null ? (
-                    description ? <Text variant="body-sm" as="p" className="whitespace-pre-wrap">{description}</Text> : null
-                  ) : (
-                    <MarkdownContent mutedBody={false}>{diffBody.split('```json')[0].trim()}</MarkdownContent>
-                  )}
-                  <StagedOperationInputs staged={staged} onNavigate={onClose} />
-                </div>
-              ) : diffBody ? (
-                <MarkdownContent mutedBody={false}>{diffBody}</MarkdownContent>
-              ) : (
-                <Text variant="meta" tone="muted">
-                  No additional change detail beyond the title.
-                </Text>
-              )}
-            </div>
-          </div>
+          <ApprovalRequestContent staged={staged} onNavigate={onClose} />
 
           {staged.kind === 'update_app' && typeof staged.diff_machine?.app_id === 'string' && staged.diff_machine.home && typeof staged.diff_machine.home === 'object' ? <AppHomePreview appId={staged.diff_machine.app_id} home={staged.diff_machine.home as AppHome} /> : null}
           <details>
@@ -119,6 +90,7 @@ export function StagedChangeReviewModal({
       <Modal.Footer>
         {status.state === 'pending' ? (
           <div className="flex w-full flex-wrap items-center gap-2">
+            {staged.can_edit_entries ? <EditEntryProposal token={staged.token} disabled={busy} onRevised={onRevised} /> : null}
             <button
               type="button"
               onClick={() => void bless()}

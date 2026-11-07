@@ -147,6 +147,24 @@ describe('useAgentInbox — degraded rather than blank', () => {
 });
 
 describe('useAgentInbox — staying in sync', () => {
+  it('coalesces a burst of graph events and still refreshes the inbox', async () => {
+    const { result } = renderHook(() => useAgentInbox(), { wrapper });
+    await waitFor(() => expect(agentive.listPendingStagedChanges).toHaveBeenCalledTimes(1));
+    vi.mocked(agentive.listPendingStagedChanges).mockResolvedValue([stagedChange('new')] as never);
+    act(() => {
+      for (let i = 0; i < 40; i += 1) window.dispatchEvent(new Event('integral:graph-changed'));
+    });
+    await waitFor(() => expect(result.current.actionableCount).toBe(1));
+    expect(agentive.listPendingStagedChanges).toHaveBeenCalledTimes(2);
+  });
+
+  it('catches up on proposals missed while disconnected', async () => {
+    const { result } = renderHook(() => useAgentInbox(), { wrapper });
+    await waitFor(() => expect(agentive.listPendingStagedChanges).toHaveBeenCalledTimes(1));
+    vi.mocked(agentive.listPendingStagedChanges).mockResolvedValue([stagedChange('missed')] as never);
+    act(() => window.dispatchEvent(new Event('integral:agent-events-reconnected')));
+    await waitFor(() => expect(result.current.actionableCount).toBe(1));
+  });
   it('refetches when a staged change is resolved on another surface', async () => {
     vi.mocked(agentive.listPendingStagedChanges).mockResolvedValue([
       stagedChange('tok-1'),

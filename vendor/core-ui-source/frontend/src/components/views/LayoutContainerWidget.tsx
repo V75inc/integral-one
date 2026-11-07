@@ -3,6 +3,7 @@ import * as Collapsible from '@radix-ui/react-collapsible';
 import { ChevronDown } from 'lucide-react';
 import { ComposableViewSlot } from './ComposableViewSlot';
 import { FormRegionWidget } from './FormRegionWidget';
+import { ExperienceMode } from '../entries/ExperienceMode';
 import { Surface, Text } from '../../ui';
 import {
   isVisible,
@@ -227,7 +228,13 @@ function regionAccentStyle(accent?: string): CSSProperties {
  * ``fields``/``title``/``columns`` as its config and the container's own
  * bindings forwarded through.
  */
-export function LayoutContainerWidget({ view, entries, isLoading, onEntryOpen }: ViewWidgetProps) {
+export function LayoutContainerWidget(props: ViewWidgetProps) {
+  return props.view.config?.detail_modes === true
+    ? <ExperienceMode><LayoutContainerContent {...props} /></ExperienceMode>
+    : <LayoutContainerContent {...props} />;
+}
+
+function LayoutContainerContent({ view, entries, isLoading, onEntryOpen }: ViewWidgetProps) {
   const config = (view.config || {}) as Record<string, unknown>;
   const bindings = (config.__bindings || {}) as Record<string, unknown>;
   const allRegions = (Array.isArray(config.regions) ? config.regions : []) as RegionSpec[];

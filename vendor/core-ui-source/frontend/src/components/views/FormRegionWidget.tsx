@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState, type CSSProperties } from 'react';
 import { useContributionLifecycle } from '../entries/contributionLifecycle';
 import { SeamlessField } from '../entries/SeamlessField';
 import type { RelationChoice } from '../entries/EntryFormExpanded';
@@ -171,6 +171,7 @@ export function FormRegionWidget({ view, entries, isLoading }: ViewWidgetProps) 
     (async () => {
       try {
         const allTracks = await tracksApi.list();
+        const sourceAppId = lifecycle?.appId || allTracks.find(t => t.id === view.track_id)?.app?.id;
         const choicesByField: Record<string, RelationChoice[]> = {};
         await Promise.all(
           relationFields.map(async relField => {
@@ -184,6 +185,7 @@ export function FormRegionWidget({ view, entries, isLoading }: ViewWidgetProps) 
             );
             const candidateTracks = allowCrossTrack
               ? allTracks.filter(t => {
+                  if (sourceAppId && !relation.allow_cross_app && t.app?.id !== sourceAppId) return false;
                   if (!targetTrackTypes.size) return true;
                   const typeKey = slug(String(t.template_id || t.relation_type_key || t.title));
                   return targetTrackTypes.has(typeKey);
@@ -230,7 +232,7 @@ export function FormRegionWidget({ view, entries, isLoading }: ViewWidgetProps) 
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [relationFieldsFetchSig, view.track_id]);
+  }, [relationFieldsFetchSig, view.track_id, lifecycle?.appId]);
 
   // Target entry resolution — the record the fields actually read from /
   // write to. Independent of `entries` prop trust: fetched directly for
@@ -545,8 +547,8 @@ export function FormRegionWidget({ view, entries, isLoading }: ViewWidgetProps) 
         <Text as="h3" variant="heading-sm" className="mb-3">{title}</Text>
       )}
       <div
-        className="grid gap-3"
-        style={{ gridTemplateColumns: `repeat(${Math.max(1, columns)}, minmax(0, 1fr))` }}
+        className="grid grid-cols-1 gap-3 sm:grid-cols-[repeat(var(--form-columns),minmax(0,1fr))]"
+        style={{ '--form-columns': Math.max(1, columns) } as CSSProperties}
       >
         {visibleFields.map(field => {
           const detailEditable = editableInDetailKeys.has(field.key);

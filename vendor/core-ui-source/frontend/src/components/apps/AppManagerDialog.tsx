@@ -3,7 +3,7 @@
  */
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
-import { Check, ExternalLink } from 'lucide-react';
+import { ArrowDownUp, Check, ExternalLink, RefreshCw, Upload } from 'lucide-react';
 import { Modal } from '../ui/Modal';
 import { Button } from '../ui';
 import { AppIcon, Surface, Text } from '../../ui';
@@ -33,6 +33,7 @@ import { useAuth } from '../../context/AuthContext';
 import { useConfirm } from '../../context/ConfirmContext';
 import { useScope } from '../../context/ScopeContext';
 import { ImportPackageModal } from '../library/ImportPackageModal';
+import { ResourceTransferDialog } from '../portability/ResourceTransferDialog';
 import { usePlatformAdmin } from '../../hooks/usePlatformAdmin';
 import { useToast } from '../../context/ToastContext';
 import { isSamePrincipal } from '../../utils';
@@ -78,6 +79,7 @@ export function AppManagerDialog({
   const { user } = useAuth();
   const isPlatformAdmin = usePlatformAdmin();
   const [importOpen, setImportOpen] = useState(false);
+  const [transferOpen, setTransferOpen] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const { scope, workspaces } = useScope();
   const workspaceId = scope?.workspaceId;
@@ -478,8 +480,9 @@ export function AppManagerDialog({
           <AppManagerLibrary key={workspaceId}
             initialDetailId={initialDetailId}
             libraryActions={<div className="flex flex-wrap gap-2 py-3">
-              {workspaceId && <Button variant="outline" size="sm" disabled={submitting} onClick={() => setImportOpen(true)}>Import template</Button>}
-              {isPlatformAdmin && <Button variant="ghost" size="sm" disabled={submitting || refreshing} onClick={() => void refreshLibrary()}> {refreshing ? 'Refreshing…' : 'Refresh library'}</Button>}
+              {workspaceId && <Button variant="ghost" size="sm" icon={<Upload size={16} strokeWidth={LINE_STROKE} aria-hidden />} disabled={submitting} onClick={() => setImportOpen(true)}>Import template</Button>}
+              {workspaceId && <Button variant="ghost" size="sm" icon={<ArrowDownUp size={16} strokeWidth={LINE_STROKE} aria-hidden />} disabled={submitting} onClick={() => setTransferOpen(true)}>Import / export Apps</Button>}
+              {isPlatformAdmin && <Button variant="ghost" size="sm" icon={<RefreshCw size={16} strokeWidth={LINE_STROKE} aria-hidden />} disabled={submitting || refreshing} onClick={() => void refreshLibrary()}>{refreshing ? 'Refreshing…' : 'Refresh library'}</Button>}
             </div>}
             profiles={profiles} apps={apps} installedApps={apps.filter(app => app.lifecycle_state !== 'uninstalled')}
             selected={selectedInstall} loading={loading} submitting={submitting}
@@ -510,6 +513,8 @@ export function AppManagerDialog({
         )}
       </Modal>
       {workspaceId && <ImportPackageModal key={workspaceId} open={isOpen && importOpen} workspaceId={workspaceId} onClose={() => setImportOpen(false)} onSuccess={() => { setImportOpen(false); setLibraryRevision(value => value + 1); }} />}
+
+      {workspaceId && <ResourceTransferDialog key={`transfer:${workspaceId}`} open={isOpen && transferOpen} workspaceId={workspaceId} kind="app" onClose={() => setTransferOpen(false)} onImported={() => onChanged?.()} />}
 
       {uninstallTarget ? (
         <AppUninstallModal

@@ -2,6 +2,7 @@ import {
   createContext,
   useCallback,
   useContext,
+  useLayoutEffect,
   useRef,
   useState,
   type ReactNode,
@@ -30,6 +31,7 @@ export function ConfirmProvider({ children }: { children: ReactNode }) {
   const [open, setOpen] = useState(false);
   const [options, setOptions] = useState<ConfirmOptions | null>(null);
   const resolveRef = useRef<((value: boolean) => void) | null>(null);
+  const mountedRef = useRef(true);
 
   const finalize = useCallback((result: boolean) => {
     const resolve = resolveRef.current;
@@ -40,8 +42,22 @@ export function ConfirmProvider({ children }: { children: ReactNode }) {
     resolve(result);
   }, []);
 
+  // Unmounting the session-owned UI cancels the pending action. Never leave
+  // an awaiting destructive handler alive across sign-out or account changes.
+  useLayoutEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      const resolve = resolveRef.current;
+      resolveRef.current = null;
+      resolve?.(false);
+    };
+  }, []);
+
   const confirm = useCallback<ConfirmFn>(opts => {
+    if (!mountedRef.current) return Promise.resolve(false);
     return new Promise<boolean>(resolve => {
+      resolveRef.current?.(false);
       resolveRef.current = resolve;
       setOptions(opts);
       setOpen(true);

@@ -14,7 +14,9 @@ function isObject(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
 
-export function operationInput(staged: StagedChange): Record<string, unknown> | null {
+type OperationReview = Pick<StagedChange, 'kind' | 'summary' | 'diff_machine'>;
+
+export function operationInput(staged: OperationReview): Record<string, unknown> | null {
   const machine = staged.diff_machine;
   const supported = staged.kind === 'invoke_app_operation' || staged.kind === 'call_workspace_tool';
   return supported && machine?.op === staged.kind && isObject(machine.input)
@@ -30,9 +32,31 @@ function fieldLabel(key: string, labels?: InputLabels): string {
 
 /** Literal, read-only projection of the bound operation or workspace tool input; never parse narrated JSON. */
 export function StagedOperationInputs({ staged, onNavigate }: {
-  staged: StagedChange;
+  staged: OperationReview;
   onNavigate?: () => void;
 }) {
+  if (staged.kind === 'batch' && Array.isArray(staged.diff_machine?.operations)) {
+    const children = staged.diff_machine.operations.flatMap((operation, index) => {
+      if (!isObject(operation)) return [];
+      const child = {
+        ...staged, position: index + 1,
+        kind: String(operation.kind ?? ''),
+        summary: String(operation.summary ?? ''),
+        diff_machine: isObject(operation.diff_machine) ? operation.diff_machine : {},
+      };
+      return operationInput(child) !== null ? [child] : [];
+    });
+    if (!children.length) return null;
+    return <div className="flex min-w-0 flex-col gap-4">
+      {children.slice(0, 50).map(operation => <Surface key={operation.position} tone="panel-2" border="default" radius="input" className="min-w-0 p-3">
+        <Text variant="body-sm" as="p" className="mb-3">{operation.position}. {operation.summary}</Text>
+        <StagedOperationInputs staged={operation} onNavigate={onNavigate} />
+      </Surface>)}
+      {children.length > 50 ? <Text variant="meta" tone="muted" as="p">
+        Showing 50 of {children.length} command inputs. Inspect the complete input in Technical details before approving.
+      </Text> : null}
+    </div>;
+  }
   const input = operationInput(staged);
   if (!input) return null;
   const review = isObject(staged.diff_machine.review) ? staged.diff_machine.review : {};

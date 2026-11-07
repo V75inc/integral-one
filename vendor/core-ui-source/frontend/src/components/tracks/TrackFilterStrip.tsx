@@ -10,6 +10,7 @@ import {
 import { Filter, Search, X } from 'lucide-react';
 import { Button } from '../ui/Button';
 import { LINE_ICON_STROKE } from '../ui/IconWell';
+import { useLiveKeywordSearch } from '../../hooks/useLiveKeywordSearch';
 
 /**
  * TrackFilterStrip — search + filters cluster for the Track Detail
@@ -39,11 +40,13 @@ interface TrackFilterStripProps {
    *  retrieval (non-graph) mode. Renders the primary Search submit
    *  button and routes Enter through ``onRetrievalSearch``. */
   retrievalActive?: boolean;
+  liveKeywordSearch?: boolean;
   /** Submit handler invoked when the user presses Enter in the search
    *  input OR clicks the primary Search button. */
   onRetrievalSearch?: (query: string) => void;
   retrievalLoading?: boolean;
   retrievalError?: string | null;
+  retrievalDegraded?: string | null;
 }
 
 function filterTypeChipClass(active: boolean) {
@@ -67,10 +70,13 @@ export function TrackFilterStrip({
   search,
   setSearch,
   retrievalActive = false,
+  liveKeywordSearch = false,
   onRetrievalSearch,
   retrievalLoading = false,
   retrievalError = null,
+  retrievalDegraded = null,
 }: TrackFilterStripProps) {
+  const submitSearch = useLiveKeywordSearch(search, retrievalActive && liveKeywordSearch, onRetrievalSearch);
   const [popoverOpen, setPopoverOpen] = useState(false);
   const popoverRef = useRef<HTMLDivElement | null>(null);
   const filterButtonRef = useRef<HTMLButtonElement | null>(null);
@@ -142,7 +148,7 @@ export function TrackFilterStrip({
   const handleSearchKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter' && retrievalActive && onRetrievalSearch) {
       e.preventDefault();
-      onRetrievalSearch(search);
+      submitSearch(search);
     }
   };
 
@@ -191,7 +197,7 @@ export function TrackFilterStrip({
             variant="primary"
             size="md"
             loading={retrievalLoading}
-            onClick={() => onRetrievalSearch(search)}
+            onClick={() => submitSearch(search)}
             disabled={!search.trim()}
             aria-label={retrievalLoading ? 'Searching' : 'Search'}
             className="shrink-0 self-stretch !px-3 !py-0"
@@ -321,6 +327,11 @@ export function TrackFilterStrip({
 
       {/* Retrieval error envelope — rendered beneath the strip so the
           failure surfaces at the search site instead of as a toast. */}
+      {retrievalDegraded && !retrievalError ? (
+        <p role="status" className="text-xs text-[var(--text-muted)]">
+          {retrievalDegraded}
+        </p>
+      ) : null}
       {retrievalError ? (
         <div
           role="alert"

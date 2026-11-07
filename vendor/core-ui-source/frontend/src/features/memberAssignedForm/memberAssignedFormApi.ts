@@ -1,5 +1,6 @@
 import apiClient from '../../api/client';
 import { normalizeAttachment } from '../../api/attachments';
+import { imageExceedsUploadLimit, ImageUploadSizeError } from '../../utils/imageUploadLimits';
 import type {
   PublicOnboardingPolicy,
   PublicSharedEntry,
@@ -136,6 +137,7 @@ export const memberAssignedFormApi = {
     filename?: string;
     mime_type?: string;
   }> {
+    if (imageExceedsUploadLimit(file)) throw new ImageUploadSizeError();
     const form = new FormData();
     form.append('file', file);
     const params = new URLSearchParams();

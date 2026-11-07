@@ -1,5 +1,6 @@
 import type { Entry, Reaction, Tag, User } from '../types';
 import apiClient from './client';
+import { ImageUploadSizeError } from '../utils/imageUploadLimits';
 
 /** Normalize FastAPI / Pydantic ``detail`` (string, object, or array of error objects) for display. */
 export function formatApiErrorDetail(detail: unknown, fallback: string): string {
@@ -37,6 +38,7 @@ export function formatApiErrorDetail(detail: unknown, fallback: string): string 
  *  shape rather than a legacy Pydantic ``detail``, so callers still surface
  *  the real reason instead of the generic fallback string). */
 export function errorMessageFromAxios(err: unknown, fallback: string): string {
+  if (err instanceof ImageUploadSizeError) return err.message;
   const ax = err as { response?: { data?: { detail?: unknown; message?: unknown } } };
   const data = ax?.response?.data;
   if (data?.detail == null || data.detail === '') {

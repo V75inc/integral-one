@@ -4,10 +4,16 @@ import { friendlyAssistantText, friendlyChatFailure, friendlyToolFailure } from 
 describe("everyday chat wording", () => {
   it("updates only the exact retired host fallback", () => {
     const old = "I couldn't verify a complete answer from the available results. I stopped further tool use for this turn. We can continue in this chat using the results already obtained.";
-    expect(friendlyAssistantText(old)).toContain("couldn't finish your request");
+    expect(friendlyAssistantText(old)).toContain("couldn't complete your request");
     expect(friendlyAssistantText(old)).toContain("approval");
     expect(friendlyAssistantText("Quote: " + old)).toBe("Quote: " + old);
     expect(friendlyAssistantText("Your changes are ready for approval.")).toBe("Your changes are ready for approval.");
+  });
+  it("clarifies the generic saved fallback without inventing a failure cause", () => {
+    const old = "I ran into a problem and couldn't finish your request. Before trying again, check this chat for any changes awaiting your approval and review anything already saved. You can ask me to pick up where we left off.";
+    expect(friendlyAssistantText(old)).toContain("A pending approval is not a saved change");
+    expect(friendlyAssistantText(old)).not.toContain("track setup");
+    expect(friendlyAssistantText("Quote: " + old)).toBe("Quote: " + old);
   });
   it("uses fixed explanations for known failures without echoing private errors", () => {
     expect(friendlyToolFailure({ error_code: "invalid_arguments", message: "secret" })).toBe("I couldn't prepare this step correctly.");

@@ -31,6 +31,15 @@ function persist(snapshot: SettingsSnapshot) {
 }
 
 function mergeWithDefaults(partial: Partial<SettingsSnapshot>): SettingsSnapshot {
+  const savedMode = partial.retrieval?.mode;
+  // Earlier versions persisted the semantic default automatically, so a
+  // saved semantic value cannot be distinguished from an explicit choice.
+  // Move it to the new default once; subsequent choices remain unchanged.
+  const mode = ((partial.schemaVersion ?? 0) < 4 && savedMode === 'semantic') || (savedMode as string) === 'graph'
+    ? 'hybrid'
+    : savedMode === 'lexical' || savedMode === 'semantic' || savedMode === 'hybrid'
+      ? savedMode
+      : DEFAULT_SETTINGS.retrieval.mode;
   return {
     schemaVersion: DEFAULT_SETTINGS.schemaVersion,
     providers: {
@@ -46,6 +55,7 @@ function mergeWithDefaults(partial: Partial<SettingsSnapshot>): SettingsSnapshot
     retrieval: {
       ...DEFAULT_SETTINGS.retrieval,
       ...(partial.retrieval ?? {}),
+      mode,
     },
   };
 }

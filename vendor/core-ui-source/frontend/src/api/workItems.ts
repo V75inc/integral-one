@@ -17,6 +17,7 @@ export interface WorkItemStatusResponse {
   work_item_id: string;
   kind: string;
   operation?: string;
+  context_links?: Array<{ kind: 'app' | 'track' | 'entry'; id: string; label: string; href: string }>;
   status: WorkItemStatus;
   workspace_id: string;
   app_id: string;

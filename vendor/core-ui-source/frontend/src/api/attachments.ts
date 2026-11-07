@@ -1,6 +1,7 @@
 import type { AxiosProgressEvent } from 'axios';
 import apiClient from './client';
-import { toArr, unwrapResource } from './helpers';
+import { errorMessageFromAxios, toArr, unwrapResource } from './helpers';
+import { imageExceedsUploadLimit, ImageUploadSizeError } from '../utils/imageUploadLimits';
 
 /**
  * Phase 1 + 1.5 (Plan 03) shape.
@@ -114,6 +115,7 @@ export const attachmentsApi = {
     file: File,
     options: { onUploadProgress?: UploadProgressCallback; signal?: AbortSignal } = {}
   ): Promise<AttachmentRecord> => {
+    if (imageExceedsUploadLimit(file)) throw new ImageUploadSizeError();
     const form = new FormData();
     form.append('file', file);
     // Let the runtime set multipart boundary; overriding Content-Type
@@ -162,6 +164,21 @@ export const attachmentsApi = {
     files: File[],
     options: { onUploadProgress?: UploadProgressCallback; signal?: AbortSignal } = {}
   ): Promise<AttachmentBatchResult> => {
+    const oversized = files.map(imageExceedsUploadLimit);
+    if (oversized.some(Boolean)) {
+      const eligible = files.filter((_, index) => !oversized[index]);
+      const accepted = eligible.length
+        ? await attachmentsApi.batchUploadForEntry(entryId, eligible, options)
+        : { results: [] };
+      let next = 0;
+      const results: AttachmentBatchResult['results'] = files.map((file, index) =>
+        oversized[index]
+          ? { error: new ImageUploadSizeError().message, filename: file.name }
+          : accepted.results[next++] ?? { error: 'Upload failed', filename: file.name }
+      );
+      const failed = results.filter(result => 'error' in result).length;
+      return { results, summary: { total: files.length, succeeded: files.length - failed, failed } };
+    }
     const form = new FormData();
     files.forEach((file) => form.append('files', file));
     const { data } = await apiClient.post(
@@ -308,6 +325,7 @@ export const attachmentsApi = {
       signal?: AbortSignal;
     } = {}
   ): Promise<AttachmentRecord> => {
+    if (imageExceedsUploadLimit(file)) throw new ImageUploadSizeError();
     const chunkSize = options.chunkSize ?? 8 * 1024 * 1024; // 8 MiB default
 
     // Init session
@@ -415,7 +433,7 @@ export const attachmentsApi = {
           };
         } catch (e) {
           results[i] = {
-            error: e instanceof Error ? e.message : 'Upload failed',
+            error: errorMessageFromAxios(e, 'Upload failed'),
             filename: files[i].name,
           };
         }

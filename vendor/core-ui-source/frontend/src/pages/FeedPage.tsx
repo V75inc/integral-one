@@ -14,6 +14,7 @@ import { notifyApiFailure } from '../components/system';
 import { EntryCard } from '../components/entries/EntryCard';
 import { EntryComposer } from '../components/entries/EntryComposer';
 import { EntryDetail } from '../components/entries/EntryDetail';
+import { RecordReadBoundaryNotice } from '../components/entries/RecordReadBoundaryNotice';
 import { FeedFilterStrip } from '../components/feed/FeedFilterStrip';
 import { useRetrieve } from '../hooks/useRetrieve';
 import { useSearchResultEntries } from '../hooks/useSearchResultEntries';
@@ -101,20 +102,24 @@ export function FeedPage() {
   const [feedSearch, setFeedSearch] = useState('');
   const { setPageContext, clearPageContext } = useChatPageFocus();
 
-  // Retrieval — Feed search is GLOBAL: even when the page is filtered
-  // to a specific space, the search itself spans the entire workspace
-  // so the user surfaces matches regardless of which app they're
-  // currently viewing. Track-detail search is app-/track-scoped (see
-  // TrackDetailPage). Mode is read from global Settings (Settings →
-  // Search → Mode); ``semantic`` is the v1.1 default.
+  // Apply the selected App/Track before retrieval ranks and caps candidates.
+  // Filtering a workspace-wide top-N afterwards can hide genuine scoped hits.
   const {
     mode: retrievalMode,
     results: retrievalResults,
+    submittedQuery: retrievalQuery,
     loading: retrievalLoading,
     error: retrievalError,
+    degraded: retrievalDegraded,
+    appQueryRequired: retrievalAppQueryRequired,
     run: runRetrieval,
     reset: resetRetrieval,
-  } = useRetrieve({ scope: undefined, authorityKey: `${workspaceId}:${user?.id}` });
+  } = useRetrieve({
+    scope: filterTrack
+      ? `track:${filterTrack}`
+      : appIdFromQuery ? `app:${appIdFromQuery}` : undefined,
+    authorityKey: `${workspaceId}:${user?.id}`,
+  });
 
   // URL-write helpers for the tag/author filters. Toggling matches the
   // existing pattern (click the active filter again → clear).
@@ -222,7 +227,7 @@ export function FeedPage() {
   );
 
   const semanticMode =
-    retrievalMode === 'semantic' || retrievalMode === 'hybrid';
+    retrievalMode === 'semantic' || retrievalMode === 'hybrid' || retrievalMode === 'lexical';
   const retrievalIdOrder = useMemo(
     () => retrievalResults.map(r => r.entry_id),
     [retrievalResults]
@@ -278,6 +283,9 @@ export function FeedPage() {
   useOpenEntryModalRefetch(openModalEntryId, handleOpenEntryRefetched);
 
   const hasCachedFeedPages = Boolean(feedData?.pages?.length);
+  const appQueryRequired = retrievalAppQueryRequired
+    || Boolean(matchedPage?.appQueryRequired)
+    || Boolean(feedData?.pages.some(page => page.appQueryRequired));
   const isInitialFeedLoading = feedLoading && !hasCachedFeedPages;
   // Infinite scrolling avoids an audience-wide count before showing a page.
   // Older endpoints may still supply an exact total.
@@ -319,7 +327,7 @@ export function FeedPage() {
   // search behavior.
   const entries = useMemo(() => {
     let list: Entry[];
-    if (semanticMode && retrievalResults.length > 0) {
+    if (semanticMode && retrievalQuery) {
       // Index by id to preserve ranker order.
       const byId = new Map(allEntries.map(e => [e.id, e]));
       list = retrievalIdOrder
@@ -337,29 +345,6 @@ export function FeedPage() {
     if (filterAuthor) {
       list = list.filter(e => e.author_id === filterAuthor);
     }
-    const useInMemorySearch =
-      !semanticMode ||
-      Boolean(retrievalError) ||
-      (semanticMode &&
-        retrievalResults.length === 0 &&
-        feedSearch.trim().length > 0);
-    if (useInMemorySearch) {
-      const q = feedSearch.trim().toLowerCase();
-      if (q) {
-        list = list.filter(e => {
-          const title = (e.title || '').toLowerCase();
-          const body = (e.body || '').toLowerCase();
-          const type = (e.type || '').toLowerCase();
-          const trackTitle = (e.track?.title || '').toLowerCase();
-          return (
-            title.includes(q) ||
-            body.includes(q) ||
-            type.includes(q) ||
-            trackTitle.includes(q)
-          );
-        });
-      }
-    }
     return list;
   }, [
     allEntries,
@@ -367,6 +352,7 @@ export function FeedPage() {
     filterTags,
     filterAuthor,
     feedSearch,
+    retrievalQuery,
     semanticMode,
     retrievalError,
     retrievalIdOrder,
@@ -448,7 +434,7 @@ export function FeedPage() {
           hasNextPage &&
           !isFetchingNextPage &&
           !isFetchNextPageError &&
-          !(semanticMode && feedSearch.trim())
+          !(semanticMode && retrievalQuery)
         ) {
           fetchNextPage();
         }
@@ -462,7 +448,7 @@ export function FeedPage() {
     // it (and vice versa) — without this, the observer is permanently
     // attached to a stale (or null) node and infinite scroll dies in
     // semantic mode where the initial render is often empty.
-  }, [hasNextPage, isFetchingNextPage, isFetchNextPageError, fetchNextPage, entries.length, semanticMode, feedSearch]);
+  }, [hasNextPage, isFetchingNextPage, isFetchNextPageError, fetchNextPage, entries.length, semanticMode, retrievalQuery]);
 
   const invalidateFeedEntries = useCallback(() => {
     // Invalidate the entire ['feed'] prefix so Mission Control's
@@ -677,9 +663,9 @@ export function FeedPage() {
             {/* Shared metadata scale, with separators that wrap alongside the facts. */}
             <PageMeta>
               <span>
-                {totalEntryCount ?? entries.length}{' '}
-                {(totalEntryCount ?? entries.length) === 1 ? 'entry' : 'entries'}
-                {totalEntryCount === undefined && hasNextPage ? ' loaded' : ''}
+                {appQueryRequired ? entries.length : totalEntryCount ?? entries.length}{' '}
+                {(appQueryRequired ? entries.length : totalEntryCount ?? entries.length) === 1 ? 'entry' : 'entries'}
+                {appQueryRequired ? ' shown' : totalEntryCount === undefined && hasNextPage ? ' loaded' : ''}
               </span>
               {entries[0]?.created_at ? (
                 <>
@@ -747,9 +733,13 @@ export function FeedPage() {
                 setFilterAuthor={setFilterAuthor}
                 onClearAll={clearAllFilters}
                 retrievalActive={retrievalMode !== 'graph'}
+                liveKeywordSearch={retrievalMode === 'lexical'}
                 onRetrievalSearch={runRetrieval}
                 retrievalLoading={retrievalLoading}
                 retrievalError={retrievalError}
+                retrievalDegraded={retrievalDegraded ? (retrievalMode === 'lexical'
+                  ? 'The search index is unavailable. Showing limited keyword results.'
+                  : 'Meaning-based search is unavailable. Showing keyword results.') : null}
               />
             </div>
             {creatableTracks.length > 0 ? (
@@ -761,13 +751,24 @@ export function FeedPage() {
             ) : null}
           </FilterActionRow>
 
+          {!isInitialFeedLoading && !retrievalLoading && appQueryRequired ? (
+            <>
+              <RecordReadBoundaryNotice appId={appIdFromQuery || undefined} searching={Boolean(retrievalQuery)} />
+              {entries.length === 0 && hasNextPage && !retrievalQuery ? (
+                <Button variant="ghost" size="sm" loading={isFetchingNextPage} onClick={() => { void fetchNextPage(); }}>
+                  Load more entries
+                </Button>
+              ) : null}
+            </>
+          ) : null}
+
           {isInitialFeedLoading || retrievalLoading || (retrievalResults.length > 0 && matchesLoading && entries.length === 0) ? (
             <div className="mt-8 space-y-10">
               {[1, 2, 3, 4].map(i => (
                 <CardSkeleton key={i} />
               ))}
             </div>
-          ) : entries.length === 0 ? (
+          ) : entries.length === 0 && appQueryRequired ? null : entries.length === 0 ? (
             <div className="mt-12">
               <EmptyState
                 surface="card"
@@ -777,15 +778,15 @@ export function FeedPage() {
                   </IconWell>
                 }
                 title={
-                  semanticMode && feedSearch.trim()
+                  semanticMode && retrievalQuery
                     ? 'No matches'
                     : feedSearch.trim() && allEntries.length
                       ? 'No matching entries'
                       : 'Nothing here yet'
                 }
                 description={
-                  semanticMode && feedSearch.trim()
-                    ? `No entries matched "${feedSearch.trim()}". Try different words, or change the search mode in Settings → Search.`
+                  semanticMode && retrievalQuery
+                    ? `No entries matched "${retrievalQuery}". Try different words, or change the search mode in Settings → Search.`
                     : feedSearch.trim() && allEntries.length
                       ? 'Try different words or clear the search box.'
                       : tracks.length === 0

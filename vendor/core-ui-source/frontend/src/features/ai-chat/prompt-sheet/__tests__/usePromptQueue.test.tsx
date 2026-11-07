@@ -2,8 +2,13 @@ import { act, cleanup, renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { blessStagingToken, getStagingTokenState, getPromptQueue, markPromptWrite, revokeStagingToken } from '../../../../api/agentive';
 import { usePromptQueue } from '../usePromptQueue';
+import { APP_DELETED_EVENT } from '../../../../services/graphMutationInvalidation';
 
-const state = vi.hoisted(() => ({ thread: 'thread-a', startRun: vi.fn(), append: vi.fn() }));
+const state = vi.hoisted(() => ({ thread: 'thread-a', startRun: vi.fn(), append: vi.fn(), queryClient: { invalidateQueries: vi.fn().mockResolvedValue(undefined) } }));
+vi.mock('@tanstack/react-query', async importOriginal => ({
+  ...await importOriginal<typeof import('@tanstack/react-query')>(),
+  useQueryClient: () => state.queryClient,
+}));
 vi.mock('@assistant-ui/react', () => ({
   useThreadRuntime: () => ({ getState: () => ({ messages: [] }), startRun: state.startRun }),
 }));
@@ -58,7 +63,7 @@ describe('approval queue refresh', () => {
     const closed = { ...closedQueue, resume_text: 'No changes applied.', closed: true };
     vi.mocked(getPromptQueue).mockResolvedValueOnce(closed);
     await act(async () => { await result.current.refresh(); });
-    await act(async () => { resolveAction({ ...closed, queue: { ...openQueue().queue, status: 'closed' } } as Awaited<ReturnType<typeof markPromptWrite>>); await rejection; });
+    await act(async () => { resolveAction({ ...closed, resume_text: 'No changes applied. Updated record link is now available.', queue: { ...openQueue().queue, status: 'closed' } } as Awaited<ReturnType<typeof markPromptWrite>>); await rejection; });
     expect(state.append).toHaveBeenCalledTimes(1); expect(state.startRun).toHaveBeenCalledTimes(1);
     vi.mocked(getPromptQueue).mockResolvedValueOnce(openQueue('token-b'));
     await act(async () => { await result.current.refresh(); });
@@ -121,4 +126,20 @@ it('refreshes again when a committed staging signal arrives during an earlier re
   await settled();
   expect(getPromptQueue).toHaveBeenCalledTimes(2);
   expect(result.current.current?.id).toBe('committed-card');
+});
+
+it.each([true, false])('publishes App removal only after confirmed execution: %s', async applied => {
+  vi.mocked(getStagingTokenState).mockResolvedValue({ kind: 'delete_app', diff_machine: { app_id: 'app-a' }, requires_strong_confirmation: false } as never);
+  vi.mocked(blessStagingToken).mockResolvedValue(applied
+    ? { ok: true, consumed: true, staged_change: { state: 'consumed' }, execute_result: { deleted: true } } as never
+    : { ok: true, consumed: false, staged_change: { state: 'blessed' }, execute_result: { error: true } } as never);
+  vi.mocked(markPromptWrite).mockResolvedValue({ ...closedQueue, closed: true, resume_required: false } as never);
+  const deleted = vi.fn();
+  window.addEventListener(APP_DELETED_EVENT, deleted);
+  try {
+    const { result } = renderHook(() => usePromptQueue()); await settled();
+    await act(async () => { await result.current.approveWrite(); });
+    expect(deleted).toHaveBeenCalledTimes(applied ? 1 : 0);
+    if (applied) expect(deleted.mock.calls[0][0].detail.appId).toBe('app-a');
+  } finally { window.removeEventListener(APP_DELETED_EVENT, deleted); }
 });

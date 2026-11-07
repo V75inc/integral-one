@@ -2,6 +2,8 @@ import { act, fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
 import { requestOpenCompanionChat } from '../../chatHandoff';
 import { AuiTaggableComposer } from '../AuiTaggableComposer';
+import { ComposerSendWithRefs } from '../ComposerSendWithRefs';
+import { CHAT_MESSAGE_LENGTH_HINT } from '../../messageLength';
 
 const state = vi.hoisted(() => ({
   thread: null as string | null,
@@ -13,11 +15,18 @@ const state = vi.hoisted(() => ({
   setText: vi.fn(),
   send: vi.fn(),
 }));
-const composer = { setText: state.setText, send: state.send };
+const composer = { setText: state.setText, send: state.send, getState: () => ({ text: state.text }) };
 const aui = { composer: () => composer };
+const speech = vi.hoisted(() => ({
+  enabled: false,
+  stop: vi.fn(),
+  registerSubmit: vi.fn(),
+  registerTextarea: vi.fn(),
+}));
 vi.mock('@assistant-ui/react', () => ({
   useAui: () => aui,
-  useAuiState: () => state.text,
+  useAuiState: (selector: (s: { composer: { text: string; canSend: boolean } }) => unknown) =>
+    selector({ composer: { text: state.text, canSend: Boolean(state.text.trim()) } }),
 }));
 vi.mock('../../AIChatSurface', () => ({
   useChatActivity: () => ({ activeThreadId: state.thread, composerReady: state.ready, isRunning: state.running }),
@@ -28,11 +37,19 @@ vi.mock('../../../../context/ChatEntityRefsContext', () => ({
   useChatEntityRefsOptional: () => null,
 }));
 vi.mock('../../../speech/ComposerDictationContext', () => ({
-  useComposerDictationActions: () => null,
+  useComposerDictationActions: () => speech.enabled ? {
+    ...speech,
+    isListening: () => true,
+  } : null,
 }));
 vi.mock('../../../../components/chat/TaggableComposer', () => ({
-  TaggableComposer: ({ value, onChange }: { value: string; onChange: (value: string) => void }) =>
-    <textarea aria-label="Message input" value={value} onChange={event => onChange(event.target.value)} />,
+  TaggableComposer: ({ value, onChange, onSubmit, ...props }: {
+    value: string; onChange: (value: string) => void; onSubmit?: () => void;
+    'aria-invalid'?: boolean; 'aria-describedby'?: string;
+  }) =>
+    <textarea aria-label="Message input" aria-invalid={props['aria-invalid']} aria-describedby={props['aria-describedby']}
+      value={value} onChange={event => onChange(event.target.value)}
+      onKeyDown={event => { if (event.key === 'Enter') onSubmit?.(); }} />,
 }));
 
 beforeEach(() => {
@@ -44,11 +61,62 @@ beforeEach(() => {
   state.workspaceId = 'ws-1';
   state.principalId = 'u-1';
   state.text = '';
+  speech.enabled = false;
   vi.clearAllMocks();
 });
 afterEach(() => vi.useRealTimers());
 
 describe('contextual composer draft handoff', () => {
+  it('checks the final dictated text before sending', async () => {
+    state.ready = true;
+    state.text = 'A short draft';
+    speech.enabled = true;
+    speech.stop.mockImplementationOnce(async () => { state.text = 'x'.repeat(8001); });
+    const view = render(<AuiTaggableComposer />);
+    act(() => vi.runOnlyPendingTimers());
+    await act(async () => { fireEvent.keyDown(screen.getByLabelText('Message input'), { key: 'Enter' }); });
+    expect(speech.stop).toHaveBeenCalledWith('submit');
+    expect(state.send).not.toHaveBeenCalled();
+    view.rerender(<AuiTaggableComposer />);
+    expect(screen.getByLabelText('Message input')).toHaveValue('x'.repeat(8001));
+    expect(screen.getByRole('alert')).toHaveTextContent(CHAT_MESSAGE_LENGTH_HINT);
+  });
+
+  it.each([true, false])('preserves an oversized draft and blocks keyboard and button submission (handoff=%s)', acceptHandoff => {
+    state.ready = true;
+    state.text = 'x'.repeat(8001);
+    const view = render(<><AuiTaggableComposer acceptHandoff={acceptHandoff} /><ComposerSendWithRefs /></>);
+    act(() => vi.runOnlyPendingTimers());
+    const input = screen.getByLabelText('Message input');
+    expect(input).toHaveValue(state.text);
+    expect(input).toHaveAttribute('aria-invalid', 'true');
+    expect(input).toHaveAccessibleDescription(CHAT_MESSAGE_LENGTH_HINT);
+    fireEvent.keyDown(input, { key: 'Enter' });
+    fireEvent.click(screen.getByRole('button', { name: 'Send message' }));
+    expect(state.send).not.toHaveBeenCalled();
+    expect(input).toHaveValue('x'.repeat(8001));
+
+    // Python's max_length counts code points. An allowed emoji draft must not
+    // be rejected because JavaScript represents it as twice as many units.
+    state.text = '😀'.repeat(8000);
+    view.rerender(<><AuiTaggableComposer acceptHandoff={acceptHandoff} /><ComposerSendWithRefs /></>);
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Send message' })).toBeEnabled();
+    fireEvent.click(screen.getByRole('button', { name: 'Send message' }));
+    expect(state.send).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps an oversized deferred submission available for editing without sending', () => {
+    state.ready = true;
+    const draft = 'x'.repeat(8001);
+    requestOpenCompanionChat({ draftText: draft, submit: true, workspaceId: 'ws-1', principalId: 'u-1' });
+    render(<AuiTaggableComposer />);
+    act(() => vi.runOnlyPendingTimers());
+    expect(state.send).not.toHaveBeenCalled();
+    expect(screen.getByLabelText('Message input')).toHaveValue(draft);
+    expect(screen.getByRole('alert')).toHaveTextContent(CHAT_MESSAGE_LENGTH_HINT);
+  });
+
   it('preserves a model-review draft through reload and inserts it without sending', () => {
     const draft = 'Review the open Bug Board view and its existing model. Show the diff. Do not publish until I approve.';
     requestOpenCompanionChat({ draftText: draft });

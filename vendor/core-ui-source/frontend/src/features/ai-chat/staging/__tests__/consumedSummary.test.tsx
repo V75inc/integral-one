@@ -222,3 +222,13 @@ describe('canonical completion destinations', () => {
     expect(renderToStaticMarkup(<MemoryRouter>{describeConsumed(change, nav)}</MemoryRouter>)).not.toContain('href');
   });
 });
+
+
+it('preserves an exact schedule management link through a restored approval receipt', () => {
+  const change = staged({ kind: 'routine_task_create' });
+  const url = '/background-tasks?routine=n.RoutineTask.example#scheduled-routines';
+  const nav = extractConsumedNav({ result_links: [{ kind: 'routine', id: 'n.RoutineTask.example', label: 'scheduled routine', url }] }, change);
+  const html = renderToStaticMarkup(<MemoryRouter>{describeConsumed(change, JSON.parse(JSON.stringify(nav)))}</MemoryRouter>);
+  expect(html).toContain(`href="${url}"`);
+  expect(html).toContain('scheduled routine');
+});

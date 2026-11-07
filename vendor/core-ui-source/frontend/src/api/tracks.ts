@@ -9,6 +9,7 @@ import {
   unwrapApiDataEnvelope,
 } from './helpers';
 import { FEED_PAGE_LIMIT } from './feed';
+import { requiresAppQuery } from './readBoundary';
 import { getTypeNameMapForTrack } from './entryTypes';
 import type { OperationalModelNode, Entry, Track, User } from '../types';
 
@@ -17,6 +18,7 @@ export type TrackEntriesPage = {
   nextCursor: string | null;
   hasMore: boolean;
   total?: number;
+  appQueryRequired?: boolean;
 };
 
 export type TrackDetailBundle = {
@@ -151,7 +153,11 @@ export const tracksApi = {
     id: string,
     params?: Record<string, unknown>
   ): Promise<TrackEntriesPage> => {
-    const merged = { limit: FEED_PAGE_LIMIT, ...params };
+    const merged = {
+      limit: FEED_PAGE_LIMIT,
+      ...params,
+      include_total: params?.include_total ?? !params?.cursor,
+    };
     const { data } = await apiClient.get(`/tracks/${id}/entries`, {
       params: merged,
     });
@@ -170,7 +176,7 @@ export const tracksApi = {
       ? await getTypeNameMapForTrack(id)
       : {};
     const entries = mapEntriesForTrack(raw as any[], typeNameById) as Entry[];
-    return { entries, nextCursor, hasMore, total };
+    return { entries, nextCursor, hasMore, total, ...(requiresAppQuery(inner) ? { appQueryRequired: true } : {}) };
   },
 
   getEntries: async (id: string, params?: Record<string, unknown>) => {

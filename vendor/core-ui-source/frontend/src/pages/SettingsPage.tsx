@@ -10,6 +10,7 @@ import {
   Cpu,
   Info,
   Mic,
+  Mail,
   Palette,
   ScrollText,
   Search,
@@ -32,6 +33,9 @@ import { Skeleton } from '../components/ui/Skeleton';
 import { usePublishPageContext } from '../hooks/usePublishPageContext';
 
 // ── Lazy section imports — bodies live in plan-owned files ─────────────
+const EmailSection = React.lazy(() =>
+  import('../features/settings/sections/EmailSection').then(m => ({ default: m.EmailSection })),
+);
 const PoliciesSection = React.lazy(() =>
   import('../features/settings/sections/PoliciesSection').then(m => ({
     default: m.PoliciesSection,
@@ -132,6 +136,7 @@ interface Section {
 
 // The registry defines content; GROUPS below defines navigation order.
 const SECTIONS: Section[] = [
+  { id: 'email', label: 'Email', icon: Mail, render: () => <EmailSection /> },
   {
     id: 'help',
     label: 'Help & about',
@@ -226,7 +231,7 @@ const SECTIONS: Section[] = [
 const GROUPS = [
   { label: 'Your account', ids: ['profile', 'appearance', 'notifications', 'voice-input'] },
   { label: 'AI & connections', ids: ['ai-models', 'agents', 'skills', 'connectors'] },
-  { label: 'Workspace', ids: ['retrieval', 'sharing'] },
+  { label: 'Workspace', ids: ['retrieval', 'sharing', 'email'] },
   { label: 'Governance', ids: ['policies', 'conflicts', 'audit-log'] },
   { label: 'Help', ids: ['help'] },
 ];

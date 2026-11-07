@@ -113,6 +113,15 @@ describe('ActivityStrip', () => {
 });
 
 describe('SourceView', () => {
+  it('uses the same local citation routing for restored source parts', () => {
+    render(<MemoryRouter>
+      <SourceView part={{ url: 'https://integral.example/tracks/n.Track.saved?entry=n.Entry.saved#notes', title: 'Saved source' }} />
+    </MemoryRouter>);
+    const link = screen.getByRole('link', { name: /Saved source/ });
+    expect(link).toHaveAttribute('href', '/tracks/n.Track.saved?entry=n.Entry.saved#notes');
+    expect(link).not.toHaveAttribute('target');
+  });
+
   it('links a safe http(s) source', () => {
     render(
       <MemoryRouter>

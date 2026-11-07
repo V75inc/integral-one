@@ -1,4 +1,5 @@
 import apiClient from './client';
+import { imageExceedsUploadLimit, ImageUploadSizeError } from '../utils/imageUploadLimits';
 import type { InvitationGrantReceipt } from '../types';
 
 // Shape of a row inside an access snapshot bucket.
@@ -361,6 +362,7 @@ export const publicSharingApi = {
     file: File,
     options?: { fieldKey?: string },
   ): Promise<{ id: string; filename?: string; mime_type?: string }> {
+    if (imageExceedsUploadLimit(file)) throw new ImageUploadSizeError();
     const form = new FormData();
     form.append('file', file);
     const fieldKey = options?.fieldKey?.trim();

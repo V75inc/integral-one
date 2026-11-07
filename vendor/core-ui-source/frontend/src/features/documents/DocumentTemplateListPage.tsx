@@ -31,6 +31,7 @@ import { DocumentLayoutsPanel } from './DocumentLayoutsPanel';
 import { useDocumentTypes } from './useDocumentTypes';
 import { useScope } from '../../context/ScopeContext';
 import { useToast } from '../../context/ToastContext';
+import { useConfirm } from '../../context/ConfirmContext';
 import { agentiveErrorMessage } from '../../api/helpers';
 import { useDocumentTemplatesPageContext } from './useDocumentTemplatesPageContext';
 import { resolveInstalledPackageSlug } from './documentTemplatesRouting';
@@ -43,6 +44,7 @@ function normalizeSection(raw: string | null): DocTemplatesSection {
 }
 
 export function DocumentTemplateListPage() {
+  const confirm = useConfirm();
   const { workspaceId: routeWs } = useParams<{ workspaceId: string }>();
   const { scope } = useScope();
   const workspaceId = routeWs || scope?.workspaceId || '';
@@ -314,15 +316,10 @@ export function DocumentTemplateListPage() {
                           tone="subtle"
                           disabled={deleteM.isPending}
                           label={`Delete ${t.name}`}
-                          onClick={() => {
-                            if (
-                              !window.confirm(
-                                `Delete “${t.name}”? This cannot be undone.`,
-                              )
-                            ) {
-                              return;
+                          onClick={async () => {
+                            if (await confirm({ title: 'Delete template?', message: `Delete “${t.name}”? This cannot be undone.`, confirmLabel: 'Delete', variant: 'danger' })) {
+                              deleteM.mutate(t.id);
                             }
-                            deleteM.mutate(t.id);
                           }}
                         >
                           <Trash2 size={14} strokeWidth={LINE_ICON_STROKE} aria-hidden />

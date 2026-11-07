@@ -21,21 +21,7 @@ interface Props {
   navigateToSection?: (id: string) => void;
 }
 
-/**
- * SearchModeSection — global search mode picker.
- *
- * Renamed from RetrievalSection in Phase 8 Plan 08-01. Body is unchanged
- * verbatim — only the exported symbol name was renamed. Plan 08-04
- * finalises this section's body (e.g. wiring a backend-config preview
- * alongside the picker); 08-01 owns the rename/delete contract only.
- *
- * Replaces the per-strip inline ``Mode`` dropdown that previously lived
- * next to every search input. The choice is now made once here and
- * applied to every search surface (feed, track-detail, future global
- * search). Default is ``semantic`` — global vector retrieval — because
- * it surfaces matches beyond the in-memory list and is more
- * comprehensive than the substring filter.
- */
+/** Search preference for Feed and Track lists on this browser. */
 export function SearchModeSection({ settings, update, navigateToSection }: Props) {
   const mode = settings.retrieval.mode;
 
@@ -51,27 +37,27 @@ export function SearchModeSection({ settings, update, navigateToSection }: Props
       <div>
         <Text variant="heading-md" weight="semibold" as="h2">Search</Text>
         <PageMeta as="p">
-          Pick how every search box in Integral resolves your query.
+          Choose how searches in Feed and Tracks find entries.
         </PageMeta>
         {navigateToSection && <Button variant="ghost" size="sm" onClick={() => navigateToSection('ai-models')}>Manage embedding model in AI Models</Button>}
       </div>
 
       <SettingsSection
         title="Search mode"
-        description="Saved in this browser and used by its search boxes. Other people’s preferences are unchanged."
+        description="Saved in this browser. Other people’s preferences are unchanged."
       >
         <SettingsField
           label="Mode"
           hint={
             mode === 'semantic'
-              ? 'Matches by meaning across the whole workspace, including items not currently visible.'
+              ? 'Finds indexed entries by meaning within the current scope.'
               : mode === 'hybrid'
-                ? 'Widest results. Combines meaning-based search with structured navigation through your data.'
-                : 'Fastest. Plain text match against the items currently loaded on screen.'
+                ? 'Combines matches by meaning and keywords. Falls back to keyword search if meaning-based search is unavailable.'
+                : 'Finds indexed entries containing the words in your search.'
           }
         >
           <div role="group" aria-label="Search mode" className="flex flex-wrap gap-1 rounded-[var(--radius-pill)] border border-[var(--panel-border)] bg-[var(--panel-2)] p-1">
-            {(['semantic', 'hybrid', 'graph'] as const).map(m => (
+            {(['hybrid', 'lexical', 'semantic'] as const).map(m => (
               <button
                 key={m}
                 type="button"

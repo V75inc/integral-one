@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import { RefreshCw } from 'lucide-react';
 import { Button, LINE_ICON_STROKE, PageHeading, PageMeta, PageShell, PageSection } from '../ui';
@@ -7,6 +7,7 @@ import { useScopeOptional } from '../../context/ScopeContext';
 import { WorkItemsSection } from './WorkItemsSection';
 import { useSetCrumbs } from '../../context/CrumbsContext';
 import {
+  getRoutine,
   listRoutines,
   type RoutineResponse,
   type RoutineStatus,
@@ -17,7 +18,8 @@ type StatusFilter = RoutineStatus | 'all';
 
 export function BackgroundTasksPage() {
   useSetCrumbs([{ label: 'Background Tasks' }]);
-  const { hash } = useLocation();
+  const { hash, search } = useLocation();
+  const selectedRoutineId = new URLSearchParams(search).get('routine') || '';
   const workspaceId = useScopeOptional()?.scope?.workspaceId;
 
   useEffect(() => {
@@ -26,33 +28,50 @@ export function BackgroundTasksPage() {
     }
   }, [hash]);
 
+  const [selectedRoutine, setSelectedRoutine] = useState<RoutineResponse | null>(null);
+  const [selectionError, setSelectionError] = useState<string | null>(null);
   const [rows, setRows] = useState<RoutineResponse[]>([]);
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const requestGeneration = useRef(0);
   const refetch = useCallback(async () => {
+    const generation = ++requestGeneration.current;
     setLoading(true);
     setError(null);
     try {
       const data = await listRoutines(
         statusFilter === 'all' ? {} : { status: statusFilter },
       );
+      if (generation !== requestGeneration.current) return;
       setRows(data.routines);
+      setSelectedRoutine(null);
+      setSelectionError(null);
+      if (selectedRoutineId && !data.routines.some(row => row.id === selectedRoutineId)) {
+        try {
+          const selected = await getRoutine(selectedRoutineId);
+          if (generation === requestGeneration.current) setSelectedRoutine(selected);
+        } catch {
+          if (generation === requestGeneration.current) setSelectionError('This routine is unavailable or you no longer have access to it.');
+        }
+      }
     } catch (err) {
       const msg =
         err instanceof Error ? err.message : 'Failed to load background tasks';
-      setError(msg);
+      if (generation === requestGeneration.current) setError(msg);
     } finally {
-      setLoading(false);
+      if (generation === requestGeneration.current) setLoading(false);
     }
-  }, [statusFilter]);
+  }, [statusFilter, selectedRoutineId, workspaceId]);
 
   useEffect(() => {
     void refetch();
+    return () => { requestGeneration.current += 1; };
   }, [refetch]);
 
-  const activeCount = rows.filter(r => r.status === 'active').length;
+  const visibleRows = selectedRoutine ? [selectedRoutine, ...rows] : rows;
+  const activeCount = visibleRows.filter(r => r.status === 'active').length;
 
   return (
     <PageShell>
@@ -62,7 +81,7 @@ export function BackgroundTasksPage() {
             <PageHeading className="[&>span:last-child]:whitespace-normal [&>span:last-child]:text-clip">Background Tasks</PageHeading>
             <PageMeta>
               <span>
-                {rows.length} {rows.length === 1 ? 'scheduled routine' : 'scheduled routines'}
+                {visibleRows.length} {visibleRows.length === 1 ? 'scheduled routine' : 'scheduled routines'}
               </span>
               <span aria-hidden>·</span>
               <span>
@@ -120,8 +139,11 @@ export function BackgroundTasksPage() {
             </Button>
           </header>
           <div className="mt-5">
+            {selectedRoutine && <Text as="p" variant="meta" tone="muted" className="mb-3">The linked routine is shown even though it is outside this filter.</Text>}
+            {selectionError && <div role="status" className="mb-3"><Text as="p" tone="muted">{selectionError}</Text></div>}
             <RoutinesListBody
-              rows={rows}
+              rows={visibleRows}
+              selectedRoutineId={selectedRoutineId}
               loading={loading}
               error={error}
               onRetry={() => void refetch()}

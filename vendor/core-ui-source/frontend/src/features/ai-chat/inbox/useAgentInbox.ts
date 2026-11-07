@@ -118,14 +118,26 @@ export function useAgentInbox({ enabled = true }: { enabled?: boolean } = {}): A
   // while the Inbox tab showed no count.
   useEffect(() => {
     if (!enabled) return;
-    const onChange = () => refetch();
+    // Bulk changes can emit hundreds of graph events. Coalesce them into a
+    // bounded refresh without postponing updates indefinitely during a burst.
+    let refreshTimer: ReturnType<typeof setTimeout> | undefined;
+    const onChange = () => {
+      if (refreshTimer !== undefined) return;
+      refreshTimer = setTimeout(() => {
+        refreshTimer = undefined;
+        refetch();
+      }, 250);
+    };
     window.addEventListener('integral:staging-created', onChange);
     window.addEventListener('integral:staging-state-changed', onChange);
     window.addEventListener('integral:graph-changed', onChange);
+    window.addEventListener('integral:agent-events-reconnected', onChange);
     return () => {
+      if (refreshTimer !== undefined) clearTimeout(refreshTimer);
       window.removeEventListener('integral:staging-created', onChange);
       window.removeEventListener('integral:staging-state-changed', onChange);
       window.removeEventListener('integral:graph-changed', onChange);
+      window.removeEventListener('integral:agent-events-reconnected', onChange);
     };
   }, [enabled, refetch]);
 

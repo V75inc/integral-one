@@ -17,6 +17,7 @@ import { MailCheck } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
 import { authApi } from '../../api';
+import { agentiveErrorMessage } from '../../api/helpers';
 import { useSystemNotifications } from '../system';
 
 const NOTIF_ID = 'auth:email-verification';
@@ -32,7 +33,7 @@ function wasDeferred(userId: string): boolean {
 
 export function EmailVerificationBanner() {
   const { singleUser } = useDeployment();
-  const { user } = useAuth();
+  const { user, refreshUser } = useAuth();
   const { showToast } = useToast();
   const navigate = useNavigate();
   const { notify, dismiss, update } = useSystemNotifications();
@@ -73,11 +74,12 @@ export function EmailVerificationBanner() {
         ],
       });
       try {
-        await authApi.resendVerification();
-        showToast('Verification code sent — check your inbox', 'success');
-        navigate('/verify-email');
-      } catch {
-        showToast('Could not send code. Try again shortly.', 'error');
+        const result = await authApi.resendVerification();
+        showToast(result.message || 'Verification code sent — check your inbox', 'success');
+        if (result.status === 'already_verified') await refreshUser();
+        else navigate('/verify-email');
+      } catch (error) {
+        showToast(agentiveErrorMessage(error, 'Could not send code. Try again shortly.'), 'error');
       } finally {
         resendingRef.current = false;
         if (mountedRef.current) {
@@ -104,7 +106,7 @@ export function EmailVerificationBanner() {
       onUserDismiss: handleLater,
     });
     return cleanup;
-  }, [shouldShow, user, notify, dismiss, update, navigate, showToast]);
+  }, [shouldShow, user, notify, dismiss, update, navigate, showToast, refreshUser]);
 
   return null;
 }

@@ -252,6 +252,7 @@ export function ScheduledRow({
   routine: RoutineResponse;
   onResolved: () => void;
 }) {
+  const confirm = useConfirm();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -260,7 +261,7 @@ export function ScheduledRow({
     routine.status === 'paused' || routine.status === 'completed';
   const canStop =
     routine.status === 'active' || routine.status === 'paused';
-  const canRemove = routine.status !== 'cancelled';
+  const canRemove = true;
 
   const afterChange = () => {
     notifyGraphChanged();
@@ -284,9 +285,7 @@ export function ScheduledRow({
 
   const handleStop = async () => {
     if (busy || !canStop) return;
-    const ok = window.confirm(
-      'Stop this scheduled task? A run in progress will be cancelled, and it will not run again.',
-    );
+    const ok = await confirm({ title: 'Stop scheduled task?', message: 'A run in progress will be cancelled, and this task will not run again.', confirmLabel: 'Stop task', variant: 'danger' });
     if (!ok) return;
     setBusy(true);
     setError(null);
@@ -302,9 +301,7 @@ export function ScheduledRow({
 
   const handleRemove = async () => {
     if (busy || !canRemove) return;
-    const ok = window.confirm(
-      'Remove this task permanently? This cannot be undone.',
-    );
+    const ok = await confirm({ title: 'Remove scheduled task?', message: `${canStop ? 'This will stop the task and permanently remove it.' : 'This task will be permanently removed.'} Its conversation and receipts will remain.`, confirmLabel: 'Remove task', variant: 'danger' });
     if (!ok) return;
     setBusy(true);
     setError(null);

@@ -95,15 +95,15 @@ describe('StagedChangeCard — review affordance', () => {
     expect(
       await screen.findByRole('button', { name: /review full change/i }),
     ).toBeInTheDocument();
-    // The raw-JSON disclosure is redundant once the modal shows a real viewer.
-    expect(screen.queryByText(/show raw diff/i)).toBeNull();
+    // The full review owns technical details for a large proposal.
+    expect(screen.queryByText(/^technical details$/i)).toBeNull();
   });
 
   it('leaves a small change exactly as it was', async () => {
     wrap(<StagedChangeCard staged={makeStaged()} />);
 
     await waitFor(() =>
-      expect(screen.getByText(/show raw diff/i)).toBeInTheDocument(),
+      expect(screen.getByText(/^technical details$/i)).toBeInTheDocument(),
     );
     expect(screen.queryByRole('button', { name: /review full change/i })).toBeNull();
   });

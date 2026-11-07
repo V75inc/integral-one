@@ -14,9 +14,9 @@ import { ExpandableChatError } from "../components/ExpandableChatError";
  */
 
 import { CheckIcon, ChevronDown, FileWarning, Sparkles, Undo2Icon, X } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 import { useThreadRuntime } from '@assistant-ui/react';
-import { MarkdownContent } from '../../../components/ui/MarkdownContent';
+import { ApprovalRequestContent } from './ApprovalRequestContent';
 import { useConfirm } from '../../../context/ConfirmContext';
 import type { StagedChange, StagedChangeState } from './types';
 import { useStagedChange } from './useStagedChange';
@@ -26,7 +26,7 @@ import {
 } from './StagedChangeReviewModal';
 import { Text } from '../../../ui';
 import { describeConsumed } from './consumedSummary';
-import { diffBodyWithoutSummary } from './diffBodyWithoutSummary';
+import { EditEntryProposal } from './EditEntryProposal';
 
 export interface StagedChangeCardProps {
   staged: StagedChange;
@@ -41,13 +41,16 @@ export interface StagedChangeCardProps {
 }
 
 export function StagedChangeCard({ staged, onTerminal }: StagedChangeCardProps) {
+  const [revision, setRevision] = useState<{ base: string; staged: StagedChange } | null>(null);
+  const effective = revision?.base === staged.token ? revision.staged : staged;
+  return <StagedChangeCardBody key={effective.token} staged={effective} onTerminal={onTerminal} onRevised={next => setRevision({ base: staged.token, staged: next })} />;
+}
+
+function StagedChangeCardBody({ staged, onTerminal, onRevised }: StagedChangeCardProps & { onRevised: (next: StagedChange) => void }) {
   const [showRaw, setShowRaw] = useState(false);
   const [reviewOpen, setReviewOpen] = useState(false);
   const confirm = useConfirm();
-  const diffBody = useMemo(
-    () => diffBodyWithoutSummary(staged.summary, staged.diff_human),
-    [staged.summary, staged.diff_human],
-  );
+
 
   // The thread runtime is what makes this surface able to nudge the agent
   // when a bless lands but no write ran. A list row has no conversation to
@@ -110,6 +113,7 @@ export function StagedChangeCard({ staged, onTerminal }: StagedChangeCardProps) 
         open={reviewOpen}
         onClose={() => setReviewOpen(false)}
         controls={controls}
+        onRevised={onRevised}
       />
       {/* Header — title on the left (may wrap to 2 lines), status pill pinned
           top-right and NEVER wrapping. items-start keeps the pill on the first
@@ -121,7 +125,7 @@ export function StagedChangeCard({ staged, onTerminal }: StagedChangeCardProps) 
             className="mt-px shrink-0 text-[var(--brand-accent)]"
           />
           <Text variant="label" tone="default" className="min-w-0 leading-snug">
-            {staged.summary}
+            {status.state === 'pending' ? 'Allow this change?' : staged.summary}
           </Text>
         </div>
         <StateBadge
@@ -151,29 +155,16 @@ export function StagedChangeCard({ staged, onTerminal }: StagedChangeCardProps) 
         </Text>
       ) : null}
 
-      {/* Diff body. A diff too long to scan in this column is truncated here
-          and read in the review modal instead — a wall of text inside a 380px
-          dock panel is not review, it is scrolling. */}
-      {!isTerminal && !!diffBody && (
-        <div className="mb-2 text-sm text-[var(--text-muted)]">
-          {isLarge ? (
-            <>
-              <div className="max-h-24 overflow-hidden">
-                <MarkdownContent mutedBody={false}>
-                  {diffBody}
-                </MarkdownContent>
-              </div>
-              <button
-                type="button"
-                onClick={() => setReviewOpen(true)}
-                className="mt-1 text-xs text-[var(--link)] hover:underline"
-              >
-                Review full change →
-              </button>
-            </>
-          ) : (
-            <MarkdownContent mutedBody={false}>{diffBody}</MarkdownContent>
-          )}
+      {!isTerminal && (
+        <div className="mb-4 max-h-80 overflow-auto overscroll-contain">
+          <ApprovalRequestContent staged={staged} />
+          {isLarge ? <button
+            type="button"
+            onClick={() => setReviewOpen(true)}
+            className="mt-3 text-[var(--link)] hover:underline"
+          >
+            <Text variant="body-sm" as="span">Review full change →</Text>
+          </button> : null}
         </div>
       )}
 
@@ -188,7 +179,7 @@ export function StagedChangeCard({ staged, onTerminal }: StagedChangeCardProps) 
             size={10}
             className={`transition-transform ${showRaw ? '' : '-rotate-90'}`}
           />
-          {showRaw ? 'Hide raw diff' : 'Show raw diff'}
+          {showRaw ? 'Hide technical details' : 'Technical details'}
         </button>
       )}
       {showRaw && !isTerminal && (
@@ -199,6 +190,7 @@ export function StagedChangeCard({ staged, onTerminal }: StagedChangeCardProps) 
 
       {status.state === 'pending' && (
         <div className="flex flex-wrap items-center gap-2">
+          {staged.can_edit_entries ? <EditEntryProposal token={staged.token} disabled={status.kind === 'loading'} onRevised={onRevised} /> : null}
           <button
             onClick={() => bless()}
             disabled={status.kind === 'loading'}
@@ -296,7 +288,7 @@ export function StagedChangeCard({ staged, onTerminal }: StagedChangeCardProps) 
 
       {status.state === 'revoked' && (
         <div className="flex items-center gap-1 text-xs text-[var(--text-subtle)]">
-          <X size={12} /> Rejected.
+          <X size={12} /> {staged.superseded_by ? 'Replaced by your edited proposal.' : 'Rejected.'}
         </div>
       )}
 

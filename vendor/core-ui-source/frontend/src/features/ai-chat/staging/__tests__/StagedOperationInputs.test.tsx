@@ -19,6 +19,30 @@ function staged(input: unknown, extra: Record<string, unknown> = {}): StagedChan
 afterEach(cleanup);
 
 describe('literal operation review', () => {
+  it('renders every batch command input literally with its record reference and distinct value', () => {
+    const child = (id: string, value: number) => ({ kind: 'call_workspace_tool', summary: 'Apply record change',
+      diff_machine: { op: 'call_workspace_tool', input: { entry_id: id, value, note: '<script>literal</script>' } },
+    });
+    const proposal = { ...staged({}), kind: 'batch', diff_machine: {
+      operations: [child('n.Entry.first', 12), child('n.Entry.second', 27)],
+    } };
+    const before = JSON.stringify(proposal);
+    const { container } = render(<StagedOperationInputs staged={proposal} />);
+    expect(screen.getByText('12')).toBeInTheDocument();
+    expect(screen.getByText('27')).toBeInTheDocument();
+    expect(screen.getAllByRole('link', { name: 'Resolved record title' })).toHaveLength(2);
+    expect(container.querySelector('script')).toBeNull();
+    expect(JSON.stringify(proposal)).toBe(before);
+  });
+  it('keeps the original step number when command inputs accompany other batch changes', () => {
+    const proposal = { ...staged({}), kind: 'batch', diff_machine: { operations: [
+      { kind: 'create_tag', summary: 'Create a tag' },
+      { kind: 'call_workspace_tool', summary: 'Apply record change', diff_machine: { op: 'call_workspace_tool', input: { value: 12 } } },
+    ] } };
+    render(<StagedOperationInputs staged={proposal} />);
+    expect(screen.getByText('2. Apply record change')).toBeInTheDocument();
+    expect(screen.getByText('12')).toBeInTheDocument();
+  });
   it('uses declared presentation order and retains unlabelled inputs without mutating them', () => {
     const proposal = staged({ diagnostic: 'Trace value', sources: 'Source value', main: 'Main decision' }, {
       review: { input_labels: { properties: { main: { title: 'Primary decision' }, sources: { title: 'Supporting material' } } } },

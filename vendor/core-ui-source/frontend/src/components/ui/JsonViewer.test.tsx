@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import JsonViewer from './JsonViewer';
+import { ThemeProvider, useTheme } from '../../context/ThemeContext';
 
 afterEach(() => {
   cleanup();
@@ -11,6 +12,21 @@ afterEach(() => {
 function clipboard(writeText: (text: string) => Promise<void>) {
   vi.stubGlobal('navigator', { clipboard: { writeText } });
 }
+
+it('follows application theme changes while retaining an explicit override', () => {
+  localStorage.setItem('t75_theme', 'dark');
+  function Toggle() {
+    const { toggleTheme } = useTheme();
+    return <button onClick={toggleTheme}>Change theme</button>;
+  }
+  render(<ThemeProvider><Toggle /><JsonViewer data={{ title: 'Review' }} /><JsonViewer data={{ title: 'Override' }} dark /></ThemeProvider>);
+  const viewers = screen.getAllByRole('textbox');
+  expect(viewers[0]).toHaveStyle({ backgroundColor: '#0d1117' });
+  fireEvent.click(screen.getByRole('button', { name: 'Change theme' }));
+  expect(viewers[0]).toHaveStyle({ backgroundColor: '#ffffff' });
+  expect(viewers[1]).toHaveStyle({ backgroundColor: '#0d1117' });
+  localStorage.removeItem('t75_theme');
+});
 
 describe('JSON clipboard feedback', () => {
   it('waits for clipboard completion before reporting copy-all success', async () => {

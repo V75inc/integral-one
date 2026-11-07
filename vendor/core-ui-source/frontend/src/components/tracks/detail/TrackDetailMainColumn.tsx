@@ -28,6 +28,7 @@ export interface TrackDetailMainColumnProps {
   runRetrieval: (q: string) => void;
   retrievalLoading: boolean;
   retrievalError: string | null;
+  retrievalDegraded: string | null;
   canCreateEntry: boolean;
   track: Track;
   activeView: SavedView | null;
@@ -66,6 +67,7 @@ export interface TrackDetailMainColumnProps {
   isFetchingNextPage: boolean;
   fetchNextPage: () => void;
   emptyStateContent: ReactNode;
+  recordReadBoundaryNotice?: ReactNode;
   trackEntriesSentinelRef: RefObject<HTMLDivElement>;
 }
 
@@ -84,6 +86,7 @@ export function TrackDetailMainColumn({
   runRetrieval,
   retrievalLoading,
   retrievalError,
+  retrievalDegraded,
   canCreateEntry,
   track,
   activeView,
@@ -116,6 +119,7 @@ export function TrackDetailMainColumn({
   isFetchingNextPage,
   fetchNextPage,
   emptyStateContent,
+  recordReadBoundaryNotice,
   trackEntriesSentinelRef,
 }: TrackDetailMainColumnProps) {
   return (
@@ -144,9 +148,11 @@ export function TrackDetailMainColumn({
                 search={trackSearch}
                 setSearch={setTrackSearch}
                 retrievalActive={retrievalMode !== 'graph'}
+                liveKeywordSearch={retrievalMode === 'lexical'}
                 onRetrievalSearch={runRetrieval}
                 retrievalLoading={retrievalLoading}
                 retrievalError={retrievalError}
+                retrievalDegraded={retrievalDegraded}
               />
             </div>
             <div className="flex items-center gap-2 shrink-0">
@@ -195,7 +201,8 @@ export function TrackDetailMainColumn({
         </div>
       ) : null}
 
-      {activeView ? (
+      {recordReadBoundaryNotice}
+      {recordReadBoundaryNotice && filteredEntries.length === 0 ? null : activeView ? (
         <>
           <ViewRenderer
             view={activeView}

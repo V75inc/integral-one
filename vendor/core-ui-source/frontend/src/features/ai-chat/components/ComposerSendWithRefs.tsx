@@ -4,6 +4,7 @@ import { HoverTooltip } from "../../../components/ui/HoverTooltip";
 
 import { useChatEntityRefsOptional } from "../../../context/ChatEntityRefsContext";
 import { useComposerDictationActions } from "../../speech/ComposerDictationContext";
+import { chatMessageTooLong } from "../messageLength";
 
 /** Send after dictation settles and entity refs are flushed to the outgoing turn. */
 export function ComposerSendWithRefs({
@@ -17,6 +18,7 @@ export function ComposerSendWithRefs({
 }) {
   const aui = useAui();
   const canSend = useAuiState((s) => s.composer.canSend);
+  const messageTooLong = useAuiState((s) => chatMessageTooLong(s.composer.text));
   const entityRefsCtx = useChatEntityRefsOptional();
   const dictation = useComposerDictationActions();
 
@@ -26,8 +28,9 @@ export function ComposerSendWithRefs({
       aria-label={ariaLabel}
       title={ariaLabel}
       className={className}
-      disabled={!canSend}
+      disabled={!canSend || messageTooLong}
       onClick={() => {
+        if (chatMessageTooLong(aui.composer().getState().text)) return;
         if (dictation) {
           dictation.submit();
           return;
