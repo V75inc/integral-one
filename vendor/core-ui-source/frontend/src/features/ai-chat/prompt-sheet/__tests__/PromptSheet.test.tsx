@@ -112,3 +112,28 @@ it('retains execution failure and partial progress in the review card', () => {
   expect(screen.getByRole('button', { name: 'Retry application' })).toBeVisible();
   expect(screen.queryByRole('button', { name: 'Approve' })).toBeNull();
 });
+
+it.each(['record_revision_conflict', 'schema_revision_conflict'])(
+  'asks for a fresh proposal after %s',
+  (error_code) => {
+    renderPendingWrite(true, { last_error: { error_code, message: 'Entry changed' } });
+    const guidance = screen.getByRole('button', {
+      name: 'This proposal is out of date. Ask Integral to review the current record and propose the change again.',
+    });
+    fireEvent.click(guidance);
+    expect(screen.getByRole('alert')).toHaveTextContent('2 changes were already saved.');
+    expect(screen.getByRole('alert')).not.toHaveTextContent('Trying again');
+    expect(screen.queryByRole('button', { name: 'Retry application' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Reject' })).toBeEnabled();
+  },
+);
+
+it.each([
+  ['goal_criteria_unmet', 'The goal stayed open. Review the published criteria and supporting Entries before requesting a new closure.'],
+  ['goal_closure_required', 'Complete this goal through a reviewed closure with supporting evidence.'],
+])('explains how to recover from %s without offering the same approval', (error_code, message) => {
+  renderPendingWrite(true, { last_error: { error_code } });
+  expect(screen.getByRole('button', { name: message })).toBeVisible();
+  expect(screen.queryByRole('button', { name: 'Retry application' })).toBeNull();
+  expect(screen.getByRole('button', { name: 'Reject' })).toBeEnabled();
+});

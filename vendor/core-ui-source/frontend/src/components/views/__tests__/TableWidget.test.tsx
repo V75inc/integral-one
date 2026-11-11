@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import '@testing-library/jest-dom/vitest';
-import type { OperationalModelFieldSpec, Entry, SavedView } from '../../../types';
+import type { OperationalModelFieldSpec, Entry, EntryTypeNode, SavedView } from '../../../types';
 
 import { TableWidget } from '../TableWidget';
 
@@ -159,4 +159,31 @@ describe('TableWidget column choices', () => {
     rerender(<TableWidget {...props} view={revised} />);
     expect(screen.getByRole('columnheader', { name: 'Owner' })).toBeInTheDocument();
   });
+});
+
+it('uses the row schema for dates and preserves text and legacy values', () => {
+  const dateField: OperationalModelFieldSpec = { key: 'reference', name: 'Reference', type: 'date' };
+  const entryTypes = [
+    { id: 'payment', name: 'Payment', form_schema: { fields: [dateField] } },
+    { id: 'memo', name: 'Memo', form_schema: { fields: [{ ...dateField, type: 'text' }] } },
+  ] as EntryTypeNode[];
+  const entries: Entry[] = [
+    { id: 'date', type: 'payment', type_id: 'payment', custom_fields: { reference: '2026-11-10' } },
+    { id: 'text', type: 'memo', type_id: 'memo', custom_fields: { reference: 'Awaiting confirmation' } },
+    { id: 'iso-text', type: 'memo', type_id: 'memo', custom_fields: { reference: '2026-11-10' } },
+    { id: 'legacy', type: 'payment', type_id: 'payment', custom_fields: { reference: 'Legacy value' } },
+  ].map(entry => ({ ...entry, track_id: 'employees-track', author_id: 'author', created_at: '2026-11-10' }));
+
+  render(<TableWidget
+    entries={entries}
+    entryTypes={entryTypes}
+    fields={[dateField]}
+    view={view({ columns: [{ field: 'custom_fields.reference' }] })}
+    onEntryOpen={noop}
+    isLoading={false}
+  />);
+
+  for (const value of ['10 Nov 2026', 'Awaiting confirmation', '2026-11-10', 'Legacy value']) {
+    expect(screen.getByRole('cell', { name: value })).toBeInTheDocument();
+  }
 });

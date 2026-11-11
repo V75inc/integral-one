@@ -17,9 +17,18 @@ export type RoutineStatus = 'active' | 'paused' | 'completed' | 'cancelled';
 export type RoutineUpdateStatus = 'active' | 'paused';
 export type LastRunStatus = 'success' | 'error' | 'skipped' | 'stopped';
 
+export interface RoutineQuietHours {
+  start: string;
+  end: string;
+}
+
 export interface RoutineResponse {
   id: string;
   instruction: string;
+  delivery_mode?: 'agent' | 'reminder' | 'task_watch' | 'assignment_digest';
+  watch_entry_id?: string | null;
+  snoozed_until?: string | null;
+  quiet_hours?: RoutineQuietHours | null;
   cron: string;
   timezone: string;
   status: RoutineStatus | string;
@@ -53,6 +62,9 @@ export interface RoutineUpdateRequest {
   timezone?: string;
   max_runs?: number | null;
   clear_max_runs?: boolean;
+  snooze_until?: string;
+  clear_snooze?: boolean;
+  quiet_hours?: RoutineQuietHours | null;
 }
 
 export interface RoutineCancelResponse {
@@ -147,4 +159,41 @@ export async function deleteRoutine(
     `/agentive/routines/${encodeURIComponent(id)}`,
   );
   return res.data as RoutineDeleteResponse;
+}
+
+export interface AssignmentSuggestion {
+  entry_id: string;
+  track_id: string;
+  dismissed?: boolean;
+  deferred_until?: string;
+  review_requested?: boolean;
+  accepted?: boolean;
+}
+
+export async function dismissRoutineOpportunity(messageId: string, entryId: string): Promise<void> {
+  await api.post(
+    `/agentive/routines/opportunities/${encodeURIComponent(messageId)}/${encodeURIComponent(entryId)}/dismiss`,
+  );
+}
+
+
+export async function deferRoutineOpportunity(messageId: string, entryId: string): Promise<string> {
+  const res = await api.post<{ deferred_until: string }>(
+    `/agentive/routines/opportunities/${encodeURIComponent(messageId)}/${encodeURIComponent(entryId)}/later`,
+  );
+  return res.data.deferred_until;
+}
+
+
+export async function requestRoutineOpportunityReview(messageId: string, entryId: string): Promise<void> {
+  await api.post(
+    `/agentive/routines/opportunities/${encodeURIComponent(messageId)}/${encodeURIComponent(entryId)}/prepare`,
+  );
+}
+
+
+export async function acceptRoutineOpportunity(messageId: string, entryId: string): Promise<void> {
+  await api.post(
+    `/agentive/routines/opportunities/${encodeURIComponent(messageId)}/${encodeURIComponent(entryId)}/accept`,
+  );
 }

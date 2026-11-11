@@ -1,5 +1,5 @@
 import { format, parseISO, isValid } from 'date-fns';
-import type { OperationalModelFieldSpec } from '../types';
+import type { Entry, OperationalModelFieldSpec } from '../types';
 import { humanizeEnumValue } from './humanizeFieldKey';
 
 export function slugEntryTypeName(value: string): string {
@@ -75,6 +75,29 @@ export function findEntryTypeBySlug<T extends OperationalModelEntryTypeLike>(
   );
   if (byId) return byId;
   return entryTypes.length === 1 ? entryTypes[0] : null;
+}
+
+/** Prefer the stored type identity when choosing a row's schema. */
+export function findEntryTypeForEntry<T extends OperationalModelEntryTypeLike>(
+  entryTypes: T[],
+  entry: Pick<Entry, 'type' | 'type_id'>
+): T | null {
+  return entry.type_id
+    ? entryTypes.find(type => type.id === entry.type_id) ?? null
+    : findEntryTypeBySlug(entryTypes, entry.type);
+}
+
+/** Patch a list row while retaining its canonical key for the same type. */
+export function mergeEntryListRow(
+  row: Entry,
+  update: Entry,
+  entryTypes: OperationalModelEntryTypeLike[]
+): Entry {
+  const schema = findEntryTypeForEntry(entryTypes, update);
+  const sameType = Boolean(row.type_id && row.type_id === update.type_id);
+  const type = schema?.form_schema?._manifest_entry_type_key
+    || (sameType ? row.type || update.type : update.type || row.type);
+  return { ...row, ...update, type };
 }
 
 /**

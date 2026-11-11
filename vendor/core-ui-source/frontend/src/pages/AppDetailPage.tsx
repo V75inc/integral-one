@@ -866,16 +866,16 @@ export function AppDetailPage() {
         options={[
           ...(hasHome ? [{ value: 'home' as const, label: 'Home', icon: <Home size={15} strokeWidth={LINE_ICON_STROKE} /> }] : []),
           {
-            value: 'tracks',
-            label: 'Tracks',
-            icon: <ClipboardList size={15} strokeWidth={LINE_ICON_STROKE} />,
-            count: tracks.length
-          },
-          {
             value: 'dashboards',
             label: 'Dashboards',
             icon: <LayoutDashboard size={15} strokeWidth={LINE_ICON_STROKE} />,
             count: dashboardCount
+          },
+          {
+            value: 'tracks',
+            label: 'Tracks',
+            icon: <ClipboardList size={15} strokeWidth={LINE_ICON_STROKE} />,
+            count: tracks.length
           },
         ]}
       />
@@ -886,7 +886,7 @@ export function AppDetailPage() {
 
       {appSection === 'home' && hasHome ? (
         <PageSection className={filterBar.sectionTop}>
-          <AppHomePanel appId={appId} workspaceId={app?.workspace_id || ''} />
+          <AppHomePanel appId={appId} workspaceId={app?.workspace_id || ''} tracks={tracks.filter(isTrackNavVisible)} hasDashboards={dashboardCount > 0} />
         </PageSection>
       ) : appSection === 'tracks' ? (
       <PageSection className={filterBar.sectionTop}>

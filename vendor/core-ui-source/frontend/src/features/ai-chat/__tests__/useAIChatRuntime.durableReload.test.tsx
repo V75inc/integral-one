@@ -51,7 +51,10 @@ vi.mock("../../../api/aiChat", () => ({
       archived: false,
       messages: [],
     })),
+    getThreadIfChanged: vi.fn(),
     createThread: vi.fn(),
+    listFollowUps: vi.fn(async () => ({items: [], paused: false})),
+    queueFollowUp: vi.fn(),
     cancelThread: vi.fn(async () => ({ thread_id: "t1", cancelled: true })),
   },
 }));
@@ -70,7 +73,12 @@ function nativeProvider(streamTurn: ChatProvider["streamTurn"]): ChatProvider {
 }
 
 describe("owned durable work after reload", () => {
-  beforeEach(() => { vi.clearAllMocks(); __resetThreadSessionStoreForTests(); localStorage.clear(); });
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(aiChatApi.listFollowUps).mockResolvedValue({items: [], paused: false});
+    __resetThreadSessionStoreForTests();
+    localStorage.clear();
+  });
   it("loads background messages missed while the events socket was disconnected", async () => {
     vi.mocked(aiChatApi.listThreads).mockResolvedValue([thread]);
     vi.mocked(aiChatApi.getThread).mockResolvedValue({...thread, messages: [user]});
@@ -81,10 +89,97 @@ describe("owned durable work after reload", () => {
     await waitFor(() => expect(result.current.runtime.thread.getState().messages.map(message => message.id))
       .toEqual(["accepted-user", "saved-assistant"]));
   });
-  it("attaches once without another user message and reloads the canonical result", async () => {
+  it("coalesces background invalidations that arrive during the initial transcript read", async () => {
+    vi.mocked(aiChatApi.listThreads).mockResolvedValue([thread]);
+    let resolveInitial!: (value: Awaited<ReturnType<typeof aiChatApi.getThread>>) => void;
+    vi.mocked(aiChatApi.getThread)
+      .mockImplementationOnce(() => new Promise(resolve => { resolveInitial = resolve; }))
+      .mockResolvedValue({...thread, messages: [user, assistant]});
+    const provider = nativeProvider(async function* () {});
+    const {result} = renderHook(() => useAIChatRuntime(provider, {initialThreadId: "t1"}));
+    await waitFor(() => expect(aiChatApi.getThread).toHaveBeenCalledTimes(1));
+
+    act(() => {
+      window.dispatchEvent(new CustomEvent("integral:thread-stream-update", {
+        detail: {thread_id: "t1", status: "message", message_id: assistant.id},
+      }));
+      window.dispatchEvent(new Event("integral:agent-events-reconnected"));
+    });
+    expect(aiChatApi.getThread).toHaveBeenCalledTimes(1);
+    await act(async () => resolveInitial({...thread, messages: [user]}));
+
+    await waitFor(() => expect(result.current.runtime.thread.getState().messages.map(message => message.id))
+      .toEqual([user.id, assistant.id]));
+    expect(aiChatApi.getThread).toHaveBeenCalledTimes(2);
+  });
+
+  it("finds a persisted alert without a WebSocket event and probes the new revision", async () => {
+    vi.useFakeTimers();
+    try {
+      vi.mocked(aiChatApi.listThreads).mockResolvedValue([thread]);
+      vi.mocked(aiChatApi.getThread).mockResolvedValue({...thread, updated_at: "before", messages: [user]});
+      vi.mocked(aiChatApi.getThreadIfChanged)
+        .mockResolvedValueOnce({...thread, updated_at: "after", messages: [user, assistant]})
+        .mockResolvedValue(null);
+      const provider = nativeProvider(async function* () {});
+      const {result} = renderHook(() => useAIChatRuntime(provider, {initialThreadId: "t1"}));
+      await act(async () => vi.advanceTimersByTimeAsync(0));
+      expect(result.current.composerReady).toBe(true);
+      await act(async () => vi.advanceTimersByTimeAsync(20_000));
+      expect(aiChatApi.getThreadIfChanged).toHaveBeenNthCalledWith(1, "t1", "before");
+      expect(result.current.runtime.thread.getState().messages.map(message => message.id))
+        .toEqual([user.id, assistant.id]);
+      await act(async () => vi.advanceTimersByTimeAsync(20_000));
+      expect(aiChatApi.getThreadIfChanged).toHaveBeenNthCalledWith(2, "t1", "after");
+      expect(aiChatApi.getThread).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("revalidates a warm conversation when it is opened again", async () => {
+    const other = {...thread, id: "t2", title: "Other conversation"};
+    vi.mocked(aiChatApi.listThreads).mockResolvedValue([thread, other]);
+    vi.mocked(aiChatApi.getThread).mockImplementation(async id =>
+      id === "t1" ? {...thread, messages: [user]} : {...other, messages: []},
+    );
+    const {result} = renderHook(() => useAIChatRuntime(nativeProvider(async function* () {}), {initialThreadId: "t1"}));
+    await waitFor(() => expect(result.current.composerReady).toBe(true));
+    act(() => result.current.switchToThread("t2"));
+    await waitFor(() => expect(aiChatApi.getThread).toHaveBeenCalledWith("t2"));
+
+    vi.mocked(aiChatApi.getThread).mockImplementation(async id =>
+      id === "t1" ? {...thread, messages: [user, assistant]} : {...other, messages: []},
+    );
+    act(() => result.current.switchToThread("t1"));
+    await waitFor(() => expect(result.current.runtime.thread.getState().messages.map(message => message.id))
+      .toEqual(["accepted-user", "saved-assistant"]));
+  });
+
+  it("reconciles missed background messages when the tab becomes visible", async () => {
+    vi.mocked(aiChatApi.listThreads).mockResolvedValue([thread]);
+    vi.mocked(aiChatApi.getThread).mockResolvedValue({...thread, messages: [user]});
+    const {result} = renderHook(() => useAIChatRuntime(nativeProvider(async function* () {}), {initialThreadId: "t1"}));
+    await waitFor(() => expect(result.current.composerReady).toBe(true));
+    vi.mocked(aiChatApi.getThread).mockResolvedValue({...thread, messages: [user, assistant]});
+    const visibility = vi.spyOn(document, "visibilityState", "get").mockReturnValue("hidden");
+    try {
+      act(() => document.dispatchEvent(new Event("visibilitychange")));
+      expect(aiChatApi.getThread).toHaveBeenCalledTimes(1);
+      visibility.mockReturnValue("visible");
+      act(() => document.dispatchEvent(new Event("visibilitychange")));
+      await waitFor(() => expect(result.current.runtime.thread.getState().messages.map(message => message.id))
+        .toEqual(["accepted-user", "saved-assistant"]));
+    } finally {
+      visibility.mockRestore();
+    }
+  });
+
+  it.each(["active_work_item_id", "parked_work_item_id"] as const)(
+    "reattaches via %s without sending another user message", async (workItemField) => {
     vi.mocked(aiChatApi.listThreads).mockResolvedValue([thread]);
     vi.mocked(aiChatApi.getThread)
-      .mockResolvedValueOnce({...thread, active_work_item_id: "chat-turn:owned", messages: [user]})
+      .mockResolvedValueOnce({...thread, [workItemField]: "chat-turn:owned", messages: [user]})
       .mockResolvedValue({...thread, active_work_item_id: null, messages: [user, assistant]});
     const stream = vi.fn(async function* (_ctx: Parameters<ChatProvider["streamTurn"]>[0]): AsyncIterable<NormalizedEvent> {
       yield {type: "navigation", path: "/tracks/n.Track.collection", thread_id: "t1", workspace_id: "ws1"};
@@ -103,6 +198,30 @@ describe("owned durable work after reload", () => {
     expect(aiChatApi.getThread).toHaveBeenCalledTimes(2);
     expect(onNavigate).not.toHaveBeenCalled();
   });
+  it("restores queued follow-ups and attaches to a worker-promoted turn", async () => {
+    const queued = {client_request_id: "queue-1", text: "Afterward", entity_refs: []};
+    vi.mocked(aiChatApi.listThreads).mockResolvedValue([thread]);
+    vi.mocked(aiChatApi.listFollowUps).mockResolvedValue({items: [queued], paused: false});
+    vi.mocked(aiChatApi.getThread).mockResolvedValue({...thread, messages: [user]});
+    const stream = vi.fn(async function* (_ctx: Parameters<ChatProvider["streamTurn"]>[0]): AsyncIterable<NormalizedEvent> {
+      yield {type: "message-finish"};
+    });
+    const provider = nativeProvider(stream);
+    const {result} = renderHook(() => useAIChatRuntime(provider, {initialThreadId: "t1"}));
+    await waitFor(() => expect(result.current.followUps).toEqual([
+      expect.objectContaining({id: "queue-1", text: "Afterward", state: "queued"}),
+    ]));
+    expect(stream).not.toHaveBeenCalled();
+    vi.mocked(aiChatApi.listFollowUps).mockResolvedValue({items: [], paused: false});
+    vi.mocked(aiChatApi.getThread)
+      .mockResolvedValueOnce({...thread, active_work_item_id: "worker-follow-up", messages: [user]})
+      .mockResolvedValue({...thread, messages: [user, assistant]});
+    await waitFor(() => expect(stream).toHaveBeenCalledTimes(1), {timeout: 3000});
+    expect(stream.mock.calls[0][0].resumeWorkItemId).toBe("worker-follow-up");
+    expect(result.current.followUps).toEqual([]);
+    expect(aiChatApi.queueFollowUp).not.toHaveBeenCalled();
+  });
+
   it.each([false, true])("defers live navigation and protects a composer draft (%s)", async blocked => {
     vi.mocked(aiChatApi.listThreads).mockResolvedValue([thread]);
     vi.mocked(aiChatApi.getThread).mockResolvedValue({...thread, messages: [user]});
@@ -194,4 +313,22 @@ it.each([
   await waitFor(() => expect(result.current.composerReady).toBe(true));
   const message = result.current.runtime.thread.getState().messages[0];
   expect(message.metadata?.custom).toMatchObject({ interactPayload: { origin: 'routine_task', routine_id: 'routine-1' } });
+});
+
+it("refreshes an open conversation for a persisted task watch alert", async () => {
+  __resetThreadSessionStoreForTests();
+  vi.mocked(aiChatApi.listThreads).mockResolvedValue([thread]);
+  vi.mocked(aiChatApi.getThread).mockResolvedValue({ ...thread, messages: [user] });
+  const provider = nativeProvider(async function* () {});
+  const { result } = renderHook(() => useAIChatRuntime(provider, { initialThreadId: "t1" }));
+  await waitFor(() => expect(result.current.composerReady).toBe(true));
+  vi.mocked(aiChatApi.getThread).mockResolvedValue({
+    ...thread,
+    messages: [user, { ...assistant, provider_metadata: { origin: "routine_task", delivery_mode: "task_watch" } }],
+  });
+  act(() => window.dispatchEvent(new CustomEvent("integral:thread-stream-update", {
+    detail: { thread_id: "t1", status: "message", message_id: assistant.id },
+  })));
+  await waitFor(() => expect(result.current.runtime.thread.getState().messages.map(message => message.id))
+    .toEqual([user.id, assistant.id]));
 });

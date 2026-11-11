@@ -26,7 +26,10 @@ export interface ChatLatency {
   clientFirstTextMs?: number; clientFirstToolMs?: number; clientCompletionMs?: number;
 }
 
+export type SteeringReceipt = { correction_id: string; text: string };
+
 export type NormalizedEvent =
+  | { type: "steering-delivered"; correction_id: string; text?: string }
   | { type: "navigation"; path: string; thread_id: string; workspace_id: string }
   | { type: "text-delta"; delta: string }
   | { type: "text-replace"; content: string }
@@ -131,6 +134,8 @@ export interface TurnContext {
   focusedAppId?: string;
   /** Snapshotted page context (URL, breadcrumbs, visible data) at send time. */
   pageContext?: ChatPageContextPayload;
+  /** Called when the server identifies the durable work for this turn. */
+  onDurableTurn?: (workItemId: string) => void;
   /** Host initiated continuation; never represented as a user utterance. */
   hostAction?: "prompt_sheet_resume" | "staging_follow_through";
 }

@@ -1,10 +1,12 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { aiChatApi } from '../../../../api/aiChat';
 import { ApprovalRequestContent, approvalRequestSentence } from '../ApprovalRequestContent';
 
 vi.mock('../../../../components/entries/relations/RelationValue', () => ({
   RelationValue: ({ value }: {value: string}) => <span>{value}</span>,
 }));
+vi.mock('../../../../api/aiChat', () => ({ aiChatApi: { downloadChatAttachmentForReview: vi.fn() } }));
 afterEach(cleanup);
 
 describe('plain-language approval request', () => {
@@ -50,6 +52,23 @@ describe('plain-language approval request', () => {
     expect(screen.queryByText(/New routine:/)).not.toBeInTheDocument();
   });
 
+  it('shows the watched Entry and quiet behavior before approval', () => {
+    render(<ApprovalRequestContent staged={{
+      kind: 'routine_task_create',
+      summary: 'New routine: Watch this task',
+      diff_human: '',
+      diff_machine: {
+        op: 'routine_task_create',
+        instruction: 'Watch this task',
+        cron: '0 9 * * *',
+        delivery_mode: 'task_watch',
+        watch_entry_id: 'n.Entry.task',
+      },
+    }} />);
+    expect(screen.getByText(/Integral will check the watched task/)).toBeVisible();
+    expect(screen.getByText(/Watched Entry n.Entry.task.*only when the task changes/)).toBeVisible();
+  });
+
   it('keeps unattended write authority visible before a routine is approved', () => {
     render(<ApprovalRequestContent staged={{kind:'routine_task_create',summary:'New routine: Update records',diff_human:'Track scope',
       diff_machine:{op:'routine_task_create',instruction:'Update approved records.',cron:'0 9 * * *',delivery_mode:'agent',write_scope:[{resource_type:'track',resource_id:'n.Track.1'}]},
@@ -57,4 +76,111 @@ describe('plain-language approval request', () => {
     expect(screen.getByText(/Future runs may change the approved resources without another prompt/)).toBeVisible();
     expect(screen.getByText(/continue until you pause or stop/)).toBeVisible();
   });
+});
+
+describe('file approval preview', () => {
+  it('offers the bound chat file for review inside a batch', async () => {
+    const fetchFile = vi.mocked(aiChatApi.downloadChatAttachmentForReview);
+    fetchFile.mockResolvedValueOnce(new Blob(['reviewed']));
+    const createUrl = vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:test');
+    const revokeUrl = vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
+    const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
+    const machine = { op: 'attach_uploaded_file', attachment_id: 'n.Attachment.1', expected_sha256: 'a'.repeat(64),
+      file_review: { thread_id: 'n.ChatThread.1', attachment_id: 'n.Attachment.1', filename: 'Report.docx' } };
+    render(<ApprovalRequestContent staged={{ kind: 'batch', summary: 'File report', diff_human: '',
+      diff_machine: { operations: [{ kind: 'attach_uploaded_file', diff_machine: machine }] } }} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Download Report.docx for review' }));
+    await waitFor(() => expect(fetchFile).toHaveBeenCalledWith('n.ChatThread.1', 'n.Attachment.1', 'a'.repeat(64)));
+    await waitFor(() => expect(click).toHaveBeenCalled());
+    expect(revokeUrl).toHaveBeenCalledWith('blob:test');
+    createUrl.mockRestore(); revokeUrl.mockRestore(); click.mockRestore();
+  });
+
+  it('does not offer a review link for a different attachment', () => {
+    render(<ApprovalRequestContent staged={{ kind: 'attach_uploaded_file', summary: 'Attach file', diff_human: '',
+      diff_machine: { op: 'attach_uploaded_file', attachment_id: 'n.Attachment.1', expected_sha256: 'a'.repeat(64),
+        file_review: { thread_id: 'n.ChatThread.1', attachment_id: 'n.Attachment.2', filename: 'Other.pdf' } } }} />);
+    expect(screen.queryByRole('button', { name: /for review/ })).not.toBeInTheDocument();
+  });
+
+  it('explains when the authorized review download is no longer available', async () => {
+    vi.mocked(aiChatApi.downloadChatAttachmentForReview).mockRejectedValueOnce(new Error('denied'));
+    render(<ApprovalRequestContent staged={{ kind: 'attach_uploaded_file', summary: 'Attach file', diff_human: '',
+      diff_machine: { op: 'attach_uploaded_file', attachment_id: 'n.Attachment.1', expected_sha256: 'a'.repeat(64),
+        file_review: { thread_id: 'n.ChatThread.1', attachment_id: 'n.Attachment.1', filename: 'Report.pdf' } } }} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Download Report.pdf for review' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('may no longer have access');
+  });
+
+  it('shows the exact preview as text and labels incomplete content', () => {
+    const text = '<img src=x onerror=alert(1)>\nDraft paragraph';
+    const { container } = render(<ApprovalRequestContent staged={{
+      kind: 'attach_file', summary: 'Attach report', diff_human: '',
+      diff_machine: { op: 'attach_file', file_preview: { available: true, text, complete: false } },
+    }} />);
+    expect(screen.getByText(/Partial preview/)).toBeInTheDocument();
+    fireEvent.click(screen.getByText('Preview file content'));
+    expect(container.querySelector('pre')).toHaveTextContent(text, { normalizeWhitespace: false });
+    expect(container.querySelector('pre')).toBeVisible();
+    expect(container.querySelector('img')).not.toBeInTheDocument();
+  });
+
+  it('says when a preview is unavailable', () => {
+    render(<ApprovalRequestContent staged={{
+      kind: 'attach_file', summary: 'Attach report', diff_human: '',
+      diff_machine: { op: 'attach_file', file_preview: { available: false } },
+    }} />);
+    expect(screen.getByText(/content preview is not available/)).toBeVisible();
+  });
+});
+
+it('shows the completion transition and bound evidence revisions for a typed goal', () => {
+  render(<ApprovalRequestContent staged={{
+    kind: 'file_content',
+    summary: 'Close goal “Rehearsal readiness”',
+    diff_human: 'Narrated source revision 99',
+    diff_machine: {
+      op: 'file_content',
+      mode: 'append',
+      close_goal: true,
+      evidence_revisions: { 'n.Entry.checklist': 5, 'n.Entry.handover': 7, 'n.Entry.invalid': '9' },
+    },
+  }} />);
+  expect(screen.getByText('This will close goal “Rehearsal readiness”.')).toBeVisible();
+  expect(screen.getByText(/only if every published criterion passes/)).toBeVisible();
+  const evidence = screen.getByRole('list', { name: 'Supporting Entry revisions' });
+  expect(evidence).toHaveTextContent('n.Entry.checklistRevision 5');
+  expect(evidence).toHaveTextContent('n.Entry.handoverRevision 7');
+  expect(evidence).not.toHaveTextContent('Revision 99');
+  expect(evidence).not.toHaveTextContent('n.Entry.invalid');
+});
+
+it('explains the read-only scope of a typed-goal watch', () => {
+  render(<ApprovalRequestContent staged={{
+    kind: 'routine_task_create',
+    summary: 'New routine: Observe the goal',
+    diff_human: '',
+    diff_machine: {
+      op: 'routine_task_create', delivery_mode: 'task_watch', watch_goal: true,
+      watch_entry_id: 'n.Entry.goal', cron: '0 9 * * *', timezone: 'UTC',
+    },
+  }} />);
+  expect(screen.getByText(/Integral will check the watched goal/)).toBeVisible();
+  expect(screen.getByText(/It cannot edit or close the goal/)).toBeVisible();
+});
+
+
+it('discloses scheduled closure preparation and requires separate approval', () => {
+  render(<ApprovalRequestContent staged={{
+    kind: 'routine_task_create',
+    summary: 'New routine: Prepare a closure review',
+    diff_human: '',
+    diff_machine: {
+      op: 'routine_task_create', delivery_mode: 'task_watch', watch_goal: true,
+      watch_prepare_closure: true, watch_entry_id: 'n.Entry.goal',
+      cron: '0 9 * * *', timezone: 'UTC', write_scope: [],
+    },
+  }} />);
+  expect(screen.getByText(/this routine may prepare a closure review/)).toBeVisible();
+  expect(screen.getByText(/Closing the goal requires your approval/)).toBeVisible();
 });

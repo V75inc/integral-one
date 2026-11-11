@@ -46,6 +46,11 @@ import { extensionsApi, RECORDED_OUTPUT_WITHHELD_MESSAGE } from '../../api/exten
 import { toToastMessage } from '../../api/helpers';
 import { useConfirm } from '../../context/ConfirmContext';
 import { useToast } from '../../context/ToastContext';
+import { useScopeOptional } from '../../context/ScopeContext';
+import {
+  ResidentAssignmentControl,
+  useResidentAssignmentEnabled,
+} from '../entries/ResidentAssignmentControl';
 import { humanizeFieldKey } from '../../utils/humanizeFieldKey';
 import { formatCustomFieldValue } from '../../utils/entryMetaFields';
 import { useRelationLabels } from '../entries/relations';
@@ -551,6 +556,7 @@ function SortableCard({
   relationFields,
   fieldSpecsByKey,
   resolveMemberLabel,
+  assignmentWorkspaceId,
   dragEnabled = true
 }: {
   entry: Entry;
@@ -562,6 +568,7 @@ function SortableCard({
   fieldSpecsByKey: Map<string, OperationalModelFieldSpec>;
   resolveMemberLabel?: MemberLabelResolver;
   dragEnabled?: boolean;
+  assignmentWorkspaceId?: string;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: entry.id,
@@ -614,6 +621,7 @@ function SortableCard({
       aria-label={entry.title || 'Card'}
       className={[
         'flex items-stretch bg-[var(--panel-2)] rounded-lg border border-[var(--panel-border)] overflow-hidden',
+        assignmentWorkspaceId ? 'flex-col' : '',
         dragEnabled
           ? 'cursor-grab active:cursor-grabbing touch-none select-none'
           : 'cursor-pointer select-none',
@@ -631,6 +639,13 @@ function SortableCard({
         fieldSpecsByKey={fieldSpecsByKey}
         resolveMemberLabel={resolveMemberLabel}
       />
+      {assignmentWorkspaceId ? (
+        <ResidentAssignmentControl
+          compact
+          entryId={entry.id}
+          workspaceId={assignmentWorkspaceId}
+        />
+      ) : null}
     </div>
   );
 }
@@ -646,7 +661,8 @@ function KanbanColumnBody({
   relationFields,
   fieldSpecsByKey,
   resolveMemberLabel,
-  dragEnabled
+  dragEnabled,
+  assignmentWorkspaceId,
 }: {
   colKey: string;
   entries: Entry[];
@@ -658,6 +674,7 @@ function KanbanColumnBody({
   fieldSpecsByKey: Map<string, OperationalModelFieldSpec>;
   resolveMemberLabel?: MemberLabelResolver;
   dragEnabled: boolean;
+  assignmentWorkspaceId?: string;
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: colKey });
   return (
@@ -690,6 +707,7 @@ function KanbanColumnBody({
               fieldSpecsByKey={fieldSpecsByKey}
               resolveMemberLabel={resolveMemberLabel}
               dragEnabled={dragEnabled}
+              assignmentWorkspaceId={assignmentWorkspaceId}
             />
           ))
         )}
@@ -1195,6 +1213,12 @@ function KanbanWidgetInner({
   const queryClient = useQueryClient();
   const { showToast, showPendingToast, resolveToast } = useToast();
   const { resolveMemberLabel } = useWorkspaceMemberLabelMap();
+  const scope = useScopeOptional();
+  const assignmentWorkspaceId = publicPermissions
+    ? undefined
+    : track?.workspace_id || scope?.activeWorkspace?.id;
+  const assignmentEnabled = useResidentAssignmentEnabled(assignmentWorkspaceId);
+
   // Prefer the explicit persist hook (writes to backend + syncs cache);
   // fall back to cache-only update when the host page didn't wire one.
   const commitEntry = onEntryPersist || onEntryUpdate;
@@ -2135,6 +2159,7 @@ function KanbanWidgetInner({
                       fieldSpecsByKey={fieldSpecsByKey}
                       resolveMemberLabel={resolveMemberLabel}
                       dragEnabled={canUpdate}
+                      assignmentWorkspaceId={assignmentEnabled ? assignmentWorkspaceId : undefined}
                     />
                     {!isUnassigned && isEditor && (
                       <AddCard

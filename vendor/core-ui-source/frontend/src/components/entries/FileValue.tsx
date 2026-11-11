@@ -8,16 +8,16 @@ import type { Attachment } from '../../types';
 import { AttachmentViewerModal } from './attachments/AttachmentViewerModal';
 
 /** Resolve only typed file fields through the authenticated attachment API. */
-export function FileValue({ value }: { value: unknown }) {
+export function FileValue({ value, interactive = true }: { value: unknown; interactive?: boolean }) {
   const values = Array.isArray(value) ? value : [value];
   const ids = [...new Set(values.flatMap(item => {
     const id = typeof item === 'string' ? item : item && typeof item === 'object' && 'id' in item ? item.id : null;
     return typeof id === 'string' && id.trim() ? [id.trim()] : [];
   }))];
-  return <div className="flex min-w-0 flex-col gap-1">{ids.length ? ids.map(id => <FileReference key={id} id={id} />) : <span>—</span>}</div>;
+  return <div className="flex min-w-0 flex-col gap-1">{ids.length ? ids.map(id => <FileReference key={id} id={id} interactive={interactive} />) : <span>—</span>}</div>;
 }
 
-function FileReference({ id }: { id: string }) {
+function FileReference({ id, interactive }: { id: string; interactive: boolean }) {
   const { scope } = useScope();
   const [open, setOpen] = useState(false);
   const [downloadError, setDownloadError] = useState('');
@@ -29,6 +29,7 @@ function FileReference({ id }: { id: string }) {
   const attachment = data?.attachment;
   if (isPending) return <Text variant="body" tone="muted" as="span">Loading file…</Text>;
   if (!attachment || attachment.scan_status === 'blocked') return <Text variant="body" tone="muted" as="span">File unavailable</Text>;
+  if (!interactive) return <span>{attachment.filename || 'Attached file'}</span>;
   const download = async (file: Attachment) => {
     try {
       setDownloadError('');

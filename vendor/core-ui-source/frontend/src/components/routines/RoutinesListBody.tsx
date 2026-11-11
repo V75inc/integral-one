@@ -197,6 +197,8 @@ function RoutineRow({
     routine.status === 'paused' || routine.status === 'completed';
   const canEdit = routine.status !== 'cancelled';
   const canCancel = routine.status !== 'cancelled';
+  const canSnooze = canPause && (routine.delivery_mode === 'task_watch' || routine.delivery_mode === 'assignment_digest');
+  const snoozedUntil = canSnooze ? routine.snoozed_until : null;
   const scheduleLabel = describeCron(routine.cron, routine.timezone);
   const runMeta =
     routine.max_runs != null
@@ -206,13 +208,12 @@ function RoutineRow({
         : null;
   const lastFailed = routine.last_run_status === 'error';
 
-  const handlePauseResume = async () => {
+  const handleUpdate = async (patch: RoutineUpdateRequest) => {
     if (busy) return;
-    const next = canPause ? 'paused' : 'active';
     setBusy(true);
     setRowError(null);
     try {
-      await updateRoutine(routine.id, { status: next });
+      await updateRoutine(routine.id, patch);
       onChanged?.();
     } catch (err) {
       setRowError(
@@ -259,13 +260,15 @@ function RoutineRow({
               {routine.instruction}
             </Text>
             <Text as="p" variant="body-sm" tone="muted" className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1">
-              <span className="capitalize">{routine.status}</span>
+              <span className="capitalize">{snoozedUntil ? 'snoozed' : routine.status}</span>
               <span aria-hidden>·</span>
               <span title={routine.cron}>{scheduleLabel}</span>
               {routine.next_run_at && routine.status === 'active' && (
                 <>
                   <span aria-hidden>·</span>
-                  <span>next {formatRelativeTime(routine.next_run_at)}</span>
+                  {snoozedUntil
+                    ? <time dateTime={snoozedUntil}>Until {new Date(snoozedUntil).toLocaleString()}</time>
+                    : <span>next {formatRelativeTime(routine.next_run_at)}</span>}
                 </>
               )}
               {routine.last_run_at && (
@@ -283,6 +286,12 @@ function RoutineRow({
                         ? ` (${routine.last_run_status})`
                         : ''}
                   </span>
+                </>
+              )}
+              {routine.quiet_hours && (
+                <>
+                  <span aria-hidden>·</span>
+                  <span>Quiet hours {routine.quiet_hours.start}–{routine.quiet_hours.end} ({routine.timezone})</span>
                 </>
               )}
               {runMeta && (
@@ -303,6 +312,18 @@ function RoutineRow({
               </div>
             )}
             <div className="mt-2.5 flex flex-wrap items-center gap-2">
+              {canSnooze && (
+                <Button
+                  type="button"
+                  disabled={busy}
+                  size="xs" variant="ghost"
+                  onClick={() => void handleUpdate(snoozedUntil
+                    ? { clear_snooze: true }
+                    : { snooze_until: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString() })}
+                >
+                  {snoozedUntil ? 'End snooze' : 'Snooze for 24 hours'}
+                </Button>
+              )}
               {routine.thread_id ? (
                 <Link
                   to={`/agent?thread=${encodeURIComponent(routine.thread_id)}`}
@@ -345,7 +366,7 @@ function RoutineRow({
                 <IconButton
                   type="button"
                   disabled={busy}
-                  onClick={() => void handlePauseResume()}
+                  onClick={() => void handleUpdate({ status: canPause ? 'paused' : 'active' })}
                   label={canPause ? 'Pause task' : 'Resume task'}
                 >
                   {canPause ? (
@@ -536,7 +557,9 @@ function EditRoutineDialog({
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
 
-  const resolvedCron = buildCronFromPreset(preset, {
+  const isObservation = routine.delivery_mode === 'task_watch' || routine.delivery_mode === 'assignment_digest';
+  const oneShotWatch = isObservation && !routine.cron;
+  const resolvedCron = oneShotWatch ? '' : buildCronFromPreset(preset, {
     hour,
     minute,
     weekday,
@@ -550,10 +573,21 @@ function EditRoutineDialog({
     setSubmitting(true);
     setFormError(null);
     try {
-      const body: RoutineUpdateRequest = {
-        instruction: instruction.trim(),
-        cron: resolvedCron,
-      };
+      const body: RoutineUpdateRequest = { instruction: instruction.trim() };
+      if (resolvedCron !== routine.cron) body.cron = resolvedCron;
+      const form = new FormData(e.currentTarget);
+      const quietStart = String(form.get('quietStart') ?? '');
+      const quietEnd = String(form.get('quietEnd') ?? '');
+      if (isObservation && (
+        quietStart !== (routine.quiet_hours?.start ?? '') ||
+        quietEnd !== (routine.quiet_hours?.end ?? '')
+      )) {
+        if ((quietStart || quietEnd) && (!quietStart || !quietEnd || quietStart === quietEnd)) {
+          setFormError('Enter two different times, or clear both to disable quiet hours.');
+          return;
+        }
+        body.quiet_hours = quietStart ? { start: quietStart, end: quietEnd } : null;
+      }
       const trimmedMax = maxRuns.trim();
       if (trimmedMax === '') {
         if (routine.max_runs != null) {
@@ -587,7 +621,7 @@ function EditRoutineDialog({
       onSubmit={e => void handleSubmit(e)}
       submitLabel="Save"
       submitLoading={submitting}
-      submitDisabled={!instruction.trim() || !resolvedCron.trim()}
+      submitDisabled={!instruction.trim() || (!oneShotWatch && !resolvedCron.trim())}
       size="form"
     >
       <div className="flex flex-col gap-4">
@@ -599,22 +633,26 @@ function EditRoutineDialog({
           />
         </Field>
 
-        <Field
-          label="Schedule"
-          required
-          hint={describeCron(resolvedCron, routine.timezone)}
-        >
-          <Select
-            value={preset}
-            onChange={e => setPreset(e.target.value as SchedulePresetId)}
+        {oneShotWatch ? (
+          <Text as="p" variant="body-sm" tone="muted">This task is scheduled to run once.</Text>
+        ) : (
+          <Field
+            label="Schedule"
+            required
+            hint={describeCron(resolvedCron, routine.timezone)}
           >
-            {SCHEDULE_PRESET_OPTIONS.map(opt => (
-              <option key={opt.id} value={opt.id}>
-                {opt.label}
-              </option>
-            ))}
-          </Select>
-        </Field>
+            <Select
+              value={preset}
+              onChange={e => setPreset(e.target.value as SchedulePresetId)}
+            >
+              {SCHEDULE_PRESET_OPTIONS.map(opt => (
+                <option key={opt.id} value={opt.id}>
+                  {opt.label}
+                </option>
+              ))}
+            </Select>
+          </Field>
+        )}
 
         {needsTime && (
           <div className="grid grid-cols-2 gap-3">
@@ -656,7 +694,7 @@ function EditRoutineDialog({
           </Field>
         )}
 
-        {preset === 'custom' && (
+        {!oneShotWatch && preset === 'custom' && (
           <Field
             label="Cron expression"
             hint="Advanced 5-field cron (minute hour day month weekday)."
@@ -668,6 +706,20 @@ function EditRoutineDialog({
               monospace
             />
           </Field>
+        )}
+
+        {isObservation && (
+          <fieldset className="grid grid-cols-2 gap-3">
+            <legend><Text as="span" variant="body-sm">Quiet hours ({routine.timezone})</Text></legend>
+            <label>
+              <Text as="span" variant="body-sm">Quiet hours start</Text>
+              <Input type="time" name="quietStart" defaultValue={routine.quiet_hours?.start} />
+            </label>
+            <label>
+              <Text as="span" variant="body-sm">Quiet hours end</Text>
+              <Input type="time" name="quietEnd" defaultValue={routine.quiet_hours?.end} />
+            </label>
+          </fieldset>
         )}
 
         <Field

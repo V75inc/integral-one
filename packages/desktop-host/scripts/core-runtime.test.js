@@ -70,6 +70,21 @@ test('cold provisioning has a bounded retry message and ordinary operations keep
   }), /workspace operation timed out/);
   t.mock.timers.tick(300_000); await stopResult; assert.equal(stop.kills, 1);
 });
+test('startup failure keeps the error visible after lengthy provisioning output', async () => {
+  const child = fakeProcess();
+  const failure = assert.rejects(runCli({file: 'uv', args: []}, ['up'], {
+    spawnProcess: () => child,
+  }), error => {
+    assert.match(error.message, /Database setup failed: test error$/);
+    assert.doesNotMatch(error.message, /Downloading cpython/);
+    assert.ok(error.message.length <= 1200);
+    return true;
+  });
+  child.stderr.emit('data', 'Downloading cpython\n' + 'Downloading package\n'.repeat(40));
+  child.stderr.emit('data', 'Database setup failed: test error\n');
+  child.emit('close', 1);
+  await failure;
+});
 test('rejects incompatible descriptors and a remote local-runtime endpoint', async () => {
   for (const descriptor of [{ contract_version: 2 }, { contract_version: 1, web_url: 'https://remote.example' }]) {
     await assert.rejects(startCore({ home: '/home', resources: '/missing', command: { file: 'integral', args: [] },
