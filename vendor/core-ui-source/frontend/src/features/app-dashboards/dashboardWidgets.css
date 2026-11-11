@@ -322,6 +322,8 @@ button.dashboard-pie-legend__row:hover {
 
 /* Home layouts respond to actual App width, including the assistant dock. */
 .app-home-section { container-type: inline-size; container-name: app-home; }
+/* Keep both column rules here so a later utility cannot override the container query. */
+.app-home-grid { grid-template-columns: minmax(0, 1fr); }
 @container app-home (min-width: 640px) {
   .app-home-grid { grid-template-columns: repeat(12, minmax(0, 1fr)); grid-auto-rows: minmax(2rem, auto); }
   .app-home-widget { grid-column: var(--home-widget-column); grid-row: var(--home-widget-row); }

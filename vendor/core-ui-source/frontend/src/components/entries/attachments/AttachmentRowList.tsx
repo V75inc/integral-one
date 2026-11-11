@@ -23,6 +23,8 @@ import { AttachmentViewerModal } from './AttachmentViewerModal';
 
 interface AttachmentRowListProps {
   attachments: Attachment[];
+  initialOpenId?: string;
+  onViewerClose?(): void;
   layout?: 'list' | 'strip';
   canDelete?: boolean;
   onDeleted?(attachmentId: string): void;
@@ -39,6 +41,8 @@ interface AttachmentRowListProps {
 
 export function AttachmentRowList({
   attachments,
+  initialOpenId,
+  onViewerClose,
   layout = 'list',
   canDelete = false,
   onDeleted,
@@ -48,7 +52,7 @@ export function AttachmentRowList({
   emptyState,
 }: AttachmentRowListProps) {
   const { showToast } = useToast();
-  const [openId, setOpenId] = useState<string | null>(null);
+  const [openId, setOpenId] = useState<string | null>(initialOpenId ?? null);
   const [settingCardPreview, setSettingCardPreview] = useState(false);
 
   // The viewer modal navigates *visible* attachments only — blocked
@@ -65,7 +69,10 @@ export function AttachmentRowList({
   );
 
   const open = useCallback((att: Attachment) => setOpenId(att.id), []);
-  const closeViewer = useCallback(() => setOpenId(null), []);
+  const closeViewer = useCallback(() => {
+    setOpenId(null);
+    onViewerClose?.();
+  }, [onViewerClose]);
 
   const openAttachment = useMemo(
     () =>

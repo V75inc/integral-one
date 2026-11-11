@@ -103,6 +103,12 @@ never overwrite it with a runner-specific YAML. Signed Mac preparation enables t
 updater. Development candidates use TestPyPI and GitHub prereleases; stable builds use PyPI and ordinary GitHub releases. See [auto-updates](AUTO-UPDATES.md)
 for automatic checks, download/restart approvals and required two-version native QA.
 
+Offer the Mac DMG for manual installation. Verify the disk image signature and
+notarization, mount it read-only, and confirm that it opens with Integral One and
+an Applications shortcut. Verify that its app has the same signed code identity
+as the app in the ZIP. The ZIP remains the artifact used by the updater and the
+Terminal installer.
+
 ## 4. Qualify the real installation path
 
 On clean supported machines with no developer prerequisites:

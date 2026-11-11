@@ -1,6 +1,6 @@
 {
   "name": "integral-one",
-  "version": "0.1.10",
+  "version": "0.1.11",
   "private": true,
   "integralOneUpdates": {
     "enabled": true,
@@ -108,10 +108,16 @@
       },
       "icon": "desktop/icons/mac/integral-dark.png",
       "target": [
+        "dmg",
         "zip"
       ],
       "artifactName": "integral-one-${version}-mac-${arch}.${ext}",
       "minimumSystemVersion": "14.0"
+    },
+    "dmg": {
+      "title": "Drag Integral One to Applications",
+      "artifactName": "integral-one-${version}-mac-${arch}.${ext}",
+      "writeUpdateInfo": false
     },
     "win": {
       "signtoolOptions": {

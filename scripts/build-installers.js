@@ -34,11 +34,12 @@ if (signed) {
   execFileSync(process.execPath, [path.join(__dirname, 'qualify-upgrade.js'), path.join(root, 'resources/core'), '--require-settings'], { stdio: 'inherit', env: preparationEnv });
 }
 const builder = require.resolve('electron-builder/cli.js');
-const args = [builder, process.platform === 'darwin' ? '--mac' : '--win', process.platform === 'darwin' ? 'zip' : 'nsis', `--${process.arch}`, '--publish', 'never'];
+const targets = process.platform === 'darwin' ? ['--mac', 'dmg', 'zip'] : ['--win', 'nsis'];
+const args = [builder, ...targets, `--${process.arch}`, '--publish', 'never'];
 if (signed) {
   args.push('--config.forceCodeSigning=true');
   args.push('--config.extraMetadata.integralOneUpdates.enabled=true');
-  if (process.platform === 'darwin') args.push('--config.mac.notarize=true');
+  if (process.platform === 'darwin') args.push('--config.mac.notarize=true', '--config.dmg.sign=true');
   else args.push(`--config.win.signtoolOptions.certificateSha1=${process.env.ONE_WINDOWS_CERT_SHA1}`);
 }
 if (!signed && process.platform === 'win32') args.push('--config.win.signExecutable=false');

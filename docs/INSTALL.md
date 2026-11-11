@@ -6,7 +6,9 @@ The signed and notarized [0.1.8 development preview](https://github.com/V75inc/i
 
 ## macOS — Apple Silicon, macOS 14 or newer
 
-Open **Terminal**, paste this line and press Return:
+Download the Mac disk image from the [Integral One download page](https://onintegral.ai/one). Open the image and drag **Integral One** onto **Applications**. Eject the image, then open Integral One from Applications.
+
+For a Terminal installation, paste this line and press Return:
 
 ```sh
 curl -fsSL https://github.com/V75inc/integral-one/releases/download/v0.1.8/install.sh | /bin/bash -s -- --channel development
