@@ -50,11 +50,12 @@ test('cold provisioning survives five minutes and reports only fixed progress me
   child.stderr.emit('data', 'Downloading cpy');
   child.stderr.emit('data', 'thon-3.12 (20MiB)\nDownloading private-package (1MiB)\n');
   child.stderr.emit('data', 'Downloading another-package\nsecret /Users/private/token=abc\nInstalled 150 packages\n');
+  child.stderr.emit('data', 'integral-setup: database\nDownloading pgserver\nintegral-setup: workspace\n');
   t.mock.timers.tick(6 * 60_000);
   assert.equal(child.kills, 0);
   child.stdout.emit('data', '{"state":"ready"}'); child.emit('close', 0);
   assert.deepEqual(await result, {state: 'ready'});
-  assert.deepEqual(progress, ['Downloading Python for your workspace...', 'Downloading workspace components...', 'Preparing your workspace...']);
+  assert.deepEqual(progress, ['Downloading Python for your workspace...', 'Downloading workspace components...', 'Preparing your workspace...', 'Preparing your local database…', 'Starting your workspace…']);
 });
 
 test('cold provisioning has a bounded retry message and ordinary operations keep five minutes', async t => {
@@ -62,13 +63,13 @@ test('cold provisioning has a bounded retry message and ordinary operations keep
   const setup = fakeProcess();
   const setupResult = assert.rejects(runCli({file: 'uv', args: []}, ['up'], {
     timeout: 30 * 60_000, spawnProcess: () => setup,
-  }), /reopen Integral to resume setup/);
-  t.mock.timers.tick(30 * 60_000); await setupResult; assert.equal(setup.kills, 1);
+  }), /Check your internet connection and try again/);
+  t.mock.timers.tick(30 * 60_000); assert.equal(setup.kills, 1); setup.emit('close', null); await setupResult;
   const stop = fakeProcess();
   const stopResult = assert.rejects(runCli({file: 'uv', args: []}, ['stop'], {
     spawnProcess: () => stop,
   }), /workspace operation timed out/);
-  t.mock.timers.tick(300_000); await stopResult; assert.equal(stop.kills, 1);
+  t.mock.timers.tick(300_000); assert.equal(stop.kills, 1); stop.emit('close', null); await stopResult;
 });
 test('startup failure keeps the error visible after lengthy provisioning output', async () => {
   const child = fakeProcess();

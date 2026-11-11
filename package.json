@@ -29,7 +29,7 @@
     "qualify:ui:dependencies": "node scripts/qualify-ui-dependencies.js"
   },
   "dependencies": {
-    "@integral/desktop-host": "file:vendor/integral-desktop-host-0.1.7-dev.15.tgz",
+    "@integral/desktop-host": "file:vendor/integral-desktop-host-0.1.7-dev.16.tgz",
     "electron-updater": "6.8.9",
     "js-yaml": "4.3.2",
     "react": "18.3.1",
