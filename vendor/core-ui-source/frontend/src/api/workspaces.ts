@@ -145,6 +145,21 @@ export interface WorkspaceInvitation {
 }
 
 export const workspacesApi = {
+  async getResidentAssignmentSettings(workspaceId: string): Promise<{ enabled: boolean }> {
+    const { data } = await apiClient.get(
+      `/workspaces/${encodeURIComponent(workspaceId)}/resident-assignment-settings`,
+    );
+    return data;
+  },
+
+  async setResidentAssignmentSettings(workspaceId: string, enabled: boolean): Promise<{ enabled: boolean }> {
+    const { data } = await apiClient.put(
+      `/workspaces/${encodeURIComponent(workspaceId)}/resident-assignment-settings`,
+      { enabled },
+    );
+    return data;
+  },
+
   list: async (): Promise<Workspace[]> => {
     const { data } = await apiClient.get('/workspaces');
     const items = (data as { workspaces?: Workspace[] })?.workspaces;

@@ -1067,12 +1067,13 @@ export function AiConfigurationSection({
                             ? "supported"
                             : "not advertised"}
                       </Badge>
-                      {caps.data?.native_context ? (
+                      {caps.data && (
                         <Badge>
-                          {caps.data.native_context.toLocaleString()} input
-                          tokens
+                          {caps.data.native_context
+                            ? `${caps.data.native_context.toLocaleString()} model context tokens`
+                            : "Model context capacity unavailable"}
                         </Badge>
-                      ) : null}
+                      )}
                     </div>
                     <AdvancedOptions
                       profile={profile}

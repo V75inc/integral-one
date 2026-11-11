@@ -1,3 +1,4 @@
+import { ToastProvider } from '../../../context/ToastContext';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter } from 'react-router-dom';
@@ -90,4 +91,68 @@ it('refreshes Home immediately after an App update event', async () => {
   vi.mocked(dashboardsApi.home).mockResolvedValue({ home: { ...home, title: 'Updated Home' } } as never);
   await act(() => invalidateAfterChangeEvent(client, { id: 'event', action: 'app.update', scope: 'app:a1' } as never));
   expect(await screen.findByText('Updated Home')).toBeInTheDocument();
+});
+
+it('shows only available Track links and readouts, with draft-only workflow shortcuts', async () => {
+  vi.mocked(dashboardsApi.home).mockResolvedValue({
+    home: {
+      title: 'Home',
+      description: 'Keep shared equipment in circulation.',
+      track_shortcuts: ['Equipment', 'Loans', 'Private inventory'],
+      actions: [{ label: 'Start a checkout', draft: 'Help me start an equipment checkout.' }],
+    },
+  });
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  render(
+    <QueryClientProvider client={client}>
+      <MemoryRouter>
+        <AppHomePanel appId="a1" workspaceId="ws1" hasDashboards tracks={[
+          { id: 'n.Track.equipment', title: 'Equipment', entry_count: 2 },
+          { id: 'n.Track.loans', title: 'Loans' },
+        ]} />
+      </MemoryRouter>
+    </QueryClientProvider>,
+  );
+  expect(await screen.findByRole('link', { name: 'Equipment 2 entries' })).toHaveAttribute('href', '/tracks/n.Track.equipment');
+  expect(screen.getByRole('link', { name: 'Loans' })).toHaveAttribute('href', '/tracks/n.Track.loans');
+  expect(screen.queryByText('Private inventory')).not.toBeInTheDocument();
+  expect(screen.queryByText('0 entries')).not.toBeInTheDocument();
+  expect(screen.getByRole('link', { name: 'View dashboards' })).toHaveAttribute('href', '/apps/a1?section=dashboards');
+  fireEvent.click(screen.getByRole('button', { name: 'Start a checkout' }));
+  expect(requestOpenCompanionChat).toHaveBeenCalledWith({ draftText: 'Help me start an equipment checkout.' });
+});
+
+it.each([
+  ['quick_start', false],
+  ['operations_overview', true],
+  ['resource_hub', true],
+] as const)('places guidance and Track destinations in order for %s', async (layout, navigationFirst) => {
+  vi.mocked(dashboardsApi.home).mockResolvedValue({
+    home: {
+      title: 'Home',
+      layout,
+      description: 'Find shared\n     equipment.',
+      renderer: 'native',
+      content: { id: 'guide', type: 'text', text: 'Start with equipment.' },
+      track_shortcuts: ['Equipment'],
+      shortcut_descriptions: { Equipment: 'Find the right kit.' },
+    },
+  });
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  render(
+    <QueryClientProvider client={client}>
+      <MemoryRouter><ToastProvider>
+        <AppHomePanel appId="a1" workspaceId="ws1" tracks={[
+          { id: 'n.Track.equipment', title: 'Equipment', entry_count: 2 },
+        ]} />
+      </ToastProvider></MemoryRouter>
+    </QueryClientProvider>,
+  );
+  const navigation = await screen.findByRole('navigation', { name: 'Key Tracks' });
+  const guidance = screen.getByText('Start with equipment.');
+  expect(guidance.tagName).toBe('P');
+  expect(screen.getByText('Find shared equipment.').textContent).toBe('Find shared equipment.');
+  expect(Boolean(navigation.compareDocumentPosition(guidance) & Node.DOCUMENT_POSITION_FOLLOWING)).toBe(navigationFirst);
+  expect(screen.getByRole('link', { name: /Equipment Find the right kit/ })).toHaveAttribute('href', '/tracks/n.Track.equipment');
+  expect(Boolean(screen.queryByText('2 entries'))).toBe(layout !== 'resource_hub');
 });

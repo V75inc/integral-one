@@ -22,7 +22,9 @@ import type { Track, User } from '../../../types';
 export interface TrackDetailHeaderProps {
   track: Track;
   workspaceAccentColor?: string;
-  entriesTotal: number;
+  entriesTotal?: number;
+  loadedEntries?: number;
+  hasMoreEntries?: boolean;
   publicShareEnabled: boolean;
   trackWatchers: {
     watchers: User[];
@@ -44,6 +46,8 @@ export function TrackDetailHeader({
   track,
   workspaceAccentColor,
   entriesTotal,
+  loadedEntries,
+  hasMoreEntries,
   publicShareEnabled,
   trackWatchers,
   onToggleTrackWatch,
@@ -144,7 +148,10 @@ export function TrackDetailHeader({
         </div>
         <PageMeta>
           <span>
-            {entriesTotal} {entriesTotal === 1 ? 'entry' : 'entries'}
+            {entriesTotal !== undefined
+              ? `${entriesTotal} ${entriesTotal === 1 ? 'entry' : 'entries'}`
+              : loadedEntries !== undefined ? `${loadedEntries} loaded` : 'Loading entries…'}
+            {hasMoreEntries && ' · More available'}
           </span>
           {track.updated_at && (
             <>

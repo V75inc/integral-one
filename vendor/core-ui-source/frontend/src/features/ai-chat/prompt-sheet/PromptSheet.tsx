@@ -262,6 +262,18 @@ function WritePage({
   onRevised: () => void;
 }) {
   const pending = item.status === 'pending';
+  const errorCode = item.last_error?.error_code;
+  const staleProposal = errorCode === 'record_revision_conflict' || errorCode === 'schema_revision_conflict';
+  const unmetGoal = errorCode === 'goal_criteria_unmet';
+  const needsGoalReview = errorCode === 'goal_closure_required';
+  const needsFreshProposal = staleProposal || unmetGoal || needsGoalReview;
+  const failureSummary = unmetGoal
+    ? 'The goal stayed open. Review the published criteria and supporting Entries before requesting a new closure.'
+    : needsGoalReview
+      ? 'Complete this goal through a reviewed closure with supporting evidence.'
+      : staleProposal
+        ? 'This proposal is out of date. Ask Integral to review the current record and propose the change again.'
+        : "Your approval was saved, but this change couldn't be finished.";
   const machine = item.diff_machine;
   const operation = machine && typeof machine === 'object' && !Array.isArray(machine)
     ? { kind: item.write_kind ?? '', summary: item.summary ?? '', diff_machine: machine as Record<string, unknown> }
@@ -279,10 +291,10 @@ function WritePage({
       </Text>
       {item.last_error && (
         <div role="alert" className="mb-2">
-          <ExpandableChatError summary={<Text as="span" variant="meta" tone="danger">Your approval was saved, but this change couldn't be finished.</Text>}>
+          <ExpandableChatError summary={<Text as="span" variant="meta" tone="danger">{failureSummary}</Text>}>
             <Text as="p" variant="meta" tone="danger">
               {item.last_error.message || 'The change could not be applied.'}
-              {item.completed_operations ? ` ${item.completed_operations} changes were already saved. Trying again continues with what's left.` : ''}
+              {item.completed_operations ? ` ${item.completed_operations} changes were already saved.${needsFreshProposal ? '' : " Trying again continues with what's left."}` : ''}
             </Text>
           </ExpandableChatError>
         </div>
@@ -301,14 +313,14 @@ function WritePage({
       {pending ? (
         <div className="flex flex-wrap items-center justify-end gap-2 border-t border-[var(--border-subtle)] pt-3">
           {item.staged_state !== 'blessed' && (item.can_edit_entries ?? ['create_entry', 'update_entry', 'file_content'].includes(item.write_kind || '')) ? <EditEntryProposal token={item.token} disabled={busy} onRevised={onRevised} /> : null}
-          <Button
+          {!needsFreshProposal && <Button
             type="button"
             size="sm"
             disabled={busy}
             onClick={() => void onApprove()}
           >
             {busy ? 'Applying…' : item.staged_state === 'blessed' ? item.last_error ? 'Retry application' : 'Finish applying' : 'Approve'}
-          </Button>
+          </Button>}
           <Button
             type="button"
             size="sm"

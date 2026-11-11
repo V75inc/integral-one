@@ -9,7 +9,7 @@ vi.mock('../../api/routines', () => ({
   cancelRoutine: vi.fn(), deleteRoutine: vi.fn(), updateRoutine: vi.fn(),
   getRoutineActivity: vi.fn(),
 }));
-import { deleteRoutine } from '../../api/routines';
+import { deleteRoutine, updateRoutine } from '../../api/routines';
 
 afterEach(() => { cleanup(); vi.resetAllMocks(); });
 
@@ -62,4 +62,37 @@ it('focuses and expands only the requested routine, with readable resource links
   expect(api.getRoutineActivity).toHaveBeenCalledOnce();
   expect(api.getRoutineActivity).toHaveBeenCalledWith('selected');
   expect(screen.getByRole('button', { name: 'Resume task' })).toBeEnabled();
+});
+
+it('snoozes a watch and lets its owner end the snooze', async () => {
+  const watch: RoutineResponse = { ...routine('watched', 'active'), delivery_mode: 'task_watch' };
+  const props = { loading: false, error: null, onRetry: vi.fn(), onChanged: vi.fn() };
+  const { rerender } = render(<MemoryRouter><ConfirmProvider><RoutinesListBody
+    {...props} rows={[watch, routine('ordinary', 'active')]}
+  /></ConfirmProvider></MemoryRouter>);
+  fireEvent.click(screen.getByRole('button', { name: 'Snooze for 24 hours' }));
+  await waitFor(() => expect(props.onChanged).toHaveBeenCalledOnce());
+  expect(updateRoutine).toHaveBeenCalledWith('watched', { snooze_until: expect.any(String) });
+  const until = '2099-01-01T09:00:00Z';
+  rerender(<MemoryRouter><ConfirmProvider><RoutinesListBody
+    {...props} rows={[{ ...watch, snoozed_until: until, next_run_at: until }]}
+  /></ConfirmProvider></MemoryRouter>);
+  expect(screen.getByText('snoozed')).toBeVisible();
+  expect(screen.getByText(/^Until /)).toHaveAttribute('datetime', until);
+  fireEvent.click(screen.getByRole('button', { name: 'End snooze' }));
+  await waitFor(() => expect(updateRoutine).toHaveBeenLastCalledWith('watched', { clear_snooze: true }));
+});
+
+it('lets a task watch owner set daily quiet hours without changing a one-shot schedule', async () => {
+  render(<MemoryRouter><ConfirmProvider><RoutinesListBody
+    rows={[{ ...routine('watched', 'active'), delivery_mode: 'task_watch', cron: '' }]}
+    loading={false} error={null} onRetry={vi.fn()}
+  /></ConfirmProvider></MemoryRouter>);
+  fireEvent.click(screen.getByRole('button', { name: 'Edit task' }));
+  fireEvent.change(await screen.findByLabelText('Quiet hours start'), { target: { value: '22:00' } });
+  fireEvent.change(screen.getByLabelText('Quiet hours end'), { target: { value: '07:00' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+  await waitFor(() => expect(updateRoutine).toHaveBeenCalledWith('watched', {
+    instruction: 'watched', quiet_hours: { start: '22:00', end: '07:00' },
+  }));
 });

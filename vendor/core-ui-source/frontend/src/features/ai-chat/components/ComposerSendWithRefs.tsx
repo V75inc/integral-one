@@ -11,13 +11,17 @@ export function ComposerSendWithRefs({
   className,
   "aria-label": ariaLabel = "Send message",
   label,
+  queue = false,
 }: {
   className?: string;
   "aria-label"?: string;
   label?: string;
+  queue?: boolean;
 }) {
   const aui = useAui();
-  const canSend = useAuiState((s) => s.composer.canSend);
+  const canSend = useAuiState((s) => queue
+    ? Boolean(s.composer.text.trim()) && s.composer.attachments.length === 0
+    : s.composer.canSend);
   const messageTooLong = useAuiState((s) => chatMessageTooLong(s.composer.text));
   const entityRefsCtx = useChatEntityRefsOptional();
   const dictation = useComposerDictationActions();

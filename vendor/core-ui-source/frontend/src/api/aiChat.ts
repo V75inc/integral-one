@@ -1,4 +1,62 @@
 import { apiClient } from './index';
+import type { ChatEntityRef } from '../types/chatEntityRefs';
+
+export interface MandateReviewSummary {
+  work_item_id: string;
+  goal: string;
+  work_status: string;
+}
+
+export interface EntryReadMandateProposal {
+  mandate_id: string;
+  goal: string;
+  entry_ids: string[];
+  deadline_at: string;
+  max_spend: string;
+}
+
+export interface ChatMandateReview {
+  work_item_id: string;
+  work_status: string;
+  approval_status: string;
+  review_digest: string;
+  execution_enabled: boolean;
+  cancel_requested?: boolean;
+  requires_reconciliation?: boolean;
+  accounting?: {
+    status: 'not_recorded' | 'unavailable' | 'awaiting_receipt' | 'reserved' | 'settled' | 'overrun' | 'released';
+    reserved_usd?: string | null;
+    charged_usd?: string | null;
+  } | null;
+  entry_read_preflight: 'current' | 'denied' | 'unsupported';
+  model_route_preflight: 'current' | 'stale' | 'unavailable';
+  terms: {
+    goal: string;
+    revision: number;
+    limits: {
+      deadline_at: string;
+      currency: string;
+      max_spend: string;
+      max_model_requests: number;
+      max_tool_calls: number;
+      max_internal_writes: number;
+      max_external_effects: number;
+    };
+    grants: Array<{
+      capability_key: string;
+      capability_version: string;
+      operation: string;
+      max_calls: number;
+      resources: Array<{ kind: string; resource_id: string }>;
+    }>;
+    external_grants: Array<{ capability_key: string; destination: string; max_effects: number }>;
+    model_routes: Array<{ provider: string; model: string; credential_source: string }>;
+    entry_source_revisions?: Array<{ entry_id: string; record_revision: number }>;
+    success_criteria: string[];
+    stop_conditions: string[];
+    result_obligations: string[];
+  };
+}
 
 export interface ChatCancellationTarget {
   work_item_id?: string | null;
@@ -31,6 +89,7 @@ export interface AIChatThread {
    */
   provider_session_id?: string | null;
   active_work_item_id?: string | null;
+  parked_work_item_id?: string | null;
   title: string;
   archived: boolean;
   created_at?: string;
@@ -62,7 +121,73 @@ export interface AIChatPersistedMessage {
   created_at?: string;
 }
 
+export interface ChatFollowUpInput {
+  client_request_id: string;
+  after_work_item_id?: string;
+  text: string;
+  entity_refs: ChatEntityRef[];
+}
+
+interface ChatFollowUpReceipt {
+  client_request_id: string;
+  status: 'queued' | 'promoted' | 'steered' | 'dismissed';
+}
+
 export const aiChatApi = {
+  async downloadChatAttachmentForReview(threadId: string, attachmentId: string, expectedSha256: string): Promise<Blob> {
+    const response = await apiClient.get(
+      `/chat/threads/${encodeURIComponent(threadId)}/attachments/${encodeURIComponent(attachmentId)}/review`,
+      { params: { expected_sha256: expectedSha256 }, responseType: 'blob' },
+    );
+    return response.data as Blob;
+  },
+
+  async previewDocumentDraft(threadId: string, key: string, version: number): Promise<{title: string; body: string; format: string; version: number}> {
+    const { data } = await apiClient.get(
+      `/chat/threads/${encodeURIComponent(threadId)}/artifacts/${encodeURIComponent(key)}/preview`,
+      { params: { version } },
+    );
+    return data;
+  },
+
+  async downloadDocumentDraft(threadId: string, key: string, version: number): Promise<{ blob: Blob; filename?: string }> {
+    const response = await apiClient.get(
+      `/chat/threads/${encodeURIComponent(threadId)}/artifacts/${encodeURIComponent(key)}/download`,
+      { params: { version }, responseType: 'blob' },
+    );
+    const disposition = response.headers["content-disposition"];
+    const filename = typeof disposition === "string"
+      ? /filename="([A-Za-z0-9 ._-]+)"/.exec(disposition)?.[1]
+      : undefined;
+    return { blob: response.data as Blob, filename };
+  },
+
+  async queueFollowUp(threadId: string, input: ChatFollowUpInput) {
+    const { data } = await apiClient.post<ChatFollowUpReceipt>(
+      `/chat/threads/${encodeURIComponent(threadId)}/follow-ups`, input,
+    );
+    return data;
+  },
+
+  async listFollowUps(threadId: string) {
+    const { data } = await apiClient.get<{ items: ChatFollowUpInput[]; paused: boolean }>(
+      `/chat/threads/${encodeURIComponent(threadId)}/follow-ups`,
+    );
+    return data;
+  },
+
+  async resumeFollowUps(threadId: string) {
+    await apiClient.post(
+      `/chat/threads/${encodeURIComponent(threadId)}/follow-ups/resume`,
+    );
+  },
+
+  async dismissFollowUp(threadId: string, id: string) {
+    await apiClient.delete(
+      `/chat/threads/${encodeURIComponent(threadId)}/follow-ups/${encodeURIComponent(id)}`,
+    );
+  },
+
   async listProviders(): Promise<AIChatProviderInfo[]> {
     const res = await apiClient.get<{ providers: AIChatProviderInfo[] }>(
       '/chat/providers',
@@ -134,6 +259,50 @@ export const aiChatApi = {
       AIChatThread & { messages: AIChatPersistedMessage[] }
     >(`/chat/threads/${encodeURIComponent(threadId)}`);
     return res.data;
+  },
+
+  async listMandateReviews(threadId: string) {
+    const { data } = await apiClient.get<{ reviews: MandateReviewSummary[]; can_propose: boolean }>(
+      `/chat/threads/${encodeURIComponent(threadId)}/mandate-reviews`,
+    );
+    return data;
+  },
+
+  async proposeEntryReadMandate(threadId: string, proposal: EntryReadMandateProposal) {
+    const { data } = await apiClient.post<ChatMandateReview>(
+      `/chat/threads/${encodeURIComponent(threadId)}/mandate-reviews/entry-read`,
+      proposal,
+    );
+    return data;
+  },
+
+  async getMandateReview(threadId: string, workItemId: string) {
+    const { data } = await apiClient.get<ChatMandateReview>(
+      `/chat/threads/${encodeURIComponent(threadId)}/work-items/${encodeURIComponent(workItemId)}/mandate-review`,
+    );
+    return data;
+  },
+
+  async actOnMandateReview(
+    threadId: string,
+    workItemId: string,
+    action: 'approve' | 'reject' | 'run' | 'stop',
+    reviewDigest: string,
+  ) {
+    await apiClient.post(
+      `/chat/threads/${encodeURIComponent(threadId)}/work-items/${encodeURIComponent(workItemId)}/mandate-review/${action}`,
+      { review_digest: reviewDigest },
+    );
+  },
+
+  async getThreadIfChanged(threadId: string, revision: string) {
+    const { data } = await apiClient.get<
+      (AIChatThread & { messages: AIChatPersistedMessage[] }) | { unchanged: true }
+    >(`/chat/threads/${encodeURIComponent(threadId)}`, {
+      params: { known_revision: revision },
+      timeout: 5000,
+    });
+    return "unchanged" in data ? null : data;
   },
 
   async renameThread(threadId: string, title: string): Promise<AIChatThread> {

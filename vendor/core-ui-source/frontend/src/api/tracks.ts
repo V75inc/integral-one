@@ -124,7 +124,9 @@ export const tracksApi = {
     return withCount;
   },
   getDetail: async (id: string): Promise<TrackDetailBundle> => {
-    const { data } = await apiClient.get(`/tracks/${id}/detail`);
+    const { data } = await apiClient.get(`/tracks/${id}/detail`, {
+      params: { include_entry_count: false },
+    });
     const inner = unwrapApiDataEnvelope(data);
     return {
       track: unwrapResource<Track>(inner, 'track'),
@@ -177,6 +179,14 @@ export const tracksApi = {
       : {};
     const entries = mapEntriesForTrack(raw as any[], typeNameById) as Entry[];
     return { entries, nextCursor, hasMore, total, ...(requiresAppQuery(inner) ? { appQueryRequired: true } : {}) };
+  },
+
+  getEntriesTotal: async (id: string, params: Record<string, unknown>) => {
+    const { data } = await apiClient.get(`/tracks/${id}/entries`, {
+      params: { ...params, count_only: true },
+    });
+    const { total } = unwrapApiDataEnvelope(data);
+    return typeof total === 'number' ? total : null;
   },
 
   getEntries: async (id: string, params?: Record<string, unknown>) => {

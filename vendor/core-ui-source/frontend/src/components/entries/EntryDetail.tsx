@@ -81,13 +81,10 @@ import {
 import { ProvenanceBadge } from './ProvenanceBadge';
 import { EntryAgentUndoButton } from './EntryAgentUndoButton';
 import { WatchersControl } from './WatchersControl';
-import {
-  planSprintTaskMembershipSync,
-  shouldClearTaskSprintLink,
-} from './sprintTaskSync';
+import { ResidentAssignmentControl } from './ResidentAssignmentControl';
 import { ActivityPanel } from '../activity/ActivityPanel';
 import { CARD_PREVIEW_ATTACHMENT_FIELD } from '../../utils/entryMedia';
-import { sortFieldsByOrder } from '../../utils/entryMetaFields';
+import { findEntryTypeBySlug, sortFieldsByOrder } from '../../utils/entryMetaFields';
 import { TagChip } from '../../ui';
 import type {
   Attachment,
@@ -401,90 +398,6 @@ export function EntryDetail({
   const onUpdateRef = useRef(onUpdate);
   onUpdateRef.current = onUpdate;
 
-  const commitCustomField = useCallback(
-    async (key: string, value: unknown) => {
-      try {
-        // Sprint.tasks is UI-managed: Task.sprint remains the source of truth.
-        if (key === 'tasks' && slug(entry.type || '') === 'sprint') {
-          const nextTaskIds = Array.isArray(value)
-            ? (value as string[])
-            : typeof value === 'string' && value
-            ? [value]
-            : [];
-          const currentCustomTasks = (entry.custom_fields || {})?.tasks;
-          const { toAdd, toRemove } = planSprintTaskMembershipSync({
-            nextTaskIds,
-            referencedBy: entry.referenced_by,
-            currentTaskIds: currentCustomTasks,
-          });
-
-          // Optimistically update entry state immediately so UI chips remove/clear instantly
-          const optimisticEntry: Entry = {
-            ...entry,
-            custom_fields: {
-              ...((entry.custom_fields || {}) as Record<string, unknown>),
-              tasks: nextTaskIds,
-            },
-            referenced_by: (entry.referenced_by || []).filter(
-              r =>
-                !(
-                  toRemove.includes(r.id) &&
-                  (r.field_key || '').trim().toLowerCase() === 'sprint'
-                )
-            ),
-          };
-          setEntry(optimisticEntry);
-          onUpdateRef.current?.(optimisticEntry);
-
-          // Task.sprint is SoT — do not persist Sprint.tasks (dual REFERENCES).
-          await Promise.all([
-            ...toAdd.map(taskId =>
-              entriesApi.update(taskId, {
-                custom_fields: { sprint: entry.id },
-              })
-            ),
-            ...toRemove.map(async taskId => {
-              try {
-                const task = await entriesApi.get(taskId);
-                if (
-                  !shouldClearTaskSprintLink(
-                    (task.custom_fields || {}).sprint,
-                    entry.id
-                  )
-                ) {
-                  return;
-                }
-                await entriesApi.update(taskId, {
-                  custom_fields: { sprint: null },
-                });
-              } catch {
-                /* best-effort clear */
-              }
-            }),
-          ]);
-          try {
-            const refreshed = await entriesApi.get(entry.id);
-            const merged = { ...entry, ...refreshed };
-            setEntry(merged);
-            onUpdateRef.current?.(merged);
-          } catch {
-            /* keep optimistic */
-          }
-          return;
-        }
-        const updated = await entriesApi.update(entry.id, {
-          custom_fields: { [key]: value },
-        });
-        const merged = { ...entry, ...updated };
-        setEntry(merged);
-        onUpdateRef.current?.(merged);
-      } catch {
-        showToast('Failed to save field', 'error');
-        throw new Error('save failed');
-      }
-    },
-    [entry, showToast]
-  );
   const commentsAnchorRef = useRef<HTMLDivElement>(null);
   const didFocusComments = useRef(false);
   // Remember the reader's choice across records and reopenings on this device.
@@ -651,11 +564,11 @@ export function EntryDetail({
       return null;
     }
     const typeList = (entryTypesQuery.data ?? []) as EntryTypeNode[];
-    return (
-      typeList.find(
-        x => slug(String(x.name || '')) === slug(entry.type || '')
-      ) ?? null
-    );
+    // Resolve by manifest key, name, id, then single-type fallback. A
+    // name-only match left any prefixed type (e.g. crm_request / "Request")
+    // unresolved, so the read-only body rendered zero fields even though the
+    // edit form (which uses the same helper) worked.
+    return findEntryTypeBySlug(typeList, entry.type);
   }, [
     entry.type,
     entryTypesQuery.data,
@@ -1294,7 +1207,7 @@ export function EntryDetail({
             borderWidth: '1px',
             borderColor: tc.fg
           }} className="border-solid">
-            {prettifyType(entry.type)}
+            {matchedEntryType?.name || prettifyType(entry.type)}
           </Pill>
         );
       })() : null}
@@ -1704,6 +1617,9 @@ export function EntryDetail({
 
   const headerActions = (
     <div className="flex flex-wrap items-center gap-1.5">
+      {!isEditing && activeWorkspace?.id ? (
+        <ResidentAssignmentControl entryId={entry.id} workspaceId={activeWorkspace.id} />
+      ) : null}
       {canEdit ? (
         <Button
           variant="outline"
@@ -1905,8 +1821,10 @@ export function EntryDetail({
                     fromTrackId: entry.track_id,
                     fromTitle: entry.title || 'Untitled',
                   }}
-                  onCommitField={canEdit ? commitCustomField : undefined}
-                  entryId={canEdit ? entry.id : undefined}
+                  // Read-only body: values are static here. Editing is the
+                  // explicit Edit button, which swaps to the form. Passing
+                  // onCommitField/entryId turned text, number, relation and
+                  // file rows into inline editors on hover.
                 />
               </div>
               ) : null}

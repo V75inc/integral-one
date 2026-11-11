@@ -43,13 +43,17 @@ export function parseDateFieldValue(
 /** Human-readable label for the trigger button. */
 export function formatDateFieldDisplay(
   raw: string | null | undefined,
-  mode: DateFieldMode
+  mode: DateFieldMode,
+  options?: { compact?: boolean }
 ): string {
   const d = parseDateFieldValue(raw, mode);
   if (!d) return '';
-  return mode === 'datetime'
-    ? format(d, "do MMMM, yyyy, h:mm a")
-    : format(d, 'do MMMM, yyyy');
+  const compact = options?.compact === true;
+  if (mode === 'datetime') {
+    // Compact form for table cells: "21 Oct 2026, 12:00 PM".
+    return compact ? format(d, 'dd MMM yyyy, h:mm a') : format(d, "do MMMM, yyyy, h:mm a");
+  }
+  return compact ? format(d, 'dd MMM yyyy') : format(d, 'do MMMM, yyyy');
 }
 
 /** Serialize a Date for API storage. */

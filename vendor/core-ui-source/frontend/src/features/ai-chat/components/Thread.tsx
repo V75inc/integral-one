@@ -1,4 +1,10 @@
+import type { SteeringReceipt } from "../providers/types";
+import { MandateReviews } from "./MandateReviews";
+import { ChatFollowUps } from "./ChatFollowUps";
+import { DocumentDraftCard, extractDocumentDrafts } from "./DocumentDrafts";
 import { RoutineRunLink } from './RoutineRunLink';
+import { AssignmentDigestSuggestions } from './AssignmentDigestSuggestions';
+import type { AssignmentSuggestion } from '../../../api/routines';
 import { CollapsibleUserMessage } from './CollapsibleUserMessage';
 import { ConversationModelPicker } from './ConversationModelPicker';
 import { ExpandableChatError } from "./ExpandableChatError";
@@ -84,7 +90,7 @@ import { MessageUndoActions } from "./MessageUndoActions";
 import { ComposerAttachmentErrorToast } from "./ComposerAttachmentErrorToast";
 import { ComposerMicButton } from "./ComposerMicButton";
 import { ComposerDictationProvider } from "../../speech/ComposerDictationContext";
-import { hasAssistantDebugPayload, isModelSetupFailure } from "./assistantMessagePresentation";
+import { friendlyChatFailure, hasAssistantDebugPayload, isContextLimitFailure, isModelSetupFailure } from "./assistantMessagePresentation";
 import { ModelSetupNotice } from "./ModelSetupNotice";
 import {
   CHAT_SURFACE_ATTR,
@@ -104,7 +110,8 @@ export interface AIChatThreadProps {
  * thought grouping for reasoning + tool calls.
  */
 export function AIChatThread({ providerLabel, showHeader = true }: AIChatThreadProps) {
-  const { activeProviderId } = useChatActivity();
+  const { activeProviderId, activeThreadId } = useChatActivity();
+  const { scope: mandateScope } = useScope();
   // Stray keystrokes anywhere on this surface land in the composer. The
   // composer autoFocuses on mount, but any click on a message, a scroll
   // region or a dismissed popover moves focus off it and typing then went
@@ -178,6 +185,9 @@ export function AIChatThread({ providerLabel, showHeader = true }: AIChatThreadP
             <ThreadPrimitive.Messages>
               {() => <ThreadMessage />}
             </ThreadPrimitive.Messages>
+            {activeProviderId === "integral_native" && activeThreadId && !activeThreadId.startsWith("local-") && (
+              <MandateReviews threadId={activeThreadId} workspaceId={mandateScope?.workspaceId ?? null} />
+            )}
             <ActivityStrip />
           </div>
 
@@ -192,6 +202,7 @@ export function AIChatThread({ providerLabel, showHeader = true }: AIChatThreadP
               {({ composerLocked, canReplyInChat, sheet }) => (
                 <>
                   {sheet}
+                  <ChatFollowUps locked={composerLocked} />
                   <Composer
                     locked={
                       composerLocked &&
@@ -414,9 +425,13 @@ export function WorkTrail({ children }: { children: ReactNode }) {
       (s.message.metadata?.custom as { statusLabel?: string } | undefined)
         ?.statusLabel,
   );
-  const setupNeeded = useAuiState((s) => isModelSetupFailure(
-    (s.message.metadata?.custom as { errorCode?: string } | undefined)?.errorCode,
-  ));
+  const errorCode = useAuiState(
+    (s) => (s.message.metadata?.custom as { errorCode?: string } | undefined)?.errorCode,
+  );
+  const setupNeeded = isModelSetupFailure(errorCode);
+  const approvalStatus = errorCode === "work.approval_rejected"
+    ? "Approval rejected"
+    : errorCode === "work.approval_expired" ? "Approval expired" : undefined;
   const modelLabel = useMessageModelLabel();
   const turnMetrics = useMessageTurnMetrics();
   const toolCount = useAuiState(
@@ -445,11 +460,11 @@ export function WorkTrail({ children }: { children: ReactNode }) {
     hasAnswerText,
   );
   const done = [
-    setupNeeded ? "Setup needed" : interruptedReason === "cancelled" ? "Stopped" : interruptedReason ? "Interrupted" : "Finished",
+    approvalStatus ?? (setupNeeded ? "Setup needed" : interruptedReason === "cancelled" ? "Stopped" : interruptedReason ? "Interrupted" : "Finished"),
     toolCount > 0 ? `${toolCount} ${toolCount === 1 ? "tool call" : "tool calls"}` : "",
     modelLabel,
     turnMetrics,
-    toolFailed ? "a step failed" : "",
+    toolFailed && !approvalStatus ? "a step failed" : "",
   ]
     .filter(Boolean)
     .join(" · ");
@@ -513,6 +528,13 @@ function RoutineRunBadge() {
 }
 
 function AssistantMessage() {
+  const messageId = useAuiState((s) => s.message.id);
+  const assignmentSuggestions = useAuiState((s) =>
+    s.message.metadata?.custom?.assignmentSuggestions as AssignmentSuggestion[] | undefined,
+  );
+  const steering = useAuiState((s) =>
+    s.message.metadata?.custom?.steering as SteeringReceipt[] | undefined,
+  );
   const isRunning = useAuiState((s) => s.message.status?.type === "running");
   const isCancelled = useAuiState(
     (s) => s.message.status?.type === "incomplete" && s.message.status.reason === "cancelled",
@@ -624,7 +646,19 @@ function AssistantMessage() {
     >
       <div className="[overflow-wrap:anywhere] px-2 leading-relaxed text-[var(--text)]">
         <RoutineRunBadge />
-        {renderParts(false)}
+        {steering?.length ? (
+          <ul aria-label="Steering delivered to this turn" className="my-2 space-y-2">
+            {steering.map((receipt) => (
+              <li key={receipt.correction_id} className="border-s-2 border-[var(--border-subtle)] ps-3">
+                <Text as="p" variant="meta" tone="subtle" weight="medium">You steered this reply · Delivered</Text>
+                <Text as="p" variant="body-sm" className="whitespace-pre-wrap">{receipt.text}</Text>
+              </li>
+            ))}
+          </ul>
+        ) : null}
+        {assignmentSuggestions?.length
+          ? <AssignmentDigestSuggestions messageId={messageId} suggestions={assignmentSuggestions} />
+          : renderParts(false)}
         {isCancelled && (
           <div role="status" className="my-2 flex items-center gap-2 text-xs text-[var(--text-muted)]">
             <StopCircleIcon aria-hidden="true" className="size-3.5 shrink-0" />
@@ -635,6 +669,7 @@ function AssistantMessage() {
             staged writes. Inline attachment lists stay as transcript
             artifacts when already in message parts. */}
         <InlineAttachmentLists />
+        <InlineDocumentDrafts />
         <MessageError />
         <WorkTrail>{renderParts(true)}</WorkTrail>
       </div>
@@ -736,6 +771,15 @@ function InlineAttachmentLists() {
   );
 }
 
+function InlineDocumentDrafts() {
+  const content = useAuiState((s) => s.message.content);
+  const parts = useAuiState((s) => s.message.parts);
+  const drafts = useMemo(() => extractDocumentDrafts(content, parts), [content, parts]);
+  if (!drafts.length) return null;
+  return <div>{drafts.map((draft) => <DocumentDraftCard
+    key={`${draft.threadId}:${draft.key}:${draft.version}`} draft={draft} />)}</div>;
+}
+
 // ---------------------------------------------------------------------------
 // Error
 // ---------------------------------------------------------------------------
@@ -758,9 +802,16 @@ function MessageError() {
           bg-[var(--chat-error-bg)] p-3 text-sm text-[var(--chat-error-fg)]
         "
       >
-        <ExpandableChatError summary={<ErrorPrimitive.Message />}>
+        <ExpandableChatError summary={
+          isContextLimitFailure(code) ? friendlyChatFailure(code, null) : <ErrorPrimitive.Message />
+        }>
           {detail || <ErrorPrimitive.Message />}
         </ExpandableChatError>
+        {isContextLimitFailure(code) && (
+          <a href="/settings#ai-models" className="mt-2 inline-block underline">
+            Open AI Models
+          </a>
+        )}
       </ErrorPrimitive.Root>
     </MessagePrimitive.Error>
   );
@@ -1322,6 +1373,7 @@ export function Composer({ locked = false, home = false, onSendAttempt }: { lock
             placeholder={home ? "Tell Integral what you need…" : "Ask Integral…"}
             aria-label={home ? "Draft for Integral AI" : "Message input"}
             acceptHandoff={!home}
+            queueWhileRunning={!home}
             onSendAttempt={onSendAttempt}
             className="
               block w-full resize-none bg-transparent
@@ -1441,6 +1493,8 @@ function ComposerAction({ home = false }: { home?: boolean }) {
   const aui = useAui();
   const refs = useChatEntityRefsOptional();
   const canSuggest = useAuiState(s => !s.thread.isRunning);
+  const { steeringRunning } = useChatActivity();
+  const hasAttachments = useAuiState(s => s.composer.attachments.length > 0);
   const actionRef = useRef<HTMLDivElement>(null);
   return (
     <div ref={actionRef} className="relative flex min-w-0 items-center gap-2" role="group" aria-label="Message actions">
@@ -1471,10 +1525,14 @@ function ComposerAction({ home = false }: { home?: boolean }) {
         <ConversationModelPicker />
       </div>
       <div className="flex shrink-0 items-center gap-1">
+        {!home && steeringRunning && hasAttachments && (
+          <Text variant="meta" tone="subtle">Send attachments after this reply.</Text>
+        )}
         <ComposerMicButton />
-        <AuiIf condition={(s) => !s.thread.isRunning}>
+        <AuiIf condition={(s) => !s.thread.isRunning || (!home && steeringRunning)}>
           <ComposerSendWithRefs
-            aria-label={home ? "Ask Integral" : "Send message"}
+            aria-label={home ? "Ask Integral" : steeringRunning ? "Queue message" : "Send message"}
+            queue={!home && steeringRunning}
             className={home ? "flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[var(--cta-bg)] text-[var(--cta-fg)] hover:bg-[var(--cta-hover)] disabled:opacity-50 disabled:cursor-not-allowed focus-visible:ring-2 focus-visible:ring-[var(--focus-ring-color)]" : `
               flex h-10 w-10 shrink-0 items-center justify-center rounded-full
               bg-[var(--cta-bg)] text-[var(--cta-fg)]

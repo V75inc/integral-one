@@ -302,6 +302,7 @@ export function createServerChatProvider({
     const workItemId = id === "integral_native"
       ? resumeWorkItemId ?? response.headers.get("X-Integral-Work-Item")
       : null;
+    if (workItemId && !ctx.hostAction) ctx.onDurableTurn?.(workItemId);
     let committedCursor = 0;
     let reconnects = 0;
     while (!ctx.abortSignal.aborted) {

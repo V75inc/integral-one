@@ -25,7 +25,7 @@ import reasoningSource from '../Reasoning.tsx?raw';
 describe('Thread.tsx — B-AGENT-01 guard (reasoning collapsed at rest)', () => {
   it('routes the thought trail through <WorkTrail', () => {
     expect(threadSource).toContain('<WorkTrail>{renderParts(true)}</WorkTrail>');
-    expect(threadSource).toContain('{renderParts(false)}');
+    expect(threadSource).toMatch(/:\s*renderParts\(false\)\}/);
     expect(threadSource).not.toContain('return <WorkTrail>{children}</WorkTrail>');
   });
 

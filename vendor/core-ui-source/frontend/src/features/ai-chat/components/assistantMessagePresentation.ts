@@ -96,9 +96,18 @@ export function modelSetupMessage(code: unknown): string {
   return "Choose an AI model in Settings to start chatting. Once it's connected, return here and send your message again.";
 }
 
+export function isContextLimitFailure(code: unknown): boolean {
+  return code === "harness_context_limit" || code === "model_context_limit";
+}
+
 export function friendlyChatFailure(code: unknown, message: unknown): string {
+  if (isContextLimitFailure(code)) {
+    return "This step exceeded the context available to the selected model. Your conversation is saved. Try one part of the task at a time, send fewer attachments, or switch to a model with a larger context window.";
+  }
   if (isModelSetupFailure(code)) return modelSetupMessage(code);
   if (code === "work.cancelled") return "You stopped this request.";
+  if (code === "work.approval_rejected") return "You rejected the proposed change.";
+  if (code === "work.approval_expired") return "The proposed change expired before it was approved.";
   if (code === "image_input_unsupported") return "Attach a PNG, JPEG, WebP, or GIF image, then try again.";
   if (code === "image_input_invalid") return "This image couldn't be read. Please attach an undamaged image under 5 MB and try again.";
   if (code === "image_input_limit") return "Send up to four images per message. Remove the extra images and try again.";

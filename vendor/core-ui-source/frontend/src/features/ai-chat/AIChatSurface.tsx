@@ -1,3 +1,5 @@
+import type { FollowUp } from "./threadSessionRegistry";
+import type { ChatEntityRef } from "../../types/chatEntityRefs";
 import { createContext, useContext, type ReactNode } from "react";
 import { AssistantRuntimeProvider } from "@assistant-ui/react";
 import { useAIChatRuntime } from "./useAIChatRuntime";
@@ -38,6 +40,14 @@ const ChatActivityContext = createContext<{
    *  REST surface keys on (distinct from the provider session id). */
   activeThreadId: string | null;
   composerReady: boolean;
+  followUps?: readonly FollowUp[];
+  queueFollowUp?: (text: string, refs: ChatEntityRef[]) => Promise<boolean>;
+  removeFollowUp?: (id: string) => Promise<void>;
+  steerFollowUp?: (id: string) => Promise<void>;
+  steeringWorkItemId: string | null;
+  followUpsPaused?: boolean;
+  resumeFollowUps?: () => Promise<void>;
+  steeringRunning: boolean;
   streamingThreadIds: readonly string[];
   /** Threads busy with a turn this tab did not start. */
   remoteTurns: Record<string, { workspaceId: string | null; turnId: string | null }>;
@@ -55,6 +65,8 @@ const ChatActivityContext = createContext<{
   activeProviderId: "",
   activeThreadId: null,
   composerReady: false,
+  steeringWorkItemId: null,
+  steeringRunning: false,
   streamingThreadIds: [],
   remoteTurns: {},
   isThreadStreaming: () => false,
@@ -156,6 +168,14 @@ function AIChatRuntimeBoundaryInner({
     activeProviderSessionId,
     activeThreadId,
     composerReady,
+    followUps,
+    followUpsPaused,
+    resumeFollowUps,
+    queueFollowUp,
+    removeFollowUp,
+    steerFollowUp,
+    steeringWorkItemId,
+    steeringRunning,
     streamingThreadIds,
     remoteTurns,
     isThreadStreaming,
@@ -184,6 +204,14 @@ function AIChatRuntimeBoundaryInner({
           activeProviderId: provider.id,
           activeThreadId,
           composerReady,
+          followUps,
+          followUpsPaused,
+          resumeFollowUps,
+          queueFollowUp,
+          removeFollowUp,
+          steerFollowUp,
+          steeringWorkItemId,
+          steeringRunning,
           streamingThreadIds,
           remoteTurns,
           isThreadStreaming,

@@ -6,13 +6,14 @@ import {
   getDisallowedCustomFieldKeys,
   getMissingRequiredFields,
   isEmptyCustomFieldValue,
+  mergeEntryListRow,
   resolveEntryProfileFields,
   shouldRenderMetaField,
   slugEntryTypeName,
   sortFieldsByOrder,
 } from './entryMetaFields';
 import type { OperationalModelEntryTypeLike } from './entryMetaFields';
-import type { OperationalModelFieldSpec } from '../types';
+import type { Entry, OperationalModelFieldSpec } from '../types';
 
 describe('entryMetaFields', () => {
   it('slugEntryTypeName normalizes', () => {
@@ -229,5 +230,30 @@ describe('entryMetaFields', () => {
         values: { note: 'hi' },
       })
     ).toBe(false);
+  });
+});
+
+describe('mergeEntryListRow', () => {
+  const row: Entry = {
+    id: 'entry', track_id: 'track', author_id: 'author',
+    type: 'crm_request', type_id: 'crm', comment_count: 4, created_at: '2026-11-10',
+  };
+
+  it('keeps the canonical list key when detail returns an alias for the same type', () => {
+    const detail = { ...row, type: 'request' };
+    delete detail.comment_count;
+    expect(mergeEntryListRow(row, detail, [])).toMatchObject({
+      type: 'crm_request', type_id: 'crm', comment_count: 4, created_at: '2026-11-10',
+    });
+  });
+
+  it('uses the new type when its name is also a suffix of the old key', () => {
+    const detail = { ...row, type: 'request', type_id: 'plain' };
+    expect(mergeEntryListRow(row, detail, [])).toMatchObject({
+      type: 'request', type_id: 'plain',
+    });
+    expect(mergeEntryListRow(row, detail, [
+      { id: 'plain', name: 'Request', form_schema: { _manifest_entry_type_key: 'plain_request' } },
+    ])).toMatchObject({ type: 'plain_request', type_id: 'plain' });
   });
 });

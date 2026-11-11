@@ -85,7 +85,15 @@ function runCli(command, args, { timeout = 300_000, spawnProcess = spawn, onProg
     child.on('error', error => { clearTimeout(timer); reject(error); });
     child.on('close', code => {
       clearTimeout(timer);
-      if (code !== 0) return reject(new Error(stderr.trim() || `Core exited with code ${code}.`));
+      if (code !== 0) {
+        const details = stderr.trim();
+        // Native error boxes can clip long messages. Keep the end of startup
+        // stderr, where the failing command reports its error after provisioning.
+        const visible = args[0] === 'up'
+          ? details.split(/[\r\n]+/).slice(-8).join('\n').slice(-1200)
+          : details;
+        return reject(new Error(visible || `Core exited with code ${code}.`));
+      }
       try { resolve(JSON.parse(stdout)); } catch { reject(new Error('Core returned an invalid runtime descriptor.')); }
     });
   });

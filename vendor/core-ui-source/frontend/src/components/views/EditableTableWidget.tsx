@@ -4,6 +4,8 @@ import { SeamlessField } from '../entries/SeamlessField';
 import type { RelationChoice } from '../entries/EntryFormExpanded';
 import { slug } from '../entries/entryFormCustomFields';
 import { entriesApi, entryTypesApi, tracksApi } from '../../api';
+import { findEntryTypeForEntry } from '../../utils/entryMetaFields';
+import { formatDateFieldDisplay } from '../../utils/dateFieldValue';
 import { useToast } from '../../context/ToastContext';
 import { Surface } from '../../ui/Surface';
 import { Text } from '../../ui/Text';
@@ -381,55 +383,61 @@ export function EditableTableWidget({ entries, view, isLoading }: ViewWidgetProp
             </tr>
           </thead>
           <tbody>
-            {rows.map((row, index) => (
-              <tr key={row.id} className={`border-b border-[var(--entry-table-divider)] last:border-b-0 hover:bg-[var(--entry-table-row-hover)] ${index % 2 === 0 ? '' : 'bg-[var(--entry-table-row-alt)]'}`}>
-                {columnKeys.map(key => {
-                  const field = fieldByKey.get(key);
-                  const value = (row.custom_fields || {})[key];
-                  if (!field || field.type === 'computed' || field.readonly) {
+            {rows.map((row, index) => {
+              const rowFields = findEntryTypeForEntry(entryTypes, row)?.form_schema?.fields;
+              return (
+                <tr key={row.id} className={`border-b border-[var(--entry-table-divider)] last:border-b-0 hover:bg-[var(--entry-table-row-hover)] ${index % 2 === 0 ? '' : 'bg-[var(--entry-table-row-alt)]'}`}>
+                  {columnKeys.map(key => {
+                    const field = fieldByKey.get(key);
+                    const value = (row.custom_fields || {})[key];
+                    if (!field || field.type === 'computed' || field.readonly) {
+                      const dateType = rowFields?.find(candidate => candidate.key === key)?.type;
+                      const display =
+                        (dateType === 'date' || dateType === 'datetime') && typeof value === 'string'
+                          ? formatDateFieldDisplay(value, dateType, { compact: true }) || value
+                          : value == null ? '' : String(value);
+                      return (
+                        <td key={key} className="px-3 py-2">
+                          <Text variant="body-sm" tone="muted">
+                            {display || '—'}
+                          </Text>
+                        </td>
+                      );
+                    }
+                    const cellId = `${row.id}:${key}`;
                     return (
-                      <td key={key} className="px-3 py-2">
-                        <Text variant="body-sm" tone="muted">
-                          {value === undefined || value === null || value === ''
-                            ? '—'
-                            : String(value)}
-                        </Text>
+                      <td
+                        key={key}
+                        className={`px-1 py-1 align-top ${
+                          savingCell === cellId ? 'opacity-60' : ''
+                        }`}
+                      >
+                        <SeamlessField
+                          field={field}
+                          value={value}
+                          onChange={next => commitCell(row, key, next)}
+                          entryId={row.id}
+                          relationChoices={relationChoices[key]}
+                          relationLoading={relationLoading}
+                        />
                       </td>
                     );
-                  }
-                  const cellId = `${row.id}:${key}`;
-                  return (
-                    <td
-                      key={key}
-                      className={`px-1 py-1 align-top ${
-                        savingCell === cellId ? 'opacity-60' : ''
-                      }`}
+                  })}
+                  <td className="px-2 py-2 text-right">
+                    <button
+                      type="button"
+                      onClick={() => deleteRow(row)}
+                      className="rounded-[var(--radius-input)] p-1 transition-colors hover:bg-[var(--entry-table-row-hover)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--text)]"
+                      aria-label="Remove row"
                     >
-                      <SeamlessField
-                        field={field}
-                        value={value}
-                        onChange={next => commitCell(row, key, next)}
-                        entryId={row.id}
-                        relationChoices={relationChoices[key]}
-                        relationLoading={relationLoading}
-                      />
-                    </td>
-                  );
-                })}
-                <td className="px-2 py-2 text-right">
-                  <button
-                    type="button"
-                    onClick={() => deleteRow(row)}
-                    className="rounded-[var(--radius-input)] p-1 transition-colors hover:bg-[var(--entry-table-row-hover)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--text)]"
-                    aria-label="Remove row"
-                  >
-                    <Text as="span" variant="body-sm" tone="muted" className="inline-flex">
-                      <Trash2 size={14} strokeWidth={1.5} />
-                    </Text>
-                  </button>
-                </td>
-              </tr>
-            ))}
+                      <Text as="span" variant="body-sm" tone="muted" className="inline-flex">
+                        <Trash2 size={14} strokeWidth={1.5} />
+                      </Text>
+                    </button>
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>
