@@ -1,7 +1,7 @@
 'use strict';
 const path = require('node:path');
 const fs = require('node:fs');
-const { app, BrowserWindow, Menu, dialog, shell, session, systemPreferences, nativeTheme, nativeImage, ipcMain } = require('electron');
+const { app, BrowserWindow, Menu, dialog, shell, session, systemPreferences, nativeTheme, nativeImage, ipcMain, clipboard } = require('electron');
 const { validateWorkspace } = require('./origins');
 
 // Electron security baseline: https://www.electronjs.org/docs/latest/tutorial/security
@@ -93,7 +93,17 @@ async function boot() {
     const progress = new BrowserWindow({ width: splash.width || 560, height: splash.height || 220, resizable: false,
       title: splash.title || 'Starting Integral', backgroundColor: splashBackground, icon: themeIcons.current(),
       ...(options.windowsTitleBar === true && process.platform === 'win32' ? startupFrame(splashBackground) : {}),
-      webPreferences: { sandbox: true, nodeIntegration: false, contextIsolation: true } });
+      webPreferences: { sandbox: true, nodeIntegration: false, contextIsolation: true,
+        ...(splash.recovery ? { preload: path.join(__dirname, 'setup-preload.js') } : {}) } });
+    if (splash.recovery) {
+      progress.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+      progress.webContents.on('will-navigate', event => event.preventDefault());
+      progress.webContents.on('will-attach-webview', event => event.preventDefault());
+      // Closing an idle error screen quits. While Core is working, let it finish
+      // or fail before releasing this window and the single-instance lock.
+      progress.on('close', event => { if (!canCloseSetup) event.preventDefault(); });
+    }
+    let canCloseSetup = !splash.recovery;
     if (process.platform === 'win32') progress.setMenu?.(null);
     await progress.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(splash.html ||
       '<html><body style="font:16px system-ui;padding:30px"><h2>Starting Integral</h2><p role="status">Preparing your private workspace. The first launch downloads its runtime; later launches reuse it.</p></body></html>'
@@ -104,8 +114,25 @@ async function boot() {
         `document.querySelector('[role="status"]')?.replaceChildren(document.createTextNode(${JSON.stringify(message)}))`
       ).catch(() => {});
     };
-    try { runtime = await startCore({ home, resources, onProgress }); workspace = runtime.web_url; }
-    finally { progress.close(); }
+    try {
+      if (splash.recovery) {
+        const { recoverableSetup } = require('./setup-window');
+        runtime = await recoverableSetup({
+          window: progress, ipcMain, clipboard, version: app.getVersion(),
+          start: report => {
+            canCloseSetup = false;
+            return startCore({ home, resources, onProgress: report }).finally(() => { canCloseSetup = true; });
+          },
+        });
+      } else {
+        runtime = await startCore({ home, resources, onProgress });
+      }
+      if (!runtime) { app.quit(); return; }
+      workspace = runtime.web_url;
+    } finally {
+      canCloseSetup = true;
+      if (!progress.isDestroyed()) progress.close();
+    }
   }
   const applicationMenu = Menu.buildFromTemplate([
     ...(process.platform === 'darwin' ? [{ role: 'appMenu' }] : []),

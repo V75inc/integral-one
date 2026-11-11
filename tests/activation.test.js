@@ -331,7 +331,8 @@ test("loading screen is self-contained, softly glowing and respects reduced moti
   assert.match(html, /<svg/);
   assert.match(html, /drop-shadow/);
   assert.match(html, /prefers-reduced-motion:reduce/);
-  assert.match(html, /Opening your workspace/);
+  assert.match(html, /role="status"/);
+  assert.match(html, /<progress aria-label="Workspace setup">/);
   assert.ok(!/<script/i.test(html));
   assert.match(html, /default-src 'none'/);
 });

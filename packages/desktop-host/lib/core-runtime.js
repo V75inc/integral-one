@@ -52,6 +52,7 @@ function runCli(command, args, { timeout = 300_000, spawnProcess = spawn, onProg
   return new Promise((resolve, reject) => {
     const env = { ...process.env };
     delete env.PYTHONPATH;
+    if (args[0] === 'up' && onProgress) env.INTEGRAL_SETUP_PROGRESS = '1';
     const child = spawnProcess(command.file, [...command.args, ...args], {
       env, shell: false, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'],
     });
@@ -59,11 +60,11 @@ function runCli(command, args, { timeout = 300_000, spawnProcess = spawn, onProg
     let stderr = '';
     let progressLine = '';
     let lastProgress = '';
+    let corePhase = '';
+    let timedOut = false;
     const timer = setTimeout(() => {
+      timedOut = true;
       child.kill();
-      reject(new Error(args[0] === 'up'
-        ? 'Preparing your workspace took too long. Check your internet connection and reopen Integral to resume setup.'
-        : 'The workspace operation timed out. Retry the operation.'));
     }, timeout);
     child.stdout.on('data', chunk => { stdout += chunk; });
     child.stderr.on('data', chunk => {
@@ -76,7 +77,14 @@ function runCli(command, args, { timeout = 300_000, spawnProcess = spawn, onProg
       progressLine = lines.pop().slice(-1024);
       for (const line of lines) {
         let status;
-        if (/^Downloading cpython-/.test(line)) status = 'Downloading Python for your workspace...';
+        if (line === 'integral-setup: database' || (!corePhase && /^Creating virtual environment at: .*database-runtime$/.test(line))) {
+          if (corePhase !== 'workspace') corePhase = 'database';
+        } else if (line === 'integral-setup: workspace') {
+          corePhase = 'workspace';
+        }
+        if (corePhase === 'database') status = 'Preparing your local database…';
+        else if (corePhase === 'workspace') status = 'Starting your workspace…';
+        else if (/^Downloading cpython-/.test(line)) status = 'Downloading Python for your workspace...';
         else if (/^Downloading /.test(line)) status = 'Downloading workspace components...';
         else if (/^(Prepared |Installed | Downloaded |Downloaded )/.test(line)) status = 'Preparing your workspace...';
         if (status && status !== lastProgress) { lastProgress = status; onProgress(status); }
@@ -85,6 +93,9 @@ function runCli(command, args, { timeout = 300_000, spawnProcess = spawn, onProg
     child.on('error', error => { clearTimeout(timer); reject(error); });
     child.on('close', code => {
       clearTimeout(timer);
+      if (timedOut) return reject(new Error(args[0] === 'up'
+        ? 'Preparing your workspace took too long. Check your internet connection and try again.'
+        : 'The workspace operation timed out. Retry the operation.'));
       if (code !== 0) {
         const details = stderr.trim();
         // Native error boxes can clip long messages. Keep the end of startup
@@ -92,7 +103,9 @@ function runCli(command, args, { timeout = 300_000, spawnProcess = spawn, onProg
         const visible = args[0] === 'up'
           ? details.split(/[\r\n]+/).slice(-8).join('\n').slice(-1200)
           : details;
-        return reject(new Error(visible || `Core exited with code ${code}.`));
+        const error = new Error(visible || `Core exited with code ${code}.`);
+        error.exitCode = code;
+        return reject(error);
       }
       try { resolve(JSON.parse(stdout)); } catch { reject(new Error('Core returned an invalid runtime descriptor.')); }
     });
@@ -124,6 +137,7 @@ async function startCore({ home, resources, command, runner = runCli, request = 
   }
   // Verify the running API as well as the installed CLI: an older process may
   // already own this installation and advertise the legacy profile name.
+  onProgress?.('Checking workspace readiness…');
   const response = await request(new URL('/api/meta/deployment', workspace), {
     redirect: 'error', signal: AbortSignal.timeout(15_000),
   });

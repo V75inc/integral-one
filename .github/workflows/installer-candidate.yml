@@ -157,6 +157,7 @@ jobs:
           if-no-files-found: error
           path: |
             release/integral-one-*.zip
+            release/integral-one-*.dmg
             release/integral-one-*.exe
             release/install-manifest-*.json
   assemble:

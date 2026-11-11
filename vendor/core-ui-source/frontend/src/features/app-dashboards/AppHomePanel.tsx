@@ -50,7 +50,7 @@ export function AppHomeContent({ appId, workspaceId, result, onRefresh, tracks, 
     if (!data || data.error || typeof data.total_matched !== 'number') return false;
     return action.when.state === 'empty' ? data.total_matched === 0 : data.total_matched > 0;
   });
-  const content = home.renderer === 'native' && home.content ? <NativeHome appId={appId} workspaceId={workspaceId} node={home.content} preview={Boolean(result.preview)} liveData={!result.preview || Boolean(result.live_data)} refreshVersion={refreshVersion} onChanged={onRefresh} /> : <div className="app-home-grid grid grid-cols-1 gap-4">
+  const content = home.renderer === 'native' && home.content ? <NativeHome appId={appId} workspaceId={workspaceId} node={home.content} preview={Boolean(result.preview)} liveData={!result.preview || Boolean(result.live_data)} refreshVersion={refreshVersion} onChanged={onRefresh} /> : <div className="app-home-grid grid gap-4">
     {(home.widgets || []).map(widget => <div key={widget.id} className="app-home-widget min-w-0" style={{
       '--home-widget-column': `${widget.grid.x + 1} / span ${widget.grid.w}`,
       '--home-widget-row': `${widget.grid.y + 1} / span ${widget.grid.h}`,

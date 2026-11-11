@@ -169,6 +169,9 @@ export function EntryDetail({
 }: EntryDetailProps) {
   const location = useLocation();
   const navigateToEntryPage = useNavigate();
+  const linkedAttachmentId = variant === 'page'
+    ? new URLSearchParams(location.search).get('attachment') || undefined
+    : undefined;
   const { user } = useAuth();
   const { activeWorkspace } = useScope();
   const trackId = initialEntry.track_id || '';
@@ -402,7 +405,8 @@ export function EntryDetail({
   const didFocusComments = useRef(false);
   // Remember the reader's choice across records and reopenings on this device.
   // Until they choose, dialogs show discussion and pages retain reading width.
-  const commentsPanelOpen = settings.appearance.entryDetailsPanelOpen ?? (variant !== 'page');
+  const commentsPanelOpen = Boolean(linkedAttachmentId) ||
+    (settings.appearance.entryDetailsPanelOpen ?? (variant !== 'page'));
   const setCommentsPanelOpen = useCallback((next: boolean | ((value: boolean) => boolean)) => {
     updateSettings(previous => ({
       ...previous,
@@ -416,7 +420,8 @@ export function EntryDetail({
   }, [updateSettings, variant]);
   const pagePanelTriggerRef = useRef<HTMLButtonElement | null>(null);
   const panelRecordRef = useRef({ id: initialEntry.id, variant });
-  const [panelTab, setPanelTab] = useState<PanelTabKey>(variant === 'page' ? 'attachments' : 'comments');
+  const [selectedPanelTab, setPanelTab] = useState<PanelTabKey>(variant === 'page' ? 'attachments' : 'comments');
+  const panelTab = linkedAttachmentId ? 'attachments' : selectedPanelTab;
   /* Below `sm` the dialog is full-bleed, so there is no "beside" to render
      into — the panel moves into the body instead of vanishing, which is what
      it did when it was `hidden sm:flex` with no fallback: comments,
@@ -1491,7 +1496,17 @@ export function EntryDetail({
               )}
               {attachmentsForDisplay.length > 0 && (
                 <AttachmentRowList
+                  key={linkedAttachmentId}
                   attachments={attachmentsForDisplay}
+                  initialOpenId={linkedAttachmentId}
+                  onViewerClose={linkedAttachmentId ? () => {
+                    const params = new URLSearchParams(location.search);
+                    params.delete('attachment');
+                    navigateToEntryPage(
+                      { pathname: location.pathname, search: params.toString(), hash: location.hash },
+                      { replace: true },
+                    );
+                  } : undefined}
                   canDelete={canEdit}
                   canSetCardPreview={canEdit}
                   cardPreviewAttachmentId={preferredImageId ?? null}

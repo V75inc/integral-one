@@ -91,7 +91,8 @@ host = require("@integral/desktop-host").runDesktop({
   loadingScreen: {
     title: "Integral | one",
     width: 520,
-    height: 330,
+    height: 350,
+    recovery: true,
     backgroundColor: "#171717",
     html: fs.readFileSync(path.join(__dirname, "loading.html"), "utf8"),
   },

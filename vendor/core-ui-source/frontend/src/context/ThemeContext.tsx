@@ -29,6 +29,9 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     const root = document.documentElement;
     root.classList.toggle('theme-dark', theme === 'dark');
+    const icon = document.querySelector<HTMLLinkElement>('#app-favicon');
+    const iconHref = icon?.dataset[theme];
+    if (icon && iconHref) icon.href = iconHref;
     try {
       localStorage.setItem(STORAGE_KEY, theme);
     } catch {
