@@ -57,12 +57,12 @@
     "source_commit": "eebaa74aeb6e53d009b65dd5ef11c623a678b9bc"
   },
   "released_core": {
-    "version": "0.1.1rc58",
-    "source_commit": "a4ffa00bad286b3427662d7ffbc0432c8be87660",
-    "wheel_sha256": "4a0fece6342d47eb74284e2e1a15a9f5a338e2953712681469dd4bb8c2921fee",
+    "version": "0.1.1rc59",
+    "source_commit": "8a1bae94e0866f53e045e17028830e5e8198e356",
+    "wheel_sha256": "05126fbe4394f8fbd1e2ed1bff095b1e228d37c710fe9f4c50b4463d77fbb6bc",
     "packaged_python_files_match_source": 877,
     "original_license_and_notice_match": true,
-    "publication_index": "https://test.pypi.org/project/integral-core/0.1.1rc58/",
+    "publication_index": "https://test.pypi.org/project/integral-core/0.1.1rc59/",
     "ui_source_tree_sha256": "0e62ad83e9f11fe1d08ee76494d4399530f50ddd496d494ce8ea5a1ebf14486b",
     "qualification": "Automated consumer matrix required; signing, native GUI upgrade and release approval remain separate"
   },

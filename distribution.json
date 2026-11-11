@@ -9,14 +9,14 @@
     "sha256": "59faea2b11058fb41c76644e3eba7a65c405bb88020e82ebe7ba6c96e08539b8"
   },
   "core": {
-    "version": "0.1.1rc58",
-    "source_commit": "a4ffa00bad286b3427662d7ffbc0432c8be87660",
+    "version": "0.1.1rc59",
+    "source_commit": "8a1bae94e0866f53e045e17028830e5e8198e356",
     "source_state": "Published wheel matches exact Core release tag; consumer qualification required",
     "desktop_contract_version": 1,
-    "wheel_sha256": "4a0fece6342d47eb74284e2e1a15a9f5a338e2953712681469dd4bb8c2921fee",
-    "wheel_filename": "integral_core-0.1.1rc58-py3-none-any.whl",
-    "ui_manifest_sha256": "107039a2ea525e849c7109b4399a9701f326c3b08ad449155b3c9a4056d08a66",
-    "base_wheel": "vendor/core-runtime/integral_core-0.1.1rc58-py3-none-any.whl",
+    "wheel_sha256": "05126fbe4394f8fbd1e2ed1bff095b1e228d37c710fe9f4c50b4463d77fbb6bc",
+    "wheel_filename": "integral_core-0.1.1rc59-py3-none-any.whl",
+    "ui_manifest_sha256": "99ac7458957e12af3191910d1967ec5f0ddf1b5b567211199dedc6a9fa2aeec2",
+    "base_wheel": "vendor/core-runtime/integral_core-0.1.1rc59-py3-none-any.whl",
     "runtime_contract_version": 1,
     "runtime_preset": "local"
   },
