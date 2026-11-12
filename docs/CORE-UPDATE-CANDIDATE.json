@@ -1,9 +1,9 @@
 {
-  "core_version": "0.1.1rc60",
-  "one_version": "0.1.11",
-  "core_commit": "e2e5985600de16d13a3709b5b0accc9c20cbc0eb",
+  "core_version": "0.1.1rc61",
+  "one_version": "0.1.12",
+  "core_commit": "3c18636c2d888496c329adc1efb2b767814858bf",
   "registry": "testpypi",
-  "wheel_sha256": "545037b2e5b89a0e5d81b299ecbeae176b277da5e483cd5bafdccdfeca1844dd",
+  "wheel_sha256": "f62c313ef02d66cbf75382ac68f1b81f6b64f68043bfc3bcfe88b39a6ca6dd59",
   "automatic_publication": false,
   "delivery": "qualified-one-release"
 }
