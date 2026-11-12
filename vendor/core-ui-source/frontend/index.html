@@ -2,8 +2,8 @@
 <html lang="en">
 
 <head>
-  <link id="app-favicon" rel="icon" type="image/svg+xml" href="/integral-logo-white.svg?v=theme-favicon"
-    data-dark="/integral-logo-white.svg?v=theme-favicon" data-light="/integral-logo.svg?v=theme-favicon" />
+  <link id="app-favicon" rel="icon" type="image/svg+xml" href="/integral-logo.svg?v=system-theme"
+    data-dark="/integral-logo-white.svg?v=system-theme" data-light="/integral-logo.svg?v=system-theme" />
   <script>
     globalThis.process = globalThis.process || { env: { NODE_ENV: 'development' } };
   </script>
@@ -13,11 +13,16 @@
         var t = localStorage.getItem('t75_theme');
         var dark = t !== 'light';
         document.documentElement.classList.toggle('theme-dark', dark);
-        var icon = document.getElementById('app-favicon');
-        icon.href = dark ? icon.dataset.dark : icon.dataset.light;
       } catch (e) {
         document.documentElement.classList.add('theme-dark');
       }
+      var icon = document.getElementById('app-favicon');
+      var systemTheme = window.matchMedia('(prefers-color-scheme: dark)');
+      function updateFavicon() {
+        icon.href = systemTheme.matches ? icon.dataset.dark : icon.dataset.light;
+      }
+      updateFavicon();
+      systemTheme.addEventListener('change', updateFavicon);
     })();
   </script>
   <meta charset="UTF-8" />
