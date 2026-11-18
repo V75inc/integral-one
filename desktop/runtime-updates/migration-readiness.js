@@ -16,4 +16,14 @@ function needsAssistedMigration(home, argv = [], kind = "runtime") {
   // This only selects the existing exact-plan validator. It grants no approval.
   return !(plan && approval);
 }
-module.exports = { needsAssistedMigration };
+function matchesMigrationHome(planned, actual) {
+  if (typeof planned !== "string" || !path.isAbsolute(planned)) return false;
+  if (process.platform !== "win32") return planned === fs.realpathSync(actual);
+  // Core uses the full Windows path. Electron can receive its 8.3 or case alias.
+  try {
+    return fs.realpathSync.native(planned) === fs.realpathSync.native(actual);
+  } catch {
+    return false;
+  }
+}
+module.exports = { matchesMigrationHome, needsAssistedMigration };

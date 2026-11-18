@@ -2,6 +2,7 @@
 // Runs under the desktop host's single-instance lock, before any serving boot.
 const fs = require("node:fs"), path = require("node:path"), crypto = require("node:crypto");
 const { isDeepStrictEqual } = require("node:util");
+const { matchesMigrationHome } = require("./migration-readiness");
 const hash = file => crypto.createHash("sha256").update(fs.readFileSync(file)).digest("hex");
 function regular(file) {
   const stat = fs.lstatSync(file);
@@ -91,7 +92,7 @@ async function beforeBundledBoot({ root, home, resources, cli, version, argv, cl
     regular(planPath);
     if (fs.statSync(planPath).size > 16 * 1024 ** 2 || hash(planPath) !== approvedHash) throw new Error("Installer migration approval changed.");
     const plan = read(planPath), config = read(path.join(home, "installation.json"));
-    if (plan.version !== 1 || plan.home !== fs.realpathSync(home) || plan.installation_id !== config.installation_id || plan.wheel_sha256 !== wheelHash)
+    if (plan.version !== 1 || !matchesMigrationHome(plan.home, home) || plan.installation_id !== config.installation_id || plan.wheel_sha256 !== wheelHash)
       throw new Error("Installer migration plan does not match this home and wheel.");
     if (config.runtime_database_user !== undefined || config.runtime_database_password !== undefined) throw new Error("Installer migration refuses existing or partial runtime credentials.");
     const savedPlan = path.join(root, `installer-plan-${approvedHash}.json`);

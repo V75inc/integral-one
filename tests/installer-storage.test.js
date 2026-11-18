@@ -45,13 +45,21 @@ test("replacement installer migrates once, preserves identity/data and retains i
   assert.equal(fs.readFileSync(path.join(f.home,"store/record"),"utf8"),"original record");
   await f.boot();assert.deepEqual(f.counts(),{starts:1,applies:1});
 });
+test("Windows replacement accepts the same home through its canonical case alias", { skip: process.platform !== "win32" }, async t => {
+  const f = fixture(t);
+  f.plan.home = f.plan.home.replace(/home$/i, "HOME");
+  fs.writeFileSync(f.planFile, JSON.stringify(f.plan));
+  f.options.argv[2] = `--installer-storage-approved-hash=${digest(fs.readFileSync(f.planFile))}`;
+  await f.boot();
+  assert.equal(f.state().phase, "complete");
+});
 for(const mode of ["missing-approval","changed-plan","wrong-wheel","wrong-home","partial-credentials","live-home","linked-home"]){
  test(`replacement installer fails closed before copying or applying: ${mode}`,async t=>{
   const f=fixture(t);
   if(mode==="missing-approval")f.options.argv=[];
   if(mode==="changed-plan")fs.appendFileSync(f.planFile," ");
   if(mode==="wrong-wheel"||mode==="wrong-home"){
-   f.plan[mode==="wrong-wheel"?"wheel_sha256":"home"]="wrong";fs.writeFileSync(f.planFile,JSON.stringify(f.plan));
+   f.plan[mode==="wrong-wheel"?"wheel_sha256":"home"]=mode==="wrong-wheel"?"wrong":f.root;fs.writeFileSync(f.planFile,JSON.stringify(f.plan));
    f.options.argv[2]=`--installer-storage-approved-hash=${digest(fs.readFileSync(f.planFile))}`;
   }
   if(mode==="partial-credentials")fs.writeFileSync(f.configFile,JSON.stringify({...f.config,runtime_database_user:"unreviewed"}));

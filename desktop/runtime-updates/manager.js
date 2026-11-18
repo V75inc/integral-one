@@ -6,6 +6,7 @@ const { execFile } = require("node:child_process");
 const { promisify, isDeepStrictEqual } = require("node:util");
 const { invocation, runCli, startCore } = require("@integral/desktop-host/core-runtime");
 const releases = require("./releases");
+const { matchesMigrationHome, needsAssistedMigration } = require("./migration-readiness");
 const { compareCore, compareApp } = require("../release-contract");
 const execute = promisify(execFile);
 const ID = /^\d+\.\d+\.\d+(?:(?:a|b|rc)\d+)?-[a-f0-9]{16}$/;
@@ -161,7 +162,7 @@ function createRuntimeManager({ app, resources, channel, bundledCore, request = 
         if (regular(planPath).size > 16 * 1024 ** 2) throw new Error("Migration plan exceeds size limit.");
         if (hash(planPath) !== approval.approvedHash) throw new Error("Reviewed migration changed.");
         const envelope = JSON.parse(fs.readFileSync(planPath, "utf8"));
-        if (envelope.version !== 1 || envelope.home !== fs.realpathSync(home) ||
+        if (envelope.version !== 1 || !matchesMigrationHome(envelope.home, home) ||
             envelope.installation_id !== pending.installationId || envelope.wheel_sha256 !== selected.manifest.wheel.sha256)
           throw new Error("Migration does not match the selected home and runtime.");
         let receipt;
@@ -296,7 +297,7 @@ function createRuntimeManager({ app, resources, channel, bundledCore, request = 
       if (!/^[a-f0-9]{64}$/.test(approvedHash) || hash(planPath) !== approvedHash)
         throw new Error("Approval must name the exact reviewed migration file.");
       const envelope = JSON.parse(fs.readFileSync(planPath, "utf8"));
-      if (envelope.version !== 1 || envelope.home !== fs.realpathSync(home) ||
+      if (envelope.version !== 1 || !matchesMigrationHome(envelope.home, home) ||
           envelope.installation_id !== runtime.installation_id || envelope.wheel_sha256 !== selected.manifest.wheel.sha256)
         throw new Error("Migration does not match the selected home and runtime.");
       const saved = path.join(root, `migration-${approvedHash}.json`);
@@ -317,7 +318,7 @@ function createRuntimeManager({ app, resources, channel, bundledCore, request = 
     app.relaunch({ args }); app.quit();
   }
   function migrationRequirement(kind = "runtime") {
-    return require("./migration-readiness").needsAssistedMigration(home, argv, kind)
+    return needsAssistedMigration(home, argv, kind)
       ? { code: "reviewed-storage-plan-required" } : null;
   }
   function canInstallHost(manifest) {
