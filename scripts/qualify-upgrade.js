@@ -97,16 +97,43 @@ async function qualify(directory, { requireSettings = false, retainEvidence = fa
         "--max-index-bytes", "2000000000", "--max-build-bytes", "3000000000"]);
       assert.equal(planned.review_required, true);
       assert.equal(hash(fs.readFileSync(plan)), planned.sha256);
+      const userData = path.join(root, "profile");
+      const journalFile = path.join(userData, "runtime-updates/installer-storage.json");
       const manager = require("../desktop/runtime-updates/manager").createRuntimeManager({
         app: { isPackaged: true, getVersion: () => require("../package.json").version },
         resources, channel: require("../package.json").integralOneUpdates.channel,
         bundledCore: require("../distribution.json").core, environment: {},
         argv: ["qualification", `--home=${home}`, `--installer-storage-plan=${plan}`,
           `--installer-storage-approved-hash=${planned.sha256}`], getRuntime: () => null,
+        cliRunner: async (command, args, options) => {
+          try {
+            return await runCli(command, args, options);
+          } catch (error) {
+            if (args[0] === "storage-upgrade") {
+              const reason = String(error.message).trim().split(/\r?\n/).at(-1);
+              if (/^Offline storage upgrade failed: [A-Za-z0-9_]+\. Retain the reviewed plan and use recovery\.$/.test(reason) ||
+                  ["Migration belongs to another home or runtime",
+                    "Private database did not become ready",
+                    "Maintenance database did not stop; manual recovery required",
+                    "Database process or stale readiness requires review",
+                    "Linked maintenance paths require recovery review"].includes(reason)) {
+                console.error(`Synthetic storage apply reported: ${reason}`);
+              }
+            }
+            throw error;
+          }
+        },
       });
-      const userData = path.join(root, "profile");
-      await manager.beforeBoot({ userData });
-      const journal = json(path.join(userData, "runtime-updates/installer-storage.json"));
+      try {
+        await manager.beforeBoot({ userData });
+      } catch (error) {
+        if (fs.existsSync(journalFile)) {
+          const { phase, failure } = json(journalFile);
+          console.error("Synthetic installer migration result:", JSON.stringify({ phase, stage: failure?.stage, category: failure?.category }));
+        }
+        throw error;
+      }
+      const journal = json(journalFile);
       assert.equal(journal.phase, "complete");
       assert.equal(journal.approvedHash, planned.sha256);
       // The bridge already verified the exact credential receipt. Pin its
