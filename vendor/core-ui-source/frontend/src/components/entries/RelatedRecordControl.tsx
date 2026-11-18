@@ -106,6 +106,7 @@ function RelatedRecordSession({
     };
   }, []);
   const [open, setOpen] = useState(false);
+  const [relationOpen, setRelationOpen] = useState(false);
   const [search, setSearch] = useState('');
   const [values, setValues] = useState<Record<string, unknown>>({});
   const [extraChoices, setExtraChoices] = useState<
@@ -157,10 +158,10 @@ function RelatedRecordSession({
   const trigger = useRef<HTMLButtonElement | null>(null);
   const selection = useRef('');
   const operations = useQuery({
-    queryKey: ['related-record-operations', principalId, workspaceId, appId],
-    queryFn: () => extensionsApi.listOperations(appId),
-    enabled: Boolean(appId && !props.field.readonly),
-    staleTime: 0,
+    queryKey: ['related-record-operations', principalId, workspaceId, appId, config.create_operation],
+    queryFn: () => extensionsApi.listOperations(appId, config.create_operation),
+    enabled: Boolean(appId && !props.field.readonly && (!props.onRelationOpen || relationOpen || open)),
+    staleTime: 30_000,
   });
   const form = useQuery({
     queryKey: [
@@ -395,7 +396,14 @@ function RelatedRecordSession({
       <Field
         {...props}
         searchable
-        onRelationSearch={setSearch}
+        onRelationOpen={props.onRelationOpen ? (value) => {
+          setRelationOpen(value);
+          props.onRelationOpen?.(value);
+        } : undefined}
+        onRelationSearch={(value) => {
+          setSearch(value);
+          props.onRelationSearch?.(value);
+        }}
         onChange={changeRelation}
         relationChoices={[
           ...(props.relationChoices || []).filter(

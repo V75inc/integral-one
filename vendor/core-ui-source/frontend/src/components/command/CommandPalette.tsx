@@ -88,7 +88,7 @@ export function CommandPalette({ open, onClose }: Props) {
 
   const tracksQuery = useQuery({
     queryKey: [...tracksListQueryKey(''), workspaceId] as const,
-    queryFn: () => tracksApi.list({ limit: 100 }),
+    queryFn: () => tracksApi.list({ limit: 100, skipEntryCounts: true }),
     enabled: open,
     staleTime: 30_000,
   });

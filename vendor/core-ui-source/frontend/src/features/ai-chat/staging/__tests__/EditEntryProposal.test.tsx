@@ -24,6 +24,28 @@ beforeEach(() => {
 });
 
 describe('proposed record editor', () => {
+  it('allows selecting and revising each record in a multi-record proposal', async () => {
+    const second = { ...item, operation_index: 3, entry: { ...item.entry, id: 'entry-2', title: 'Beans' } };
+    const third = { ...item, operation_index: 4, entry: { ...item.entry, id: 'entry-3', title: 'Oats' } };
+    vi.mocked(getEntryProposalForm).mockResolvedValue({ ok: true, entries: [item, second, third] } as never);
+    vi.mocked(reviseEntryProposal).mockResolvedValue({ ok: true, staged_change: { token: 'revised', state: 'pending' } } as never);
+    const view = render(<EditEntryProposal token="original-token" />);
+    fireEvent.click(screen.getByRole('button', { name: 'Edit records' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Record to edit' }));
+    expect(screen.getByRole('option', { name: 'Rice · Pantry' })).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: 'Beans · Pantry' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('option', { name: 'Oats · Pantry' }));
+    expect(formOptions).toHaveBeenLastCalledWith(expect.objectContaining({ initialEntry: third.entry }));
+    fireEvent.click(screen.getByRole('button', { name: 'Save for review' }));
+    await waitFor(() => expect(reviseEntryProposal).toHaveBeenCalledWith('original-token', third, edited));
+    view.rerender(<EditEntryProposal token="revised" />);
+    fireEvent.click(screen.getByRole('button', { name: 'Edit records' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Record to edit' }));
+    fireEvent.click(screen.getByRole('option', { name: 'Beans · Pantry' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Save for review' }));
+    await waitFor(() => expect(reviseEntryProposal).toHaveBeenCalledWith('revised', second, edited));
+  });
+
   it('loads the full seed, saves a new pending proposal and never auto-approves it', async () => {
     const revised = { token: 'new-token', state: 'pending' };
     vi.mocked(reviseEntryProposal).mockResolvedValue({ ok: true, staged_change: revised } as never);

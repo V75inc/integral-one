@@ -1,17 +1,43 @@
 import { defineConfig, loadEnv } from 'vite';
 import react from '@vitejs/plugin-react';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { integralAppPublicPages } from './plugins/integralAppPublicPages';
+
+const frontendRoot = fileURLToPath(new URL('.', import.meta.url));
+const reactSDKRoot = fileURLToPath(new URL('../sdk/react', import.meta.url));
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '');
-  const backend = env.VITE_BACKEND_URL || 'http://localhost:4000';
+  // Container DNS belongs to the dev proxy, never to browser-visible VITE_*.
+  const backend = env.INTEGRAL_DEV_API_PROXY_TARGET || env.VITE_BACKEND_URL || 'http://localhost:4000';
   const appPublicPaths =
     env.VITE_INTEGRAL_APP_PUBLIC_PATHS || env.INTEGRAL_APP_PUBLIC_PATHS || '';
   const nodeEnv = mode === 'production' ? 'production' : 'development';
   // Keep in lockstep with backend INTEGRAL_WEB_ASSET_VERSION on deploy.
   const webAssetVersion = env.VITE_WEB_ASSET_VERSION || '0.1.0';
   return {
-    plugins: [integralAppPublicPages(appPublicPaths), react()],
+    plugins: [integralAppPublicPages(appPublicPaths), react(), {
+      name: 'integral-ui-runtime',
+      transformIndexHtml() {
+        // These host-owned shared runtimes are already part of Core. Fetch
+        // their entry modules at boot so the first admitted App does not pay
+        // another import waterfall. App artifacts still require admission.
+        return ['react', 'jsx', 'sdk'].map(name => ({
+          tag: 'link',
+          attrs: {rel: 'modulepreload', href: `/ui-runtime/${name}.mjs`},
+          injectTo: 'head' as const,
+        }));
+      },
+      configureServer(server) {
+        const entries: Record<string, string> = {react: 'reactRuntime.ts', jsx: 'jsxRuntime.ts', sdk: 'sdkRuntime.ts'};
+        server.middlewares.use((req, _res, next) => {
+          const key = /^\/ui-runtime\/(react|jsx|sdk)\.mjs$/.exec((req.url || '').split('?')[0])?.[1];
+          if (key) req.url = `/src/components/extensions/${entries[key]}`;
+          next();
+        });
+      },
+    }],
     define: {
       // react-grid-layout/legacy references process.env.NODE_ENV in dev bundles.
       'process.env.NODE_ENV': JSON.stringify(nodeEnv),
@@ -20,6 +46,7 @@ export default defineConfig(({ mode }) => {
     resolve: {
       // pnpm may nest react under transitive deps; dedupe so hooks use one copy.
       dedupe: ['react', 'react-dom'],
+      alias: {'@integral/sdk-react': path.join(reactSDKRoot, 'src/index.tsx')},
     },
     build: {
       // Split boot-time vendor libraries out of the main entry chunk. Routes
@@ -28,7 +55,15 @@ export default defineConfig(({ mode }) => {
       // Rolldown's current `codeSplitting` API; test patterns use `[\\/]` to
       // match module ids on every platform.
       rolldownOptions: {
+        preserveEntrySignatures: 'strict',
+        input: {
+          main: path.resolve('index.html'),
+          'ui-runtime/react': path.resolve('src/components/extensions/reactRuntime.ts'),
+          'ui-runtime/jsx': path.resolve('src/components/extensions/jsxRuntime.ts'),
+          'ui-runtime/sdk': path.resolve('src/components/extensions/sdkRuntime.ts'),
+        },
         output: {
+          entryFileNames: chunk => chunk.name.startsWith('ui-runtime/') ? '[name].mjs' : 'assets/[name]-[hash].js',
           // Preserve import side-effect order while keeping the manual vendor
           // boundaries below; some UI and agent packages register at import.
           strictExecutionOrder: true,
@@ -52,6 +87,8 @@ export default defineConfig(({ mode }) => {
       },
     },
     server: {
+      // The public SDK is a sibling source package, including in Docker.
+      fs: {allow: [frontendRoot, reactSDKRoot]},
       port: 9006,
       host: '0.0.0.0',
       proxy: {

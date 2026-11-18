@@ -12,6 +12,27 @@ spec.loader.exec_module(release)
 
 
 class CorePublicationTests(unittest.TestCase):
+    def test_snapshot_preserves_release_owned_build_support(self):
+        import json
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root / "core"
+            (source / "scripts").mkdir(parents=True)
+            (source / "scripts/distribution.py").write_text(
+                "import pathlib,sys,json\n"
+                "assert sys.argv[1:3] == ['snapshot', '--output']\n"
+                "out=pathlib.Path(sys.argv[3]);out.mkdir()\n"
+                "(out/'build-support').mkdir()\n"
+                "(out/'build-support/sdk-proof').write_text('release-owned')\n"
+                "(out/'core-source.json').write_text(json.dumps({'contract_version':1,'files':{'build-support/sdk-proof':'digest'}}))\n"
+            )
+            output = root / "snapshot"
+            descriptor = release.snapshot(source, output)
+            self.assertIn("build-support/sdk-proof", descriptor["files"])
+            self.assertEqual((output / "build-support/sdk-proof").read_text(), "release-owned")
+            with self.assertRaises(__import__('subprocess').CalledProcessError):
+                release.snapshot(source, output)
+
     def policy(self, **changes):
         return {
             "schemaVersion": 1,

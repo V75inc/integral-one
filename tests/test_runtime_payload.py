@@ -2,6 +2,7 @@ import hashlib
 import importlib.util
 import json
 import stat
+import shutil
 import tempfile
 import unittest
 import zipfile
@@ -19,6 +20,7 @@ def load(name, path):
 
 validator = load("runtime_payload_validator", ROOT / "desktop/runtime-updates/payload.py")
 composer = load("runtime_payload_composer", ROOT / "scripts/compose-runtime.py")
+packager = load("runtime_payload_packager", ROOT / "scripts/runtime-payload.py")
 
 
 class RuntimePayloadTests(unittest.TestCase):
@@ -52,6 +54,27 @@ class RuntimePayloadTests(unittest.TestCase):
         descriptor = root / "manifest.json"
         descriptor.write_text(json.dumps(manifest))
         return payload, descriptor
+
+    def test_payload_requires_the_host_version_that_built_it(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root, base, wheel, manifest = self.fixture(directory)
+            resources = root / "resources/core"
+            resources.mkdir(parents=True)
+            shutil.copy2(wheel, resources / wheel.name)
+            (resources / "runtime.json").write_text(json.dumps({"coreWheel": wheel.name, "sha256": {wheel.name: manifest["wheel"]["sha256"]}}))
+            (root / "distribution.json").write_text(json.dumps({"core": {"version": manifest["core"]["version"], "base_wheel": base.name, "wheel_sha256": manifest["core"]["wheelSha256"], "wheel_filename": wheel.name, "source_commit": "b" * 40}}))
+            (root / "package.json").write_text(json.dumps({"version": "0.1.14", "integralOneUpdates": {"channel": "development"}}))
+            validator_dir = root / "desktop/runtime-updates"
+            validator_dir.mkdir(parents=True)
+            shutil.copy2(ROOT / "desktop/runtime-updates/payload.py", validator_dir / "payload.py")
+            notices = root / "resources/notices"
+            notices.mkdir()
+            (notices / "THIRD-PARTY-NOTICES.txt").write_text("fixture notices")
+            (notices / "inventory.json").write_text("{}")
+            output = root / "packaged"
+            packager.package(root, output, ["darwin-arm64"], one_source="a" * 40)
+            saved = json.loads((output / "runtime-manifest.json").read_text())
+            self.assertEqual(saved["minimumOneVersion"], "0.1.14")
 
     def test_extracts_only_verified_engine_one_ui_and_notices(self):
         with tempfile.TemporaryDirectory() as directory:

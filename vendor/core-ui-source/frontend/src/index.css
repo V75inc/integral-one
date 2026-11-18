@@ -77,6 +77,10 @@
      soft gray canvas; cards and input surfaces stay on --panel. */
   --section-bg: var(--panel-2);
   --panel-border: #ececef;
+  /* The edge of a place you can type or choose: clearly visible on every surface, unlike the hairline panel edge. */
+  --field-border: #c4c4cc;
+  --field-border-hover: #9a9aa6;
+  --field-bg: var(--panel-2);
   --border-subtle: #f4f4f6;
 
   --surface: var(--panel);
@@ -102,6 +106,8 @@
   --entry-table-header: #eeeff2;
   --entry-table-row-alt: #f8f8fa;
   --entry-table-row-hover: #eef0f4;
+  /* Chart palette for App charts (LineChart, BridgeChart). */
+  --viz-1: #2a78d6; --viz-2: #eb6834; --viz-up: #2a78d6; --viz-down: #e34948; --viz-total: #8a8984; --viz-grid: #ececea;
   --collection-border: #e0e1e5;
   --collection-divider: #e8e9ec;
 
@@ -272,6 +278,9 @@
   --toast-border: #bcbcc5;
   --section-bg: var(--bg);
   --panel-border: #2d2d2d;
+  --field-border: #4a4a52;
+  --field-border-hover: #6d6d78;
+  --field-bg: var(--panel-2);
   /* Matches the reference's `--line-2`. Used for entry-row hairlines
      where the divider should sit so close to the surface it nearly
      dissolves. */
@@ -294,6 +303,7 @@
   --entry-table-header: #323232;
   --entry-table-row-alt: #272727;
   --entry-table-row-hover: #363636;
+  --viz-1: #3987e5; --viz-2: #d95926; --viz-up: #3987e5; --viz-down: #e66767; --viz-total: #8f8e88; --viz-grid: #2e2e2c;
   --collection-border: #424242;
   --collection-divider: #393939;
 
@@ -447,9 +457,12 @@
     width: 100%;
     border-radius: var(--radius-input);
     @apply border px-3 py-2 text-sm outline-none transition;
-    background: var(--panel-2);
-    border-color: var(--panel-border);
+    background: var(--field-bg);
+    border-color: var(--field-border);
     color: var(--text);
+  }
+  .app-input:hover:not(:disabled):not(:focus) {
+    border-color: var(--field-border-hover);
   }
   /* Single-choice selects share an inset caret and reserve space for it.
      Listboxes keep their native appearance; forced colors restores the OS caret. */
@@ -476,7 +489,7 @@
   }
   .app-input:focus {
     box-shadow: 0 0 0 2px var(--focus-ring-color);
-    border-color: var(--panel-border);
+    border-color: var(--text-muted);
   }
 }
 
@@ -1595,4 +1608,14 @@
   background: color-mix(in srgb, var(--bg) 30%, transparent);
   -webkit-backdrop-filter: blur(6px);
   backdrop-filter: blur(6px);
+}
+
+/* Progress (App UI SDK): smooth fill, a moving sheen while work is under way, a sliding bar when the amount is unknown. */
+.integral-progress-fill { transition: width 0.45s ease; }
+.integral-progress-unknown { width: 35%; }
+@media (prefers-reduced-motion: no-preference) {
+  .integral-progress-fill::after { content: ''; position: absolute; inset: 0; background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.45), transparent); animation: integral-progress-sheen 1.4s ease-in-out infinite; }
+  .integral-progress-unknown { animation: integral-progress-slide 1.3s ease-in-out infinite; }
+  @keyframes integral-progress-sheen { from { transform: translateX(-100%); } to { transform: translateX(100%); } }
+  @keyframes integral-progress-slide { 0% { margin-left: -35%; } 100% { margin-left: 100%; } }
 }

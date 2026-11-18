@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 import type { Attachment } from '../../../../types';
 import { sanitizeHtml } from '../../../../utils/sanitizeHtml';
@@ -31,6 +31,9 @@ export function XlsxViewer({ attachment }: { attachment: Attachment }) {
   const [sheets, setSheets] = useState<SheetSummary[] | null>(null);
   const [active, setActive] = useState(0);
   const [convertError, setConvertError] = useState<string | null>(null);
+  // Wide registers are wider than the pane: say so instead of silently clipping.
+  const scroller = useRef<HTMLDivElement | null>(null);
+  const [moreRight, setMoreRight] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -114,6 +117,11 @@ export function XlsxViewer({ attachment }: { attachment: Attachment }) {
   }
 
   const current = sheets[active];
+  const checkOverflow = () => {
+    const el = scroller.current;
+    if (!el) return;
+    setMoreRight(el.scrollWidth - el.clientWidth - el.scrollLeft > 4);
+  };
 
   return (
     <div className="flex h-full flex-col">
@@ -135,9 +143,24 @@ export function XlsxViewer({ attachment }: { attachment: Attachment }) {
           ))}
         </div>
       )}
-      <div className="xlsx-viewer flex-1 overflow-auto bg-[var(--panel)] p-3">
+      {moreRight && (
         <div
-          className="text-xs text-[var(--text)]"
+          data-testid="xlsx-more-columns"
+          className="border-b border-[var(--panel-border)] bg-[var(--panel)] px-3 py-1 text-[11px] text-[var(--text-muted)]"
+        >
+          More columns to the right: scroll sideways or download the file.
+        </div>
+      )}
+      <div
+        ref={el => {
+          scroller.current = el;
+          if (el) window.requestAnimationFrame(checkOverflow);
+        }}
+        onScroll={checkOverflow}
+        className="xlsx-viewer flex-1 overflow-auto bg-[var(--panel)] p-3"
+      >
+        <div
+          className="text-xs text-[var(--text)] [&_table]:w-max [&_table]:border-collapse [&_td]:whitespace-nowrap [&_td]:border-b [&_td]:border-[var(--panel-border)] [&_td]:px-2.5 [&_td]:py-1 [&_td]:align-top [&_tr:first-child_td]:font-semibold"
           dangerouslySetInnerHTML={{ __html: sanitizeHtml(current.html) }}
         />
         {current.truncated && (

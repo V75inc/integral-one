@@ -183,16 +183,59 @@ export const AppExtensionViewHost = forwardRef<
     [],
   );
 
+  // The frame document loads fast, but the view then fetches its own data and
+  // paints nothing until that returns. Keep the skeleton up until the view's
+  // queries settle so the user never stares at a blank frame.
+  const [pendingQueries, setPendingQueries] = useState(0);
+  const [sawQuery, setSawQuery] = useState(false);
+  const [dataGraceOver, setDataGraceOver] = useState(false);
+  const [dataCapHit, setDataCapHit] = useState(false);
+
+  useEffect(() => {
+    setPendingQueries(0);
+    setSawQuery(false);
+    setDataGraceOver(false);
+    setDataCapHit(false);
+    if (!handshakeToken) return undefined;
+    // A view that asks for no data still gets a short grace period to paint.
+    const grace = window.setTimeout(() => setDataGraceOver(true), 1200);
+    // Never hide content behind the skeleton for long if a query hangs.
+    const cap = window.setTimeout(() => setDataCapHit(true), 10000);
+    return () => { window.clearTimeout(grace); window.clearTimeout(cap); };
+  }, [handshakeToken]);
+
   const queryHandler = useCallback(
     async (
       capabilityKey: string,
       params: Record<string, unknown>,
       ctx: ExtensionBridgeContext,
-    ) => ctx.context?.preview && !ctx.context?.liveData
-      ? Promise.reject(new Error('Live data is disabled in this preview.'))
-      : extensionsApi.invokeQuery(ctx.appId, capabilityKey, params),
+    ) => {
+      if (ctx.context?.preview && !ctx.context?.liveData) {
+        return Promise.reject(new Error('Live data is disabled in this preview.'));
+      }
+      setSawQuery(true);
+      setPendingQueries(n => n + 1);
+      try {
+        return await extensionsApi.invokeQuery(ctx.appId, capabilityKey, params);
+      } finally {
+        setPendingQueries(n => Math.max(0, n - 1));
+      }
+    },
     [],
   );
+  const waitingForData = !dataCapHit && (pendingQueries > 0 || (!sawQuery && !dataGraceOver));
+
+  // The skeleton covers the first load only. Once the view has been revealed it is never
+  // painted over the view again: a later refresh, search or status query would otherwise
+  // flash it back on top of a view that is already showing, and several queries in a row
+  // made it flicker. The latch resets with each new handshake (a new frame).
+  const [revealedToken, setRevealedToken] = useState('');
+  const showSkeletonNow = !loaded || !frameGrantMatches || waitingForData;
+  useEffect(() => {
+    if (handshakeToken && !showSkeletonNow) setRevealedToken(handshakeToken);
+  }, [handshakeToken, showSkeletonNow]);
+  const revealed = !!handshakeToken && revealedToken === handshakeToken;
+  const showSkeleton = showSkeletonNow && !revealed;
 
   const bridgeApi = useExtensionBridge(
     iframeRef,
@@ -256,7 +299,7 @@ export const AppExtensionViewHost = forwardRef<
           <Text as="p" variant="body-sm" tone="info">{RECORDED_OUTPUT_WITHHELD_MESSAGE}</Text>
         </div>
       ) : null}
-      {!loaded || !frameGrantMatches ? (
+      {showSkeleton ? (
         <div className="absolute inset-0 flex items-center justify-center" style={{ minHeight }}>
           <Skeleton className="h-full w-full min-h-[240px]" />
         </div>

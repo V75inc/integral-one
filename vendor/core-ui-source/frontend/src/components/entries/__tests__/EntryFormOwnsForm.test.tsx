@@ -100,3 +100,18 @@ describe('EntryFormExpandedView owns_form', () => {
     expect(screen.getByText('Customer')).toBeInTheDocument();
   });
 });
+
+// Every row needs a box: display:contents feedback cannot carry stack margins.
+it('gives the body a real uniformly spaced row without a validation error', () => {
+  render(<EntryFormExpandedView {...(baseProps({
+    bodyEnabled: true,
+    composerRows: [{ kind: 'title' }, { kind: 'field', field: { key: 'customer', name: 'Customer', type: 'text' } }, { kind: 'body' }],
+  }) as unknown as ViewProps)} />);
+  const stack = screen.getByPlaceholderText('Invoice title').closest('.space-y-5');
+  expect(stack).not.toBeNull();
+  const body = screen.getByRole('textbox', { name: 'Body' });
+  const row = Array.from(stack!.children).find(child => child.contains(body));
+  expect(row).toBeDefined();
+  expect(row).not.toHaveClass('contents');
+  expect(row!.querySelector('.pt-3')).toBeNull();
+});

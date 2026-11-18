@@ -15,7 +15,12 @@ function createUpdates({ app, dialog, Menu, autoUpdater, prepareForInstall,
   let automatic = true, task = null, timer = null, downloaded = null;
   let installing = false, disposed = false, ready = false, approved = false, failureTask = null, manualRequested = false;
   let lastCheck = 0;
-  const notices = new Set();
+  const notices = new Set(), listeners = new Set();
+  let updateState = Object.freeze({ status: "idle", version: null });
+  function setState(status, version = updateState.version) {
+    updateState = Object.freeze({ status, version });
+    for (const listener of listeners) { try { listener(updateState); } catch { /* A closed view cannot interrupt an update. */ } }
+  }
   const preferenceFile = () => preferences || path.join(app.getPath("userData"), "one-updates.json");
   function loadPreferences() {
     try {
@@ -50,6 +55,7 @@ function createUpdates({ app, dialog, Menu, autoUpdater, prepareForInstall,
   async function failure(stopped = installing) {
     if (failureTask) return failureTask;
     installing = false;
+    setState("failed");
     failureTask = message({ type: "warning", message: "The update could not be completed.",
       detail: stopped ? "Reopen Integral One to continue with the installed version. Your workspace files have been retained."
         : "Check your connection and try again later. Your installed version and workspace files have been retained.",
@@ -76,12 +82,21 @@ function createUpdates({ app, dialog, Menu, autoUpdater, prepareForInstall,
   async function offerRestart() {
     notices.add(`ready:${downloaded.version}`);
     const core = downloaded.kind === "runtime";
+    if (runtimeUpdates?.migrationRequirement?.(core ? "runtime" : "installer")) {
+      menuStatus("Assisted Update Required…");
+      setState("assisted", downloaded.version);
+      await message({ type: "info", message: "Your workspace needs an assisted update.",
+        detail: "Keep using your current version while an administrator reviews a backup and migration plan. Your downloaded update is retained; nothing has been installed.",
+        buttons: ["Keep Current Version"], defaultId: 0, cancelId: 0 });
+      return;
+    }
     const result = await message({ type: "info", message: `Integral One ${downloaded.version} is ready to install.`,
       ...(core ? { message: `Integral Core ${downloaded.version} is ready to install.` } : {}),
       detail: "Save your work before restarting. Your workspace and account will be backed up before the update is installed.",
       buttons: ["Restart to Update", "Later"], defaultId: 1, cancelId: 1 });
     if (result.response !== 0 || disposed) return;
     installing = true;
+    setState("installing", downloaded.version);
     progress("Preparing your workspace backup…");
     if (core) { await runtimeUpdates.install(); return; }
     await prepareForInstall();
@@ -99,6 +114,7 @@ function createUpdates({ app, dialog, Menu, autoUpdater, prepareForInstall,
       const staged = runtimeUpdates.staged();
       downloaded = { kind: "runtime", version: staged.manifest.core.version };
       menuStatus(`Restart to Update Core ${downloaded.version}…`);
+      setState("ready", downloaded.version);
     }
     if (downloaded) { if (manualRequested || !notices.has(`ready:${downloaded.version}`)) { notices.add(`ready:${downloaded.version}`); await offerRestart(); } return; }
     const result = await discover({ currentCore: currentCore.version, currentVersion: app.getVersion(), channel, platform, arch, request });
@@ -111,6 +127,7 @@ function createUpdates({ app, dialog, Menu, autoUpdater, prepareForInstall,
         if (runtime.candidate) {
           const { manifest } = runtime.candidate, key = `runtime:${manifest.core.version}`;
           menuStatus(`Update Core ${manifest.core.version} Available…`);
+          setState("available", manifest.core.version);
           if (!manualRequested && (notices.has(key) || runtimeUpdates.failed() === `${manifest.core.version}-${manifest.payload.sha256.slice(0, 16)}`)) return;
           notices.add(key);
           const choice = await message({ type: "info", message: `Integral Core ${manifest.core.version} is available.`,
@@ -118,18 +135,22 @@ function createUpdates({ app, dialog, Menu, autoUpdater, prepareForInstall,
             buttons: ["Download Update", "Later"], defaultId: 1, cancelId: 1 });
           if (choice.response !== 0 || disposed) return;
           approved = true;
+          setState("downloading", manifest.core.version);
           progress("Downloading your update…", 0);
           await runtimeUpdates.stage(runtime.candidate, value => progress("Downloading your update…", value));
           if (disposed) return;
           downloaded = { kind: "runtime", version: manifest.core.version };
+          setState("ready", manifest.core.version);
           menuStatus(`Restart to Update Core ${manifest.core.version}…`);
           await offerRestart(); return;
         }
       }
       const effectiveCore = runtimeUpdates?.currentCore() || currentCore.version;
       const newerCore = result.latestCore && compareCore(result.latestCore, effectiveCore) > 0;
+      setState(newerCore ? "compatibility" : "current", newerCore ? result.latestCore : effectiveCore);
       if (newerCore && (manualRequested || !notices.has(`core:${result.latestCore}`))) {
         notices.add(`core:${result.latestCore}`);
+        setState("compatibility", result.latestCore);
         await message({ type: "info", message: `Integral Core ${result.latestCore} has been published.`,
           detail: runtimeUpdates ? "This update is being checked for compatibility. Check again later; your current workspace is ready to use." : "A compatible Integral One installer is being prepared. Check for updates again later; your current workspace is ready to use.", buttons: ["OK"] });
       } else if (manualRequested) await message({ type: "info", message: "Integral One is up to date.",
@@ -146,16 +167,19 @@ function createUpdates({ app, dialog, Menu, autoUpdater, prepareForInstall,
     if (disposed) return;
     notices.add(`one:${manifest.version}`);
     menuStatus(`Integral One ${manifest.version} Update Available…`);
+    setState("available", manifest.version);
     const choice = await message({ type: "info", message: `Integral One ${manifest.version} with Core ${manifest.core.version} is available.`,
       detail: `Download this ${channel === "development" ? "development" : "stable"} update? You will choose when to restart and install it.`,
       buttons: ["Download Update", "Later"], defaultId: 1, cancelId: 1 });
     if (choice.response !== 0 || disposed) return;
     approved = true;
+    setState("downloading", manifest.version);
     progress("Downloading your update…");
     const files = await autoUpdater.downloadUpdate();
     await verifyDownloaded(files, asset);
     if (disposed) return;
     downloaded = { version: manifest.version };
+    setState("ready", manifest.version);
     menuStatus(`Restart to Update One ${manifest.version}…`);
     await offerRestart();
   }
@@ -205,6 +229,7 @@ function createUpdates({ app, dialog, Menu, autoUpdater, prepareForInstall,
   function resume() { if (ready && automatic && !disposed && now() - lastCheck >= 60 * 60 * 1000) void check(false); }
   function dispose() {
     disposed = true;
+    listeners.clear();
     if (timer) clear(timer);
     timer = null;
     if (available) autoUpdater.removeListener("error", onError);
@@ -212,6 +237,7 @@ function createUpdates({ app, dialog, Menu, autoUpdater, prepareForInstall,
     app.removeListener("browser-window-focus", resume);
   }
   app.once("will-quit", dispose);
-  return { menuItems, start, check, dispose };
+  return { menuItems, start, check, dispose, snapshot: () => updateState,
+    subscribe(listener) { listeners.add(listener); return () => listeners.delete(listener); } };
 }
 module.exports = { createUpdates };

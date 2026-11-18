@@ -113,6 +113,20 @@ export function DocumentTemplateEditorPage() {
     headerHtml: '',
     footerHtml: '',
   });
+
+  const pagedEditor = useMemo(
+    () => new URLSearchParams(window.location.search).get('paged') === '1',
+    [],
+  );
+  // The "Page appearance" header and footer text is what each page repeats at its top and bottom.
+  const pageChrome = useMemo(
+    () => ({
+      headerLeft: pageSettings.headerHtml || '',
+      footerLeft: pageSettings.footerHtml || '',
+      footerRight: 'Page {page}',
+    }),
+    [pageSettings.headerHtml, pageSettings.footerHtml],
+  );
   const onPageSettingsChange = useCallback((settings: PageSettings) => {
     setPageSettings(settings);
   }, []);
@@ -515,6 +529,8 @@ export function DocumentTemplateEditorPage() {
               onEditorReady={setEditor}
               pageSize={pageSettings.pageSize as PageSizeKey}
               margins={pageSettings.margins as MarginsInches}
+              paged={pagedEditor}
+              pageChrome={pageChrome}
             />
           </div>
           <aside className="doc-template-workspace__sidebar" aria-label="Template tools">

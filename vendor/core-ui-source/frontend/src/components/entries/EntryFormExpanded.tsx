@@ -25,6 +25,23 @@ import {
 } from '../forms/formFeedback';
 import { AppSelect, Skeleton } from '../ui';
 
+import { beginInteraction, finishInteraction } from "../../lib/performance";
+import { getActiveScopeHeader } from '../../api/client';
+import { getSessionGeneration } from '../../api/session';
+
+const pendingFieldPreviews = new Map<string, Promise<Record<string, any> | undefined>>();
+async function previewField(appId: string | undefined, tool: string, input: Record<string, unknown>) {
+  const key = JSON.stringify([getSessionGeneration(), getActiveScopeHeader(), appId, tool, input]);
+  const existing = pendingFieldPreviews.get(key);
+  if (existing) return existing;
+  const pending = (async () => appId
+    ? requireOperationOutput(await extensionsApi.invokeOperation(appId, tool, input)).output
+    : (await toolsApi.call(tool, input)).output)();
+  pendingFieldPreviews.set(key, pending);
+  try { return await pending; }
+  finally { if (pendingFieldPreviews.get(key) === pending) pendingFieldPreviews.delete(key); }
+}
+
 const WikiRichTextEditor = lazy(() =>
   import('../views/wiki/WikiRichTextEditor').then(m => ({
     default: m.WikiRichTextEditor
@@ -101,6 +118,10 @@ import {
 } from './entryFormCustomFields';
 import { entryPath } from '../../utils/resourcePaths';
 import type { ToastAction } from '../../context/ToastContext';
+import { isVisible as conditionHolds } from '../views/regionConditions';
+import { useEntryWriteCheck } from '../../hooks/useEntryWriteCheck';
+import { WriteCheckNotice } from './WriteCheckNotice';
+import { Text } from '../../ui';
 const EMPTY_FIELDS: OperationalModelFieldSpec[] = [];
 
 /** Inline ``[]`` from parents must not be used as a hook dependency; reuse this for empty lists. */
@@ -190,6 +211,10 @@ export interface UseEntryExpandedFormOptions {
 }
 
 export interface EntryExpandedFormModel {
+  entryTypeKey?: string;
+  /** Track and entry type the form saves into (for the server's "would this save?" check). */
+  checkTrackId?: string;
+  checkTypeId?: string;
   entryTypes: EntryTypeNode[];
   loading: boolean;
   needsTrackPicker: boolean;
@@ -266,6 +291,7 @@ export interface EntryExpandedFormModel {
   dynamicFields: OperationalModelFieldSpec[];
   entryTypeFormSchema: OperationalModelFormSchema | null;
   appId?: string;
+  setFieldDataOwner?: (owner: 'app' | 'host') => void;
   initialEntry?: Entry | null;
 }
 
@@ -302,6 +328,7 @@ export function useEntryExpandedForm(
   const [body, setBody] = useState('');
   const { problems, setProblems, clear: clearProblem, reset: resetProblems } = useFieldProblems();
   const [type, setType] = useState('post');
+  const [fieldOwner, setFieldOwner] = useState<{scope: string; owner: 'app' | 'host'}>();
   const [typeUserTouched, setTypeUserTouched] = useState(false);
   const [selectedTrackId, setSelectedTrackId] = useState(
     track?.id || initialEntry?.track_id || ''
@@ -416,8 +443,10 @@ export function useEntryExpandedForm(
     queryKey: entryTypesForTrackQueryKey(activeTrackId),
     enabled: Boolean(enabled && activeTrackId),
     queryFn: () => entryTypesApi.list({ track_id: activeTrackId }),
-    staleTime: 0,
-    refetchOnMount: 'always',
+    // Reuse the host's recent metadata. Explicit schema/release invalidations
+    // still refetch; server revision checks remain authoritative on save.
+    staleTime: 30_000,
+    refetchOnMount: true,
   });
   const entryTypes = useMemo<EntryTypeNode[]>(
     () => (entryTypesQuery.data ?? []) as EntryTypeNode[],
@@ -686,6 +715,13 @@ export function useEntryExpandedForm(
   }, [selectedType?.name, type, viewDefaultEntryTypeKey]);
 
   const entryTypeFormSchema = selectedType?.form_schema ?? null;
+  const fieldOwnerScope = JSON.stringify([activeTrackId, type, mode]);
+  const contribution = entryTypeFormSchema?.ui_contributions?.find(item => item.placement === contributionPlacement);
+  const appOwnsFieldData = Boolean(contribution?.component_key && contribution.owns_field_data);
+  const useHostFieldData = !appOwnsFieldData || (fieldOwner?.scope === fieldOwnerScope && fieldOwner.owner === 'host');
+  const setFieldDataOwner = useCallback((owner: 'app' | 'host') => {
+    setFieldOwner(previous => previous?.scope === fieldOwnerScope && previous.owner === owner ? previous : {scope: fieldOwnerScope, owner});
+  }, [fieldOwnerScope]);
   const appId = track?.app?.id;
   const ownsForm = !proposalOnly && contributionOwnsForm(entryTypeFormSchema, contributionPlacement);
   const titleFromFields = contributionTitleFromFields(
@@ -698,9 +734,10 @@ export function useEntryExpandedForm(
     if (!Array.isArray(f)) return EMPTY_FIELDS;
     // ``hidden`` fields never show; ``hide_on_create`` ones only skip the
     // create form. Their defaults still apply (seeded from the full list).
-    const visible = (f as OperationalModelFieldSpec[]).filter(
-      field => !field.hidden && !(mode === 'create' && field.hide_on_create)
-    );
+    const visible = (f as OperationalModelFieldSpec[])
+      .filter(field => !field.hidden && !(mode === 'create' && field.hide_on_create))
+      // A field required on create is marked and checked like any required field, in the create form only.
+      .map(field => (mode === 'create' && field.required_on_create && !field.required ? { ...field, required: true } : field));
     return sortFieldsByOrder(visible);
   }, [selectedType?.form_schema?.fields, mode]);
 
@@ -708,7 +745,7 @@ export function useEntryExpandedForm(
   // (e.g. Finance invoice_number via ``preview_document_number`` when
   // auto-generate is on). When auto-generate is on the field is read-only.
   useEffect(() => {
-    if (!enabled || proposalOnly || (mode !== 'create' && mode !== 'edit')) {
+    if (!enabled || proposalOnly || !useHostFieldData || (mode !== 'create' && mode !== 'edit')) {
       setAutoLockedFieldKeys(new Set());
       return;
     }
@@ -732,9 +769,7 @@ export function useEntryExpandedForm(
             ? (field.validation.preview_default_input as Record<string, unknown>)
             : {};
         try {
-          const output = appId
-            ? requireOperationOutput(await extensionsApi.invokeOperation(appId, tool, input)).output
-            : (await toolsApi.call(tool, input)).output;
+          const output = await previewField(appId, tool, input);
           if (cancelled) return;
           if (output?.auto_generate !== true) continue;
           locked.add(field.key);
@@ -757,13 +792,13 @@ export function useEntryExpandedForm(
     return () => {
       cancelled = true;
     };
-  }, [enabled, mode, appId, dynamicFields, type, proposalOnly]);
+  }, [enabled, mode, appId, dynamicFields, type, proposalOnly, useHostFieldData]);
 
   // Prefill fields that declare ``default_from_setting`` from the parent
   // App's settings (e.g. Finance currency ← default_currency). Editable —
   // never locks the control.
   useEffect(() => {
-    if (!enabled || mode !== 'create' || !appId) return;
+    if (!enabled || !useHostFieldData || mode !== 'create' || !appId) return;
     const settingFields = dynamicFields.filter(
       field => typeof field.default_from_setting === 'string' && field.default_from_setting.trim(),
     );
@@ -785,7 +820,7 @@ export function useEntryExpandedForm(
     return () => {
       cancelled = true;
     };
-  }, [enabled, mode, appId, dynamicFields, type]);
+  }, [enabled, mode, appId, dynamicFields, type, useHostFieldData]);
 
   const applyContributionPatch = useCallback(
     (patch: { custom_fields?: Record<string, unknown> }) => {
@@ -945,14 +980,14 @@ export function useEntryExpandedForm(
   ).trim();
 
   useEffect(() => {
-    if (!enabled || !relationsEnabled || !activeTrackId) {
-      setRelationChoices(prev => (Object.keys(prev).length === 0 ? prev : {}));
+    if (!enabled || !useHostFieldData || !relationsEnabled || !activeTrackId) {
+      // Remote pickers own their scoped options.
       setRelationLoading(false);
       return;
     }
-    const relationFields = dynamicFields.filter(f => f.type === 'relation');
+    const relationFields = dynamicFields.filter(f => f.type === 'relation' && ['tasks', 'sprint', 'manager'].includes(f.key));
     if (!relationFields.length) {
-      setRelationChoices(prev => (Object.keys(prev).length === 0 ? prev : {}));
+      // Remote pickers keep their own scoped choices.
       setRelationLoading(false);
       return;
     }
@@ -961,7 +996,7 @@ export function useEntryExpandedForm(
     (async () => {
       try {
         const allTracks =
-          tracksListNorm.length > 0 ? tracksListNorm : await tracksApi.list();
+          tracksListNorm.length > 0 ? tracksListNorm : await tracksApi.list({ skipEntryCounts: true });
         const trackById = new Map(allTracks.map(t => [t.id, t]));
         const choicesByField: Record<string, RelationChoice[]> = {};
         relationEntriesByIdRef.current = new Map();
@@ -1097,6 +1132,7 @@ export function useEntryExpandedForm(
   }, [
     enabled,
     relationsEnabled,
+    useHostFieldData,
     activeTrackId,
     relationFieldsFetchSig,
     tracksListNorm,
@@ -1167,7 +1203,9 @@ export function useEntryExpandedForm(
     }
   ): ReactNode {
     const locked =
-      Boolean(field.readonly) || autoLockedFieldKeys.has(field.key) || (proposalOnly && ['file', 'files'].includes(field.composite?.base || field.type));
+      Boolean(field.readonly) ||
+      Boolean(field.readonly_if && conditionHolds(field.readonly_if, fieldValues)) ||
+      autoLockedFieldKeys.has(field.key) || (proposalOnly && ['file', 'files'].includes(field.composite?.base || field.type));
     return (
       <FieldProblem fieldKey={field.key} message={problems[field.key]}>
       <SeamlessField
@@ -1178,6 +1216,12 @@ export function useEntryExpandedForm(
           clearProblem(field.key);
           setDynamicField(field.key, v);
         }}
+        relationSource={!['tasks', 'sprint', 'manager'].includes(field.key) ? {
+          trackId: activeTrackId, entryTypeId: selectedTypeId, schema: selectedType?.form_schema,
+          entryId: initialEntry?.track_id === activeTrackId ? initialEntry.id : undefined,
+          enabled: enabled && relationsEnabled,
+          onChoices: choices => setRelationChoices(prev => ({ ...prev, [field.key]: choices })),
+        } : undefined}
         relationChoices={relationChoices[field.key]}
         relationLoading={relationLoading}
         enumLabels={workflowEnumLabels?.[field.key]}
@@ -1212,6 +1256,10 @@ export function useEntryExpandedForm(
         titleEnabled && bodyEnabled
           ? `Add a ${titleLabelText.toLowerCase()} or some ${bodyLabelText.toLowerCase()} text`
           : `Add a ${(titleEnabled ? titleLabelText : bodyLabelText).toLowerCase()}`;
+    }
+    if (!ownsForm && titleEnabled && titleBase.required && !title.trim()) {
+      labels[TITLE_PROBLEM_KEY] = titleLabelText;
+      found[TITLE_PROBLEM_KEY] = 'Required';
     }
     for (const field of dynamicFields) {
       const label = String(field.name || field.key);
@@ -1305,6 +1353,7 @@ export function useEntryExpandedForm(
       }
     }
 
+    const saveInteraction = beginInteraction();
     setLoading(true);
     try {
       const firstUrlInBody = bodyEnabled ? extractFirstUrl(body) : '';
@@ -1520,6 +1569,7 @@ export function useEntryExpandedForm(
       showToast(errorMessageFromAxios(e, 'Failed to create entry'), 'error');
       highlightServerProblems(e);
     } finally {
+      finishInteraction(saveInteraction, "entry.save");
       setLoading(false);
     }
   };
@@ -1549,6 +1599,7 @@ export function useEntryExpandedForm(
       }
     }
 
+    const saveInteraction = beginInteraction();
     setLoading(true);
     try {
       if (pendingFiles.some(imageExceedsUploadLimit)) throw new ImageUploadSizeError();
@@ -1700,6 +1751,7 @@ export function useEntryExpandedForm(
       highlightServerProblems(e);
       throw e;
     } finally {
+      finishInteraction(saveInteraction, "entry.save");
       setLoading(false);
     }
   };
@@ -1714,6 +1766,8 @@ export function useEntryExpandedForm(
   };
 
   return {
+    checkTrackId: activeTrackId,
+    checkTypeId: selectedTypeId,
     entryTypes,
     loading,
     needsTrackPicker,
@@ -1764,10 +1818,12 @@ export function useEntryExpandedForm(
     fieldValues,
     setFieldValues,
     applyContributionPatch,
+    setFieldDataOwner,
     composeExtraSection,
     ownsForm,
     dynamicFields,
     entryTypeFormSchema,
+    entryTypeKey: selectedType ? entryTypeSlug(selectedType) : type,
     appId,
     initialEntry,
   };
@@ -1877,8 +1933,23 @@ export function EntryFormExpandedView({
   dynamicFields: _dynamicFields,
   mode: _mode = 'create',
   workflowEnumLabels: _workflowEnumLabels,
+  checkTrackId,
+  checkTypeId,
+  fieldValues,
+  initialEntry,
 }: EntryFormExpandedViewProps) {
-  const dynamicFieldsCount = composerRows.filter(r => r.kind === 'field').length;
+  // A type choice only when there is a choice: with one type the dialog's own title already says what it makes.
+  const showTypePicker = typeOptions.length > 1 && !typeLocked;
+  // The server's answer to "would this save?", from the same rules a real save runs.
+  const writeCheck = useEntryWriteCheck({
+    // An App-owned form (e.g. a pay record editor) shapes its values when Save is pressed: no live check there.
+    enabled: !hideActions && !ownsForm && (_mode === 'create' || Boolean(initialEntry?.id)),
+    trackId: checkTrackId,
+    typeId: checkTypeId,
+    entryId: _mode === 'edit' ? initialEntry?.id : undefined,
+    title,
+    customFields: fieldValues,
+  });
   const isWiki = layout === 'wiki';
   const bodyTextareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -1900,7 +1971,7 @@ export function EntryFormExpandedView({
   }, [body, isWiki]);
 
   return (
-    <div className={isWiki ? 'space-y-6' : 'p-5 space-y-4'}>
+    <div className={isWiki ? 'space-y-6' : 'p-5 space-y-5'}>
       {isWiki ? (
         <details className="group/properties text-sm">
           <summary className="cursor-pointer list-none flex items-center gap-2 text-[var(--text-subtle)] hover:text-[var(--text)] transition-colors">
@@ -1912,6 +1983,7 @@ export function EntryFormExpandedView({
             </span>
           </summary>
           <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-[var(--text-muted)]">
+            {showTypePicker && (
             <label className="inline-flex items-center gap-1.5 min-w-0">
               <span className="text-[var(--text-subtle)] shrink-0">Type</span>
               <AppSelect
@@ -1930,6 +2002,7 @@ export function EntryFormExpandedView({
                 aria-label="Entry type"
               />
             </label>
+            )}
             {needsTrackPicker && tracksList.length > 0 && (
               <label className="inline-flex items-center gap-1.5 min-w-0 max-w-full">
                 <span className="text-[var(--text-subtle)] shrink-0">Track</span>
@@ -1957,6 +2030,7 @@ export function EntryFormExpandedView({
         </details>
       ) : (
       <div className="flex flex-wrap items-center gap-2 pb-3">
+        {showTypePicker && (
         <AppSelect
           variant="pill"
           value={type}
@@ -1972,6 +2046,7 @@ export function EntryFormExpandedView({
           className="font-semibold shrink-0"
           aria-label="Entry type"
         />
+        )}
         {needsTrackPicker && tracksList.length > 0 && (
           <AppSelect
             variant="pill"
@@ -2003,6 +2078,12 @@ export function EntryFormExpandedView({
           return (
             <div key="title" className="space-y-1">
               <FieldProblem fieldKey={TITLE_PROBLEM_KEY} message={problems[TITLE_PROBLEM_KEY]}>
+              <div className="relative">
+              {!isWiki && (
+                <span className="pointer-events-none absolute -top-2.5 left-3 z-[1] rounded bg-[var(--panel)] px-1 text-[12px] font-medium text-[var(--text-muted)]" aria-hidden>
+                  {titleSlotLabel}{titleBase.required ? <span className="ml-0.5 text-[var(--danger-fg)]">*</span> : null}
+                </span>
+              )}
               <input
                 ref={titleInputRef}
                 key={`title-${type}`}
@@ -2010,13 +2091,15 @@ export function EntryFormExpandedView({
                 value={title}
                 onChange={e => { setTitle(e.target.value); clearProblem(TITLE_PROBLEM_KEY); clearProblem(BODY_PROBLEM_KEY); }}
                 autoFocus={!focusTitleOnMount}
-                aria-label={titleSlotLabel}
+                aria-label={titleBase.required ? `${titleSlotLabel} (required)` : titleSlotLabel}
+                aria-required={titleBase.required || undefined}
                 className={
                   isWiki
                     ? 'w-full px-0 text-2xl font-semibold tracking-tight text-[var(--text)] placeholder:text-[var(--text-subtle)] border-none outline-none bg-transparent'
-                    : 'w-full px-3 text-base font-semibold text-[var(--text)] placeholder:text-[var(--text-muted)] border-none outline-none bg-transparent'
+                    : 'w-full px-3 py-2 text-base font-semibold text-[var(--text)] placeholder:text-[var(--text-muted)] rounded-[var(--radius-input)] border border-[var(--field-border)] bg-[var(--field-bg)] outline-none transition hover:border-[var(--field-border-hover)] focus:border-[var(--text-muted)] focus:ring-2 focus:ring-[var(--focus-ring-color)]'
                 }
               />
+              </div>
               </FieldProblem>
               {titleBase.help ? (
                 <p className="text-xs text-[var(--text-muted)] pl-3">{titleBase.help}</p>
@@ -2034,9 +2117,10 @@ export function EntryFormExpandedView({
         if (row.kind === 'body') {
           const bodySlotLabel = String(bodyBase.label || '').trim() || CANONICAL_BODY_LABEL;
           return (
-            <FieldProblem key="body" fieldKey={BODY_PROBLEM_KEY} message={problems[BODY_PROBLEM_KEY]}>
+            <div key="body">
+            <FieldProblem fieldKey={BODY_PROBLEM_KEY} message={problems[BODY_PROBLEM_KEY]}>
             <div
-              className={`space-y-1.5 ${dynamicFieldsCount > 0 ? 'pt-3' : ''}`}
+              className="space-y-1.5"
             >
               {isWiki ? (
                 <Suspense
@@ -2054,6 +2138,10 @@ export function EntryFormExpandedView({
                   />
                 </Suspense>
               ) : (
+                <div className="relative">
+                <span className="pointer-events-none absolute -top-2.5 left-3 z-[1] rounded bg-[var(--panel)] px-1 text-[12px] font-medium text-[var(--text-muted)]" aria-hidden>
+                  {bodySlotLabel}{bodyBase.required ? <span className="ml-0.5 text-[var(--danger-fg)]">*</span> : null}
+                </span>
                 <MentionableTextarea
                   key={`body-${type}`}
                   ref={bodyTextareaRef}
@@ -2062,9 +2150,10 @@ export function EntryFormExpandedView({
                   onChange={v => { setBody(v); clearProblem(BODY_PROBLEM_KEY); clearProblem(TITLE_PROBLEM_KEY); }}
                   rows={1}
                   aria-label={bodySlotLabel}
-                  className="w-full px-3 py-0.5 text-sm font-normal leading-normal text-[var(--text)] placeholder:text-[var(--text-muted)] border-none outline-none bg-transparent resize-none overflow-hidden"
+                  className="min-h-[4.5rem] w-full px-3 py-2 text-sm font-normal leading-normal text-[var(--text)] placeholder:text-[var(--text-muted)] rounded-[var(--radius-input)] border border-[var(--field-border)] bg-[var(--field-bg)] outline-none transition hover:border-[var(--field-border-hover)] focus:border-[var(--text-muted)] focus:ring-2 focus:ring-[var(--focus-ring-color)] resize-none overflow-hidden"
                   trackId={selectedTrackId || undefined}
                 />
+                </div>
               )}
               {bodyBase.help ? (
                 <p className="text-xs text-[var(--text-muted)] pl-3">{bodyBase.help}</p>
@@ -2105,6 +2194,7 @@ export function EntryFormExpandedView({
               )}
             </div>
             </FieldProblem>
+            </div>
           );
         }
         if (row.kind === 'attachments') {
@@ -2178,6 +2268,7 @@ export function EntryFormExpandedView({
         return null;
       })}
       {composeExtraSection}
+      {!writeCheck.ok && writeCheck.message ? <WriteCheckNotice message={writeCheck.message} /> : null}
       {!hideActions ? (
         <div
           className={
@@ -2206,11 +2297,18 @@ export function EntryFormExpandedView({
                 Cancel
               </Button>
             ) : null}
+            {!writeCheck.ok && writeCheck.message ? (
+              <Text as="p" variant="body-sm" tone="danger" role="alert" className="sm:mr-auto">
+                {writeCheck.message}
+              </Text>
+            ) : null}
             <Button
               variant={isWiki ? 'secondary' : 'primary'}
               size="sm"
               loading={loading}
               icon={primaryIcon}
+              disabled={!writeCheck.ok && !writeCheck.pending}
+              title={!writeCheck.ok && writeCheck.message ? writeCheck.message : undefined}
               onClick={() => void onPrimary()}
               className="w-full sm:w-auto"
             >

@@ -96,6 +96,7 @@ export function useRelationLabels(
         return {
           id,
           label: entryLabel(id, raw),
+          name: String(raw.title || '').trim() || String(raw.body || '').trim().slice(0, 80) || undefined,
           kind: 'entry' as const,
           trackId: raw.track_id,
         };

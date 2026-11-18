@@ -27,3 +27,6 @@ skills-lock.json
 
 # IDE files
 .idea
+
+# One-owned sandboxed workspace preload is generated from reviewed source.
+desktop/workspace-preload.js

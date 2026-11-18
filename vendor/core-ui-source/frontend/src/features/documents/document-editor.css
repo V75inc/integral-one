@@ -775,6 +775,36 @@
   box-sizing: border-box;
 }
 
+.doc-page--paged {
+  /* The pagination extension lays out the margins, headers, footers and the gaps between
+     pages. The sheet itself is white; the extension paints the gaps in the app background. */
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12), 0 4px 12px rgba(0, 0, 0, 0.08);
+  padding: 0;
+  min-height: 0;
+  color: #111;
+}
+
+.doc-page--paged .doc-template-prose {
+  min-height: 0;
+  background: #fff;
+  color: #111;
+}
+
+.doc-page--paged .rm-page-header-content,
+.doc-page--paged .rm-page-footer-content {
+  color: #6b7280;
+  font-family: Arial, Helvetica, sans-serif;
+  font-size: 9pt;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+}
+
+.doc-page--paged .rm-page-footer-content {
+  align-items: flex-start;
+}
+
 .doc-template-prose {
   outline: none;
   font-family: Arial, Helvetica, sans-serif;
@@ -1459,4 +1489,12 @@ s .doc-field-token {
   pointer-events: none;
   float: left;
   height: 0;
+}
+
+/* A table row that repeats once per item (payslip earnings, invoice lines). */
+.doc-template-prose tr.doc-repeat-row > td,
+.doc-template-prose tr.doc-repeat-row > th {
+  background: #fffbe6;
+  border-top: 1px dashed #d4a017;
+  border-bottom: 1px dashed #d4a017;
 }

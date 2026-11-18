@@ -1,5 +1,4 @@
-import axios from 'axios';
-import { getApiBaseURL } from '../config';
+import { loadDeploymentMetadata } from './deployment';
 import { configureSessionRuntime } from './sessionRuntime';
 
 /** Public runtime policy; token validity is always decided by the API. */
@@ -55,10 +54,10 @@ export function loadSessionPolicy(): Promise<void> {
   // Bare public request: loading policy must not depend on a valid session or
   // enter the authenticated client's refresh/recovery interceptors.
   pending ??= Promise.resolve()
-    .then(() => axios.get(`${getApiBaseURL()}/meta/deployment`, { timeout: 5000 }))
-    .then(response => {
-      configureSessionRuntime(response.data);
-      applySessionPolicy(response.data?.session_policy);
+    .then(() => loadDeploymentMetadata())
+    .then(data => {
+      configureSessionRuntime(data);
+      applySessionPolicy(data?.session_policy);
     })
     .catch(() => { /* Defaults keep login and offline recovery available. */ });
   return pending;

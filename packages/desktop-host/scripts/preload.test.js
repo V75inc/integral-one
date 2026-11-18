@@ -49,3 +49,9 @@ test('preload ignores a malformed window chrome argument', () => {
   const broken = loadPreload(['electron', '--integral-window-chrome={']);
   assert.equal(broken.exposed.windowChrome, undefined);
 });
+
+test('update bridge strips Electron events and exposes only state and user checks',async()=>{
+ const f=loadPreload(['electron']);await f.exposed.updates.getState();await f.exposed.updates.check();
+ assert.deepEqual(f.invoked,[['integral:updates-state'],['integral:updates-check']]);
+ assert.throws(()=>f.exposed.updates.onChange('not a callback'),/listener/);
+});

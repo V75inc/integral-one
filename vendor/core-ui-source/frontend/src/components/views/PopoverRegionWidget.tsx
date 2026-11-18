@@ -26,7 +26,7 @@ type PopoverRegionSpec =
   | { key: string; kind: 'view'; title?: string; view: string }
   | { key: string; kind: 'form'; title?: string; fields: ConditionalFieldEntry[]; columns?: number };
 
-export function PopoverRegionWidget({ view, entries, isLoading, onEntryOpen }: ViewWidgetProps) {
+export function PopoverRegionWidget({ view, entries, isLoading, onEntryOpen, viewContext }: ViewWidgetProps) {
   const config = (view.config || {}) as Record<string, unknown>;
   const bindings = (config.__bindings || {}) as Record<string, unknown>;
   const regions = (Array.isArray(config.regions) ? config.regions : []) as PopoverRegionSpec[];
@@ -76,7 +76,7 @@ export function PopoverRegionWidget({ view, entries, isLoading, onEntryOpen }: V
 
   const renderRegion = (region: PopoverRegionSpec) => {
     if (region.kind === 'view') {
-      return <ComposableViewSlot trackId={view.track_id} viewKey={region.view} bindings={bindings} />;
+      return <ComposableViewSlot trackId={view.track_id} viewKey={region.view} bindings={bindings} viewContext={viewContext} />;
     }
     const syntheticView: SavedView = {
       ...view,

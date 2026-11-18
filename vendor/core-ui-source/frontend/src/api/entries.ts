@@ -253,13 +253,14 @@ export const entriesApi = {
   listRelated: async (
     entryId: string,
     relation: string,
-    opts?: { limit?: number; cursor?: string; entryType?: string; entryTypes?: string[] }
-  ): Promise<{ entries: Entry[]; nextCursor: string | null; hasMore: boolean }> => {
+    opts?: { limit?: number; cursor?: string; offset?: number; entryType?: string; entryTypes?: string[] }
+  ): Promise<{ entries: Entry[]; nextCursor: string | null; hasMore: boolean; total?: number }> => {
     const { data } = await apiClient.get(`/entries/${entryId}/related`, {
       params: {
         relation,
         limit: opts?.limit,
         cursor: opts?.cursor,
+        offset: opts?.offset || undefined,
         entry_type: opts?.entryTypes?.length ? opts.entryTypes : opts?.entryType,
       },
     });
@@ -268,6 +269,7 @@ export const entriesApi = {
       entries: await normalizeEntriesWithTypes(raw),
       nextCursor: typeof data?.next_cursor === 'string' ? data.next_cursor : null,
       hasMore: Boolean(data?.has_more),
+      total: typeof data?.total === 'number' ? data.total : undefined,
     };
   },
   /**

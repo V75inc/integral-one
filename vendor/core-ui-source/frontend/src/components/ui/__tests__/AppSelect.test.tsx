@@ -35,7 +35,7 @@ function openList(rect: { top: number; bottom: number }, innerHeight = 800) {
     />
   );
   fireEvent.click(screen.getByRole('button', { name: 'Pipeline status' }));
-  return screen.getByRole('listbox');
+  return screen.getByRole('listbox').parentElement!;
 }
 
 it('opens upward when there is no room below the trigger', () => {
@@ -77,4 +77,21 @@ it('is one combobox: opening shows all options, typing filters, Enter selects', 
 
   fireEvent.keyDown(combo, { key: 'Enter' });
   expect(onValueChange).toHaveBeenCalledWith('contacted');
+});
+
+it.each([false, true])('makes field control and wrapper fluid (searchable=%s)', searchable => {
+  const { container } = render(<AppSelect value="new" onValueChange={() => {}} options={options} searchable={searchable} />);
+  expect(container.firstElementChild?.classList.contains('w-full')).toBe(true);
+  expect(container.firstElementChild?.classList.contains('flex-1')).toBe(true);
+  expect(screen.getByRole(searchable ? 'combobox' : 'button').classList.contains('w-full')).toBe(true);
+});
+
+it('keeps toolbar pills compact unless explicitly made fluid', () => {
+  const props = { value: 'new', onValueChange: () => {}, options, variant: 'pill' as const };
+  const { container, rerender } = render(<AppSelect {...props} />);
+  expect(container.firstElementChild?.classList.contains('w-full')).toBe(false);
+  expect(screen.getByRole('button').classList.contains('w-full')).toBe(false);
+  rerender(<AppSelect {...props} fluid />);
+  expect(container.firstElementChild?.classList.contains('flex-1')).toBe(true);
+  expect(screen.getByRole('button').classList.contains('w-full')).toBe(true);
 });

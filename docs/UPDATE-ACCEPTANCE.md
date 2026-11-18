@@ -1,0 +1,18 @@
+# One update acceptance: local preparation, not release approval
+
+The persistent in-app update indicator remains a release acceptance gate under Eldon’s clean-update priority. The local implementation lives in One’s sandboxed workspace preload, so a supported external Core UI does not need the newest One frontend overlay to show it. Status opens the trusted update center and cannot itself install. Native Help and OS notification entry points remain available. The desktop-host preload option is generic; One owns indicator copy and presentation. The distinct local host artifact is 0.1.7-dev.18; no host or One release has been published by this work.
+
+## Keep these gates separate
+
+- Defer/resume: choosing Later resolves the current request. Notification or sidebar resume starts a fresh compatible action/check rather than reusing a consumed nonce. Composed updater/controller regressions cover download and restart resume, progress reopening and disposal.
+- Persistent indicator: local DOM, bridge, sandbox and status tests pass; final signed installed-artifact and user acceptance remain open. It must accompany the selected runtime, including supported external Core selections.
+- Signed installed-artifact upgrade: downloaded installer authenticity, actual native replacement and restart have not been qualified from the installed app. Unsigned private assemblies and mocked updater tests do not close this gate. Do not publish an install manifest for private candidates.
+- Legacy storage: reviewed plan, exact hash, identity invariants and rollback remain mandatory. Ordinary automatic install refuses an affected legacy home before stopping it. The bounded assisted route has synthetic populated record/attachment, retry, failed-trial and interrupted-journal evidence; it does not make every old home an unattended upgrade. Native whole-host replacement does not forward arbitrary migration approval or custom-profile CLI arguments. Review a host-first bridge or a separately assisted replacement before offering this update to such homes.
+- Downgrade/replacement: do not offer a Core62 host-first bridge to a home already running Core63 managed storage. Source Core pin remains unchanged while release selection is pending. Manual replacement downgrade and custom-profile forwarding still need explicit end-to-end qualification.
+- Singleton/callback: a canonical product lock and lazy account-controller construction prevent a losing separate-profile copy from taking protocol registration. Isolated native same-profile/separate-profile lock, focus mock and callback-state tests pass. Installed macOS protocol routing, actual Google callback with multiple app copies and focus remain open. The current registered handler points to /Applications/Integral One.app, while the observed separate test copy is elsewhere; that is evidence of routing risk, not proof of the original failure’s root cause.
+
+## Evidence limits
+
+The previous packaged startup timeout was not reproduced or established resolved. Avia Lindie’s November 11 cropped screenshot does not identify the version, root cause or a later successful retry. Synthetic older-profile checks do not close her incident. Physical Intel/Windows/Linux x64 support and signing/notarization remain open. Eldon’s hands-on One and Business acceptance is required before readiness is pronounced.
+
+Core PR256’s correction wheel deliberately retains rc63 metadata while containing different bytes from published rc63. Only an explicit private absolute-path/digest acceptance may use it. Registry/hash/version safety must remain strict; normal release selection requires a new immutable Core version and renewed qualification. No publisher, deployment or live-store migration is enabled by these notes.

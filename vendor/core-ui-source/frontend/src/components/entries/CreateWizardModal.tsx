@@ -2,9 +2,12 @@ import { useEffect, useMemo, useState } from 'react';
 import { Modal } from '../ui/Modal';
 import { Button } from '../ui/Button';
 import { Select, Surface, Text } from '../../ui';
+import { useEntryWriteCheck } from '../../hooks/useEntryWriteCheck';
+import { WriteCheckNotice } from './WriteCheckNotice';
 import { SeamlessField } from './SeamlessField';
 import { entriesApi, tracksApi } from '../../api';
 import { toolsApi } from '../../api/tools';
+import { errorMessageFromAxios } from '../../api/helpers';
 import { useToast } from '../../context/ToastContext';
 import { humanizeEnumValue } from '../../utils/humanizeFieldKey';
 import type {
@@ -221,15 +224,23 @@ export function CreateWizardModal({
         if (cancelled) return;
         const periods = (output.periods as CreateWizardPeriodOption[]) || [];
         setPeriodOptions(periods);
-        setSelectedPeriodIndex(0);
-        if (periods[0]) {
+        // Pre-select the first period that can be chosen (taken periods are listed but disabled).
+        const first = Math.max(0, periods.findIndex(p => !p.unavailable));
+        setSelectedPeriodIndex(first);
+        if (periods[first] && !periods[first].unavailable) {
           setPeriodLoadNotice(null);
           const fieldKeys = new Set(step.fields || []);
           const values: Record<string, unknown> = {};
-          for (const [k, v] of Object.entries(periods[0])) {
+          for (const [k, v] of Object.entries(periods[first])) {
             if (fieldKeys.has(k)) values[k] = v;
           }
           setFormValues(prev => ({ ...values, ...prev }));
+        } else if (periods.length > 0) {
+          setPeriodLoadNotice(
+            typeof output.reason === 'string' && output.reason
+              ? output.reason
+              : 'None of the listed periods can be chosen — set the dates below directly.'
+          );
         } else {
           setPeriodOptions([]);
           // The tool itself reports why (e.g. "No Pay Calendar configured")
@@ -288,7 +299,7 @@ export function CreateWizardModal({
     let cancelled = false;
     setLoadingStep(true);
     (async () => {
-      const allTracks = await tracksApi.list();
+      const allTracks = await tracksApi.list({ skipEntryCounts: true });
       const sourceTrack = allTracks.find(
         (t: Track) => t.title === step.source_track_type
       );
@@ -356,6 +367,19 @@ export function CreateWizardModal({
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, step, stepIndex, checklistCacheKey]);
+
+  // The server's answer to "would this create succeed?", from the same rules the real create runs
+  // (field validation and the App's before-save rules). Shown on the period step and the last step, where
+  // it keeps Next/Create disabled; the create itself is still checked on the server.
+  const checkHere = stepIndex === steps.length - 1 || step?.kind === 'period_picker';
+  const writeCheck = useEntryWriteCheck({
+    enabled: Boolean(open && config) && checkHere,
+    trackId: track.id,
+    typeId: entryType.id,
+    title: String(formValues.title || ''),
+    customFields: formValues,
+  });
+  const blockedByCheck = checkHere && !writeCheck.ok && !writeCheck.pending;
 
   if (!open || !config || steps.length === 0) return null;
 
@@ -427,8 +451,9 @@ export function CreateWizardModal({
       showToast(`${entryType.name} created`, 'success');
       onCreated(created);
       onClose();
-    } catch {
-      showToast('Failed to create — please try again', 'error');
+    } catch (err) {
+      // Say why when the App refused the record (for example, people missing details a pay run needs).
+      showToast(errorMessageFromAxios(err, 'Failed to create — please try again'), 'error');
     } finally {
       setSubmitting(false);
     }
@@ -503,7 +528,7 @@ export function CreateWizardModal({
                 </div>
               );
             })}
-            {periodOptions.length === 0 && periodLoadNotice && (
+            {periodLoadNotice && (periodOptions.length === 0 || periodOptions.every(p => p.unavailable)) && (
               <Surface tone="panel-2" radius="input" padding="sm">
                 <Text as="span" variant="body-sm" tone="muted">
                   {periodLoadNotice}
@@ -520,8 +545,8 @@ export function CreateWizardModal({
                   onChange={e => selectPeriod(Number(e.target.value))}
                 >
                   {periodOptions.map((opt, i) => (
-                    <option key={i} value={i}>
-                      {opt.label}
+                    <option key={i} value={i} disabled={Boolean(opt.unavailable)}>
+                      {opt.unavailable && opt.reason ? `${opt.label} (${opt.reason})` : opt.label}
                     </option>
                   ))}
                 </Select>
@@ -637,6 +662,11 @@ export function CreateWizardModal({
             </Text>
           </Surface>
         )}
+        {checkHere && !writeCheck.ok && writeCheck.message ? (
+          <div className="mt-3">
+            <WriteCheckNotice message={writeCheck.message} />
+          </div>
+        ) : null}
       </Modal.Body>
 
       <Modal.Footer align="between">
@@ -652,7 +682,7 @@ export function CreateWizardModal({
           <Button
             size="sm"
             loading={submitting}
-            disabled={blockedByRequiredChecklist}
+            disabled={blockedByRequiredChecklist || blockedByCheck}
             onClick={handleSubmit}
           >
             Create
@@ -660,7 +690,7 @@ export function CreateWizardModal({
         ) : (
           <Button
             size="sm"
-            disabled={blockedByRequiredChecklist}
+            disabled={blockedByRequiredChecklist || blockedByCheck}
             onClick={() => setStepIndex(i => Math.min(steps.length - 1, i + 1))}
           >
             Next

@@ -386,3 +386,15 @@ describe('FormRegionWidget', () => {
     expect(screen.queryByDisplayValue('R-1')).not.toBeInTheDocument();
   });
 });
+
+it('resolves the requested host type by display name when another type comes first', async () => {
+  mockEntryTypesList.mockResolvedValue([
+    {id: 'post', name: 'Post', form_schema: {fields: [{key: 'body', name: 'Body', type: 'text'}]}},
+    {id: 'document', name: 'Document', form_schema: {_manifest_entry_type_key: 'document', fields: [{key: 'code', name: 'Document code', type: 'text'}]}},
+  ]);
+  mockGet.mockResolvedValue({id: 'entry-1', title: 'Document', custom_fields: {code: 'DOC-7'}});
+  const view = {...baseView({fields: ['code'], show_labels: true, __bindings: {entryId: 'entry-1'}}), default_entry_type_key: 'Document'};
+  render(<FormRegionWidget view={view} entries={[]} isLoading={false} onEntryOpen={() => {}} />);
+  await screen.findByDisplayValue('DOC-7');
+  expect(screen.getByText('Document code')).toBeInTheDocument();
+});

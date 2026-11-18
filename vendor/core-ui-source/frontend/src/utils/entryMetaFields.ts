@@ -157,9 +157,10 @@ function formatDateLike(raw: string, withTime: boolean): string {
 export function formatCustomFieldValue(
   field: OperationalModelFieldSpec,
   value: unknown,
-  enumLabels?: Record<string, string>
+  givenLabels?: Record<string, string>
 ): string {
   const t = String(field.type || 'text').toLowerCase();
+  const enumLabels = { ...(field.enum_labels ?? {}), ...(givenLabels ?? {}) };
 
   if (t === 'select') {
     if (value === null || value === undefined || value === '') return '';
@@ -197,9 +198,23 @@ export function formatCustomFieldValue(
   }
 
   if (t === 'number') {
-    if (typeof value === 'number' && Number.isFinite(value)) return String(value);
-    if (value != null && value !== '') return String(value);
-    return '';
+    if (value == null || value === '') return '';
+    // A field can ask for a display format with ``widget`` (the same ones the
+    // form input honours): money gets thousands separators and two decimals.
+    const widget = (field as { widget?: unknown }).widget;
+    const n = Number(value);
+    if (Number.isFinite(n)) {
+      if (widget === 'currency' || widget === 'amount') {
+        return n.toLocaleString('en-US', {
+          minimumFractionDigits: 2,
+          maximumFractionDigits: 2,
+        });
+      }
+      if (widget === 'number' || widget === 'grouped') {
+        return n.toLocaleString('en-US', { maximumFractionDigits: 2 });
+      }
+    }
+    return String(value);
   }
 
   if (t === 'date' || t === 'datetime') {

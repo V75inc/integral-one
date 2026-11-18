@@ -29,7 +29,14 @@ export interface ModelConnection {
   last_test_ok?: boolean | null;
   last_tested_at?: string;
 }
+export interface HarnessModelAssessment {
+  tier: "heavy" | "light" | "unverified";
+  recommended: boolean;
+  evidence: string;
+  message: string;
+}
 export interface ModelProfile {
+  harness_policy?: HarnessModelAssessment;
   id: string;
   name: string;
   connection_id: string;
@@ -58,12 +65,14 @@ export interface ModelRouting {
   revision: string;
 }
 export interface AIConfiguration {
+  model_policy?: { version: string; note: string; providers: Record<string, { preferred_heavy: string; models: Array<{ id: string; label: string; role: string; evidence: string; recommended: boolean }> }> };
   routing?: ModelRouting;
   connections: ModelConnection[];
   profiles: ModelProfile[];
   default_profile_id: string;
   key_policy: string;
   effective: {
+    harness_policy?: HarnessModelAssessment;
     workspace_id: string;
     source: string;
     editable: boolean;
@@ -95,7 +104,7 @@ export type ConnectionWrite = Omit<
   | "last_test_ok"
   | "last_tested_at"
 > & { id?: string; api_key?: string; without_key: boolean };
-export type ProfileWrite = Omit<ModelProfile, "id" | "updated_at"> & {
+export type ProfileWrite = Omit<ModelProfile, "id" | "updated_at" | "harness_policy"> & {
   id?: string;
 };
 export const aiConfigurationApi = {

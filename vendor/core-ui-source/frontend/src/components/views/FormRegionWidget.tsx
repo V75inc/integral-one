@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useMemo, useState, type CSSProperties } from 'react';
 import { useContributionLifecycle } from '../entries/contributionLifecycle';
+import { findEntryTypeBySlug } from '../../utils/entryMetaFields';
 import { SeamlessField } from '../entries/SeamlessField';
 import type { RelationChoice } from '../entries/EntryFormExpanded';
-import { slug } from '../entries/entryFormCustomFields';
-import { appsApi, entriesApi, entryTypesApi, tracksApi } from '../../api';
+import { appsApi, entriesApi, entryTypesApi } from '../../api';
 import { extensionsApi, requireOperationOutput } from '../../api/extensions';
 import { toolsApi } from '../../api/tools';
 import { useToast } from '../../context/ToastContext';
@@ -112,10 +112,8 @@ export function FormRegionWidget({ view, entries, isLoading }: ViewWidgetProps) 
     if (!entryTypes.length) return undefined;
     const wantKey = view.default_entry_type_key;
     if (wantKey) {
-      const byManifestKey = entryTypes.find(
-        et => et.form_schema?._manifest_entry_type_key === wantKey
-      );
-      if (byManifestKey) return byManifestKey;
+      const requested = findEntryTypeBySlug(entryTypes, wantKey);
+      if (requested) return requested;
     }
     return entryTypes[0];
   }, [entryTypes, view.default_entry_type_key]);
@@ -148,91 +146,7 @@ export function FormRegionWidget({ view, entries, isLoading }: ViewWidgetProps) 
       .filter((f): f is OperationalModelFieldSpec => Boolean(f));
   }, [fieldKeys, allFields, fieldByKey]);
 
-  // Relation-typed fields need choices — same trimmed port of
-  // EditableTableWidget's relation-choices effect (itself ported from
-  // EntryFormExpanded.tsx).
-  const [relationChoices, setRelationChoices] = useState<
-    Record<string, RelationChoice[]>
-  >({});
-  const [relationLoading, setRelationLoading] = useState(false);
-  const relationFieldsFetchSig = displayFields
-    .filter(f => f.type === 'relation')
-    .map(f => `${f.key}:${JSON.stringify(f.relation ?? {})}`)
-    .join('\x1e');
-
-  useEffect(() => {
-    const relationFields = displayFields.filter(f => f.type === 'relation');
-    if (!relationFields.length) {
-      setRelationChoices(prev => (Object.keys(prev).length === 0 ? prev : {}));
-      return;
-    }
-    let cancelled = false;
-    setRelationLoading(true);
-    (async () => {
-      try {
-        const allTracks = await tracksApi.list();
-        const sourceAppId = lifecycle?.appId || allTracks.find(t => t.id === view.track_id)?.app?.id;
-        const choicesByField: Record<string, RelationChoice[]> = {};
-        await Promise.all(
-          relationFields.map(async relField => {
-            const relation = relField.relation || {};
-            const allowCrossTrack = Boolean(relation.allow_cross_track);
-            const targetEntryTypes = new Set(
-              (relation.target_entry_types || []).map(x => slug(String(x)))
-            );
-            const targetTrackTypes = new Set(
-              (relation.target_track_types || []).map(x => slug(String(x)))
-            );
-            const candidateTracks = allowCrossTrack
-              ? allTracks.filter(t => {
-                  if (sourceAppId && !relation.allow_cross_app && t.app?.id !== sourceAppId) return false;
-                  if (!targetTrackTypes.size) return true;
-                  const typeKey = slug(String(t.template_id || t.relation_type_key || t.title));
-                  return targetTrackTypes.has(typeKey);
-                })
-              : allTracks.filter(t => t.id === view.track_id);
-            const entryLists = await Promise.all(
-              candidateTracks.map(async t => {
-                try {
-                  const es = await entriesApi.list({ track_id: t.id, limit: 200 });
-                  return { track: t, entries: es };
-                } catch {
-                  return { track: t, entries: [] };
-                }
-              })
-            );
-            const deduped = new Map<string, RelationChoice>();
-            for (const group of entryLists) {
-              for (const item of group.entries) {
-                if (
-                  targetEntryTypes.size &&
-                  !targetEntryTypes.has(slug(String(item.type)))
-                ) {
-                  continue;
-                }
-                const primary =
-                  String(item.title || '').trim() ||
-                  String(item.body || '').trim().slice(0, 80) ||
-                  `Entry ${item.id.slice(-6)}`;
-                deduped.set(item.id, {
-                  value: item.id,
-                  label: `${primary} (${group.track.title})`,
-                });
-              }
-            }
-            choicesByField[relField.key] = Array.from(deduped.values());
-          })
-        );
-        if (!cancelled) setRelationChoices(choicesByField);
-      } finally {
-        if (!cancelled) setRelationLoading(false);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [relationFieldsFetchSig, view.track_id, lifecycle?.appId]);
+  const [relationChoices, setRelationChoices] = useState<Record<string, RelationChoice[]>>({});
 
   // Target entry resolution — the record the fields actually read from /
   // write to. Independent of `entries` prop trust: fetched directly for
@@ -555,17 +469,24 @@ export function FormRegionWidget({ view, entries, isLoading }: ViewWidgetProps) 
           const fieldLocked =
             (readOnly && !detailEditable) || autoLockedKeys.has(field.key);
           return (
+            <div key={field.key} data-field-key={field.key}>
+              {config.show_labels === true && <Text as="div" variant="label" className="mb-1.5">{field.name}{field.required ? ' *' : ''}</Text>}
             <SeamlessField
-              key={field.key}
+              externalLabel={config.show_labels === true ? true : undefined}
               field={fieldLocked ? { ...field, readonly: true } : field}
               value={values[field.key]}
               onChange={next => commitField(field.key, next)}
               entryId={targetEntry?.id || lifecycle?.entryId || undefined}
               relationChoices={relationChoices[field.key]}
-              relationLoading={relationLoading}
+              relationSource={{ trackId: view.track_id, entryTypeId: activeEntryType?.id || '',
+                schema: activeEntryType?.form_schema,
+                entryId: targetEntry?.track_id === view.track_id ? targetEntry.id : undefined,
+                onChoices: choices => setRelationChoices(prev => ({ ...prev, [field.key]: choices })),
+              }}
               siblingFields={allFields}
               siblingValues={values}
             />
+            </div>
           );
         })}
       </div>

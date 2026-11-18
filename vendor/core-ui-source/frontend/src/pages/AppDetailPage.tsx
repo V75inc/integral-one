@@ -2,7 +2,7 @@ import { accessControlApi } from '../api/accessControl';
 import { useDeployment } from '../hooks/useDeployment';
 import { useAppDeletionNavigation } from '../hooks/useAppDeletionNavigation';
 import { AppIcon } from '../ui';
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { ResourceAccessReview } from '../components/access/ResourceAccessReview';
 import { usePhantomClickGuard } from '../hooks/usePhantomClickGuard';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -82,7 +82,8 @@ import { useSetCrumbs } from '../context/CrumbsContext';
 import { useChatPageFocus } from '../context/ChatPageFocusContext';
 import { AppDashboardPanel } from '../features/app-dashboards/AppDashboardPanel';
 import { AppHomePanel } from '../features/app-dashboards/AppHomePanel';
-import { dashboardsApi } from '../api/dashboards';
+import { readHomeQuery } from '../features/app-dashboards/homeQuery';
+import { dashboardsApi, isHomeAccessDenied } from '../api/dashboards';
 import { useScope } from '../context/ScopeContext';
 import { useWorkspaceCrumbPrefix } from '../hooks/useWorkspaceCrumbPrefix';
 import { useRecents } from '../hooks/useRecents';
@@ -110,6 +111,13 @@ interface CollabRow {
 }
 
 export function AppDetailPage() {
+  const { appId } = useParams<{ appId: string }>();
+  const { user } = useAuth();
+  // Route/account changes discard local data and authority before the next paint.
+  return <AppDetailContent key={`${user?.id ?? ''}:${appId ?? ''}`} />;
+}
+
+function AppDetailContent() {
   const { collaboration } = useDeployment();
   const { scope: activeHomeScope } = useScope();
   const { appId } = useParams<{ appId: string }>();
@@ -128,8 +136,13 @@ export function AppDetailPage() {
   const [tracks, setTracks] = useState<Track[]>([]);
   const [collabs, setCollabs] = useState<CollabRow[]>([]);
   const [callerRole, setCallerRole] = useState<string | null | undefined>(undefined);
-  const [allTracks, setAllTracks] = useState<Track[]>([]);
+  const [accessLoading, setAccessLoading] = useState(true);
+  const [accessError, setAccessError] = useState<string | null>(null);
+  const [accessDenied, setAccessDenied] = useState(false);
+  const accessSeq = useRef(0);
   const [loading, setLoading] = useState(true);
+  const loadSeq = useRef(0);
+  const [secondaryLoaded, setSecondaryLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showTrackModal, setShowTrackModal] = useState(false);
   const [showEditAppModal, setShowEditAppModal] = useState(false);
@@ -150,47 +163,47 @@ export function AppDetailPage() {
   const [sectionParams, setSectionParams] = useSearchParams();
   const requestedSection = sectionParams.get('section');
   const explicitSection = requestedSection === 'home' || requestedSection === 'tracks' || requestedSection === 'dashboards' ? requestedSection : null;
-  const [appSection, setAppSection] = useState<AppDetailSection>(() =>
-    explicitSection ?? (appId ? readAppDetailSection(appId) : 'tracks')
-  );
   const { setPageContext, clearPageContext } = useChatPageFocus();
+
+  const dashboardsQuery = useQuery({
+    queryKey: ['dashboards', appId],
+    queryFn: () => dashboardsApi.list(appId!),
+    enabled: !!appId && !accessDenied
+  });
+  const dashboardCount = dashboardsQuery.data?.length ?? 0;
+  const homeQuery = useQuery({
+    queryKey: ['app-home-definition', appId, activeHomeScope?.workspaceId],
+    queryFn: () => readHomeQuery(queryClient, appId!, activeHomeScope?.workspaceId, false),
+    refetchInterval: 15_000,
+    enabled: Boolean(!accessDenied && appId && app?.id === appId && app.workspace_id === activeHomeScope?.workspaceId),
+  });
+  const hasHome = Boolean(app?.id === appId && app?.workspace_id === activeHomeScope?.workspaceId && homeQuery.data?.home && !isHomeAccessDenied(homeQuery.error));
+  const preferredSection = explicitSection ?? (appId ? readAppDetailSection(appId, hasHome ? 'home' : 'tracks') : 'tracks');
+  const appSection = preferredSection === 'home' && !hasHome ? 'tracks' : preferredSection;
 
   const selectAppSection = useCallback(
     (section: AppDetailSection) => {
-      setAppSection(section);
+      if (section === appSection) return;
+      // Preserve the initial section in this history entry before changing the
+      // device preference. Otherwise Back to an unqualified URL reads the new preference.
+      if (!explicitSection) {
+        setSectionParams(previous => {
+          const current = new URLSearchParams(previous);
+          current.set('section', appSection);
+          return current;
+        }, { replace: true });
+      }
       setSectionParams(previous => {
         const next = new URLSearchParams(previous);
         next.set('section', section);
         if (section !== 'dashboards') next.delete('dashboard_id');
         return next;
-      }, { replace: true });
+      });
       if (appId) writeAppDetailSection(appId, section);
     },
-    [appId, setSectionParams]
+    [appId, appSection, explicitSection, setSectionParams]
   );
 
-  // Restore last section when navigating between apps without remounting.
-  useEffect(() => {
-    if (!appId) return;
-    setAppSection(explicitSection ?? readAppDetailSection(appId));
-  }, [appId, explicitSection]);
-
-  const dashboardsQuery = useQuery({
-    queryKey: ['dashboards', appId],
-    queryFn: () => dashboardsApi.list(appId!),
-    enabled: !!appId
-  });
-  const dashboardCount = dashboardsQuery.data?.length ?? 0;
-  const homeQuery = useQuery({
-    queryKey: ['app-home-definition', appId, activeHomeScope?.workspaceId],
-    queryFn: () => dashboardsApi.home(appId!, false),
-    refetchInterval: 15_000,
-    enabled: Boolean(appId && app?.id === appId && app.workspace_id === activeHomeScope?.workspaceId),
-  });
-  const hasHome = Boolean(homeQuery.data?.home);
-  useEffect(() => {
-    if (appId && homeQuery.data) setAppSection(explicitSection === 'home' && !hasHome ? 'tracks' : explicitSection ?? readAppDetailSection(appId, hasHome ? 'home' : 'tracks'));
-  }, [appId, homeQuery.data, hasHome, explicitSection]);
 
   // Publish breadcrumb trail to the TopBar.
   // When the App is workspace-scoped, lead the trail with the {WorkspaceName}
@@ -199,7 +212,7 @@ export function AppDetailPage() {
   // listing — i.e. {WorkspaceName} › Apps › {AppName}. (The fallback branches
   // below, hit only when the workspace can't be resolved, keep the bare
   // Apps-first trail.)
-  const workspaceCrumbs = useWorkspaceCrumbPrefix(app?.workspace_id || null);
+  const workspaceCrumbs = useWorkspaceCrumbPrefix(accessDenied ? null : app?.workspace_id || null);
   // Keep the global scope (workspace switcher + sidebar) in sync with
   // the App we're viewing. Lets the user click into an App from
   // Mission Control without leaving the rail rooted in the previous
@@ -208,12 +221,13 @@ export function AppDetailPage() {
   const appWorkspaceColor = workspaces.find(w => w.id === app?.workspace_id)?.accent_color;
   const { canCreateTracks, lacksTrackCreationInOrg } = useWorkspaceCreationRights();
   useEffect(() => {
+    if (accessDenied) return;
     const wid = app?.workspace_id || '';
     if (!wid) return;
     setActiveScope({ workspaceId: wid });
-  }, [app?.id, app?.workspace_id, setActiveScope]);
+  }, [app?.id, app?.workspace_id, accessDenied, setActiveScope]);
   useSetCrumbs(
-    app
+    app && !accessDenied
       ? workspaceCrumbs.length
         ? [
             ...workspaceCrumbs,
@@ -227,40 +241,86 @@ export function AppDetailPage() {
       : [{ label: 'Apps', to: '/apps' }, { label: 'Loading…' }]
   );
 
-  const load = useCallback(async () => {
+  const loadAccess = useCallback(async () => {
     if (!appId) return;
-    setLoading(true);
-    setError(null);
+    const seq = ++accessSeq.current;
+    setAccessLoading(true);
+    setAccessError(null);
+    setCallerRole(null);
+    setCollabs([]);
+    setCollaboratorTotal(null);
+    setCollaboratorDirectoryVisible(false);
     try {
-      const [sp, tr, c, at, tpls, profile] = await Promise.all([
-        appsApi.get(appId),
-        appsApi.listTracks(appId),
-        appsApi.getCollaboratorsDetailed(appId),
-        tracksApi.list(),
-        appsApi.listTrackTemplates(appId).catch(() => []),
-        operationalModelsApi.getAttachedForApp(appId).catch(() => null),
-      ]);
-      setApp(sp);
-      setAppOperationalModel(profile);
-      setTracks(tr);
+      const c = await appsApi.getCollaboratorsDetailed(appId);
+      if (accessSeq.current !== seq) return;
       setCollabs(c.collaborators as CollabRow[]);
       setCollaboratorTotal(typeof c.total === 'number' ? c.total : null);
       setCollaboratorDirectoryVisible(c.directory_visible !== false);
       setCallerRole(c.caller_role);
-      setAllTracks(at as Track[]);
-      setTrackTemplates(tpls.map(t => ({ id: t.id, name: t.name })));
+      setAccessDenied(false);
+    } catch (e) {
+      if (accessSeq.current === seq) {
+        const status = (e as { response?: { status?: number } })?.response?.status;
+        if (status === 401 || status === 403 || status === 404) {
+          // A denied app.read is not a directory outage. Retire visible data
+          // and fence pending primary/secondary reads before they can publish it.
+          ++loadSeq.current;
+          setApp(null);
+          setTracks([]);
+          setAppOperationalModel(null);
+          setLoading(false);
+          setAccessDenied(true);
+        }
+        setAccessError(errorMessageFromAxios(e, 'Could not load access details.'));
+      }
+    } finally {
+      if (accessSeq.current === seq) setAccessLoading(false);
+    }
+  }, [appId]);
+
+  const load = useCallback(async () => {
+    if (!appId) return;
+    setLoading(true);
+    setSecondaryLoaded(false);
+    setError(null);
+    const seq = ++loadSeq.current;
+    void loadAccess();
+    try {
+      // Each read is authorized by the server. Directory discovery does not
+      // hold up readable content; editing waits for its independent result.
+      const [sp, tr] = await Promise.all([
+        appsApi.get(appId),
+        appsApi.listTracks(appId),
+      ]);
+      if (loadSeq.current !== seq) return;
+      setApp(sp);
+      setTracks(tr);
+      // Secondary data (track templates and the attached model) no
+      // longer holds up the first paint; each fills in when it arrives. A failure leaves the
+      // empty default instead of replacing the page with an error.
+      void Promise.all([
+        appsApi.listTrackTemplates(appId).catch(() => []),
+        operationalModelsApi.getAttachedForApp(appId).catch(() => null),
+      ]).then(([tpls, profile]) => {
+        if (loadSeq.current !== seq) return;
+        setTrackTemplates(tpls.map(t => ({ id: t.id, name: t.name })));
+        setAppOperationalModel(profile);
+        setSecondaryLoaded(true);
+      });
     } catch (e: unknown) {
+      if (loadSeq.current !== seq) return;
       setError(errorMessageFromAxios(e, 'Failed to load app'));
       setApp(null);
       setCallerRole(null);
       setAppOperationalModel(null);
     } finally {
-      setLoading(false);
+      if (loadSeq.current === seq) setLoading(false);
     }
-  }, [appId]);
+  }, [appId, loadAccess]);
 
   useEffect(() => {
-    load();
+    void load();
+    return () => { ++loadSeq.current; ++accessSeq.current; };
   }, [load]);
 
   const trackIdsInApp = useMemo(() => new Set(tracks.map(t => t.id)), [tracks]);
@@ -271,24 +331,8 @@ export function AppDetailPage() {
     const defaults = appDefinition?.defaults as Record<string, unknown> | undefined;
     const defaultTrackKey = String(defaults?.default_track || '').trim();
     if (!defaultTrackKey) return null;
-    return tracks.find(track => track.template_id === defaultTrackKey) || null;
+    return tracks.find(track => track.template_id === defaultTrackKey && isTrackNavVisible(track)) || null;
   }, [appOperationalModel, tracks]);
-
-  const tracksAvailableToLink = useMemo(
-    () => allTracks.filter(t => !trackIdsInApp.has(t.id)),
-    [allTracks, trackIdsInApp],
-  );
-
-  const linkableTracks = useMemo(() => {
-    const q = linkModalSearch.trim().toLowerCase();
-    if (!q) return tracksAvailableToLink;
-    return tracksAvailableToLink.filter(
-      t =>
-        t.title.toLowerCase().includes(q) ||
-        (t.purpose || '').toLowerCase().includes(q) ||
-        (t.description || '').toLowerCase().includes(q)
-    );
-  }, [tracksAvailableToLink, linkModalSearch]);
 
   const filteredTracks = useMemo(() => {
     const q = trackSearch.trim().toLowerCase();
@@ -312,7 +356,7 @@ export function AppDetailPage() {
   }, [tracks, trackSearch]);
 
   useEffect(() => {
-    if (!appId) {
+    if (!appId || accessDenied) {
       clearPageContext();
       return;
     }
@@ -331,6 +375,7 @@ export function AppDetailPage() {
     return () => clearPageContext();
   }, [
     appId,
+    accessDenied,
     app?.name,
     appSection,
     filteredTracks,
@@ -339,6 +384,7 @@ export function AppDetailPage() {
   ]);
 
   useEffect(() => {
+    if (accessDenied) { clearPageContext(); return; }
     if (!appId || appSection !== 'dashboards') return;
     setPageContext({
       pageKind: 'app_dashboards',
@@ -347,7 +393,7 @@ export function AppDetailPage() {
       metadata: { app_name: app?.name, app_section: appSection }
     });
     return () => clearPageContext();
-  }, [appId, app?.name, appSection, setPageContext, clearPageContext]);
+  }, [appId, app?.name, appSection, accessDenied, setPageContext, clearPageContext]);
 
   // Split into primary (user-curated) vs anchor (entry-spawned) so the
   // page mirrors the Tracks page's three-bucket grouping. Within an App
@@ -365,13 +411,16 @@ export function AppDetailPage() {
   }, [filteredTracks]);
 
   const uniqueCollabs = useMemo(() => dedupeCollaborators(collabs), [collabs]);
-  const collaboratorCount = collaboratorTotal ??
-    (collaboratorDirectoryVisible ? uniqueCollabs.length : null);
+  const authorityReady = !accessLoading && !accessError;
+  const collaboratorCount = authorityReady ? collaboratorTotal ??
+    (collaboratorDirectoryVisible ? uniqueCollabs.length : null) : null;
 
   const isAppOwner = useMemo(() => {
+    if (!authorityReady) return false;
+    if (callerRole !== undefined) return callerRole === 'owner';
     if (!app?.owner_user_id || !me) return false;
     return isSamePrincipal(me, app.owner_user_id);
-  }, [app, me]);
+  }, [app, me, authorityReady, callerRole]);
 
   const myCollab = useMemo(
     () =>
@@ -387,13 +436,31 @@ export function AppDetailPage() {
   ).toLowerCase();
   const isAdminInCollab = myRole === 'admin';
   const isWorkspaceOwner = workspaces.find(w => w.id === app?.workspace_id)?.your_role === 'owner';
-  const canAdmin = isWorkspaceOwner || isAppOwner || isAdminInCollab;
+  const canAdmin = authorityReady && (isWorkspaceOwner || isAppOwner || isAdminInCollab);
   const canManageCollaborators = canAdmin;
+  const linkTracksQuery = useQuery({
+    queryKey: ['tracks', 'for-app-link', appId, me?.id, activeHomeScope?.workspaceId],
+    queryFn: () => tracksApi.list({ skipEntryCounts: true }),
+    enabled: Boolean(linkModal && canAdmin && app?.workspace_id === activeHomeScope?.workspaceId),
+    retry: false,
+  });
+  const tracksAvailableToLink = useMemo(
+    () => (linkTracksQuery.data ?? []).filter(t => !trackIdsInApp.has(t.id)),
+    [linkTracksQuery.data, trackIdsInApp],
+  );
+  const linkableTracks = useMemo(() => {
+    const q = linkModalSearch.trim().toLowerCase();
+    if (!q) return tracksAvailableToLink;
+    return tracksAvailableToLink.filter(t => t.title.toLowerCase().includes(q)
+      || (t.purpose || '').toLowerCase().includes(q)
+      || (t.description || '').toLowerCase().includes(q));
+  }, [tracksAvailableToLink, linkModalSearch]);
   const hasConfigurableSettings = Boolean(app?.settings_schema && Object.keys(app.settings_schema.properties || {}).length);
   const functionSettings = useQuery({
     queryKey: ['app-function-settings', appId, app?.workspace_id, homeQuery.data?.definition_revision],
     queryFn: () => accessControlApi.bindings(appId!),
-    enabled: Boolean(isWorkspaceOwner && appId && app?.id === appId && app.workspace_id === activeHomeScope?.workspaceId),
+    // Owner-only settings entry: not needed for the first paint, so it waits for the page data.
+    enabled: Boolean(!accessDenied && isWorkspaceOwner && appId && app?.id === appId && app.workspace_id === activeHomeScope?.workspaceId && secondaryLoaded),
     retry: false,
   });
   // Retain existing grants for review/revocation, even if the new definition
@@ -402,13 +469,24 @@ export function AppDetailPage() {
     Boolean(Object.keys(functionSettings.data?.role_actions || {}).length || functionSettings.data?.bindings?.length));
   const hasAppSettings = hasConfigurableSettings || hasFunctionSettings;
 
+  // The App menu's Settings link lands here with ?settings=1: open the standard App settings dialog once.
+  const settingsRequested = sectionParams.get('settings') === '1';
+  useEffect(() => {
+    if (!settingsRequested || !app || app.id !== appId || !authorityReady) return;
+    if (canAdmin) setShowAppSettingsModal(true);
+    setSectionParams(previous => {
+      const next = new URLSearchParams(previous);
+      next.delete('settings');
+      return next;
+    }, { replace: true });
+  }, [settingsRequested, app, appId, canAdmin, authorityReady, setSectionParams]);
+
   // Adding or linking a track is app.update, not the workspace create flag.
   // A workspace owner can open this App as a commenter and still holds
   // canCreateTracks; showing New track in that case returns 403.
   const canAddTrackToThisApp = canAdmin && canCreateTracks;
   const canEditDashboard =
-    isAppOwner ||
-    ['admin', 'editor'].includes(myRole);
+    authorityReady && (isAppOwner || ['admin', 'editor'].includes(myRole));
 
   const excludeCollabIds = useMemo(() => {
     const s = new Set<string>();
@@ -499,7 +577,7 @@ export function AppDetailPage() {
   };
 
   const linkTrack = async (trackId: string) => {
-    if (!appId) return;
+    if (!appId || !canAdmin) return;
     try {
       await appsApi.addTrack(appId, trackId);
       showToast('Track linked to app', 'success');
@@ -562,6 +640,13 @@ export function AppDetailPage() {
     }
   };
 
+
+  if (accessDenied) {
+    return <PageShell><PageSection><div role="alert">
+      <Text as="p">This App is unavailable or you no longer have access.</Text>
+      <Button variant="outline" onClick={() => void load()}>Retry App access</Button>
+    </div></PageSection></PageShell>;
+  }
 
   if (loading && !app) {
     return (
@@ -630,6 +715,10 @@ export function AppDetailPage() {
        full-bleed page divider can span the main column edge to edge. */
     <PageShell>
       <PageSection>
+        {accessError ? <div role="alert">
+          <Text as="p" tone="muted">Access details could not be loaded. Editing is unavailable.</Text>
+          <Button size="sm" variant="outline" onClick={() => void loadAccess()}>Retry access details</Button>
+        </div> : null}
         {error ? (
           <div
             className="mb-4 rounded-[var(--radius-card)] border border-[color:var(--warn-fg)]/30 bg-[var(--warn-bg)] px-4 py-3 text-sm text-[var(--warn-fg)]"
@@ -794,31 +883,6 @@ export function AppDetailPage() {
             {app.description}
           </PageMeta>
         ) : null}
-        {defaultTrack && !hasHome ? (
-          <div className="mt-5 flex flex-col gap-3 rounded-[var(--radius-card)] border border-[var(--border-subtle)] bg-[var(--surface-raised)] p-4 sm:flex-row sm:items-center sm:justify-between sm:gap-6">
-            <div className="min-w-0">
-              <p className="text-xs font-medium uppercase tracking-wide text-[var(--text-subtle)]">
-                Start here
-              </p>
-              <p className="mt-1 text-sm font-medium text-[var(--text)]">
-                {defaultTrack.title}
-              </p>
-              {defaultTrack.description?.trim() ? (
-                <p className="mt-1 max-w-2xl text-sm leading-relaxed text-[var(--text-muted)]">
-                  {defaultTrack.description}
-                </p>
-              ) : null}
-            </div>
-            <Button
-              variant="primary"
-              size="sm"
-              onClick={() => navigate(`/tracks/${defaultTrack.id}`)}
-              className="shrink-0"
-            >
-              Open {defaultTrack.title}
-            </Button>
-          </div>
-        ) : null}
         {Array.isArray(app.operations) && app.operations.length > 0 ? (
           <div className="mt-4 max-w-2xl rounded-[var(--radius-card)] border border-[var(--border-subtle)] bg-[var(--panel)] px-3 py-2.5">
             <Text variant="label" tone="muted" as="div" className="mb-1.5">
@@ -886,7 +950,7 @@ export function AppDetailPage() {
 
       {appSection === 'home' && hasHome ? (
         <PageSection className={filterBar.sectionTop}>
-          <AppHomePanel appId={appId} workspaceId={app?.workspace_id || ''} tracks={tracks.filter(isTrackNavVisible)} hasDashboards={dashboardCount > 0} />
+          <AppHomePanel appId={appId} workspaceId={app?.workspace_id || ''} tracks={tracks.filter(isTrackNavVisible)} defaultTrack={defaultTrack ?? undefined} hasDashboards={dashboardCount > 0} />
         </PageSection>
       ) : appSection === 'tracks' ? (
       <PageSection className={filterBar.sectionTop}>
@@ -1149,7 +1213,9 @@ export function AppDetailPage() {
               People in this App
             </h3>
             <ul className="max-h-[min(50vh,320px)] space-y-1 overflow-y-auto pr-1">
-              {uniqueCollabs.length === 0 ? (
+              {accessLoading ? <li><Text tone="muted">Loading access details…</Text></li> : accessError ? (
+                <li><Text tone="muted">Access details are unavailable.</Text></li>
+              ) : uniqueCollabs.length === 0 ? (
                 <li className="rounded-[var(--radius-input)] border border-dashed border-[var(--panel-border)] px-3 py-6 text-center text-sm text-[var(--text-muted)]">
                   {collaboratorDirectoryVisible ? 'No one else has been added yet.' :
                     'Collaborator details are visible to the owner and admins.'}
@@ -1273,7 +1339,11 @@ export function AppDetailPage() {
             />
           </div>
           <div className="max-h-72 overflow-y-auto space-y-1">
-            {linkableTracks.map(t => (
+            {linkTracksQuery.isPending ? <Text tone="muted">Loading tracks…</Text> : linkTracksQuery.isError ? (
+              <div role="alert"><Text tone="muted">Could not load tracks.</Text>
+                <Button variant="outline" onClick={() => void linkTracksQuery.refetch()}>Retry tracks</Button></div>
+            ) : null}
+            {canAdmin && !linkTracksQuery.isError && linkableTracks.map(t => (
               <button
                 key={t.id}
                 type="button"
@@ -1283,7 +1353,7 @@ export function AppDetailPage() {
                 {t.title}
               </button>
             ))}
-            {tracksAvailableToLink.length === 0 && (
+            {linkTracksQuery.isSuccess && tracksAvailableToLink.length === 0 && (
               <Text variant="body" tone="muted" as="p">
                 No other tracks to link.
               </Text>
@@ -1364,6 +1434,7 @@ function AppTrackRow({
                 : ''
             }
             title={track.title}
+            icon={track.icon}
           />
           {canDrag && sortable && (
             <button

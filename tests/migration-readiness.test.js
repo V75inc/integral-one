@@ -1,0 +1,7 @@
+"use strict";
+const test=require("node:test"),assert=require("node:assert/strict"),fs=require("node:fs"),os=require("node:os"),path=require("node:path");
+const {needsAssistedMigration}=require("../desktop/runtime-updates/migration-readiness");
+function fixture(t,config={installation_id:"fixture"}){const home=fs.mkdtempSync(path.join(os.tmpdir(),"one-assisted-"));t.after(()=>fs.rmSync(home,{recursive:true,force:true}));fs.mkdirSync(path.join(home,"postgres"));fs.writeFileSync(path.join(home,"installation.json"),JSON.stringify(config));return home;}
+test("legacy PostgreSQL homes require assistance without mutating their configuration",t=>{const home=fixture(t),file=path.join(home,"installation.json"),before=fs.readFileSync(file);assert.equal(needsAssistedMigration(home),true);assert.deepEqual(fs.readFileSync(file),before);});
+test("managed homes remain eligible for normal updates",t=>assert.equal(needsAssistedMigration(fixture(t,{runtime_database_user:"runtime",runtime_database_password:"fixture-only"})),false));
+test("runtime approval arguments select the existing validator; shell replacement still requires assistance",t=>{const home=fixture(t),argv=["--storage-plan=/reviewed/plan.json","--storage-approved-hash="+"a".repeat(64)];assert.equal(needsAssistedMigration(home,argv),false);assert.equal(needsAssistedMigration(home,argv,"installer"),true);assert.equal(needsAssistedMigration(home,[argv[0]]),true);});

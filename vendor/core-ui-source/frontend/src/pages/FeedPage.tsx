@@ -210,7 +210,7 @@ export function FeedPage() {
     queryFn: () =>
       appIdFromQuery
         ? appsApi.listTracks(appIdFromQuery)
-        : tracksApi.list({ limit: 100 }),
+        : tracksApi.list({ limit: 100, skipEntryCounts: true }),
   });
 
   const navTracks = useMemo(

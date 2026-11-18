@@ -2,15 +2,16 @@
  * buildTrackBreadcrumbs — TopBar trail for a Track detail page.
  *
  * Anchored tracks (project-details / financials / contracts):
- *   App › Parent Track › Project Name › Details
+ *   Apps › App › Parent Track › Project Name › Details
  *
  * When navigated from a parent entry (e.g. Project → Contact), optional
  * ``from`` inserts that parent before the current track:
- *   App › Project Name › Contacts › Contact title
+ *   Apps › App › Project Name › Contacts › Contact title
  */
 
 import type { Crumb } from '../components/ui';
 import type { Track } from '../types';
+import { LOADING_LABEL } from '../components/layout/stitchLayoutCrumbs';
 import { humanizeFieldKey } from './humanizeFieldKey';
 
 export type BreadcrumbFromParent = {
@@ -29,17 +30,18 @@ export function buildTrackBreadcrumbs(
   }
 ): Crumb[] {
   if (!track) {
-    return [{ label: 'Tracks', to: '/tracks' }, { label: 'Loading…' }];
+    return [{ label: 'Tracks', to: '/tracks' }, { label: LOADING_LABEL }];
   }
 
   const appCrumb: Crumb[] = track.app
     ? [
+        { label: 'Apps', to: '/apps' },
         {
           label: track.app.name || 'App',
           to: `/apps/${track.app.id}`,
         },
       ]
-    : [];
+    : [{ label: 'Tracks', to: '/tracks' }];
 
   const entryCrumb: Crumb[] = opts?.entryTitle
     ? [{ label: opts.entryTitle, maxChars: 60 }]
@@ -99,8 +101,10 @@ export function buildTrackBreadcrumbs(
     ];
   }
 
+  // App-owned resources follow the same hierarchy as App detail. Standalone
+  // Tracks retain their listing parent. Equal labels are distinct entities:
+  // retain both links rather than silently dropping the containing App.
   return [
-    { label: 'Tracks', to: '/tracks' },
     ...appCrumb,
     entryCrumb.length
       ? {

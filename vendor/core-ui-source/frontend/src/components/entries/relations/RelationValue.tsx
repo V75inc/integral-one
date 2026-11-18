@@ -56,10 +56,10 @@ function ResolvedTarget({
     // (the typed primitive — Phase 3-A FE templating). Long track titles
     // truncate instead of wrapping into multi-line pills.
     const chipClass =
-      'inline-block max-w-[min(100%,18rem)] truncate px-2.5 py-1 align-middle';
+      'inline-block max-w-full truncate px-2.5 py-1 align-middle';
     if (!route) {
       return (
-        <span title={target.label} className="inline-flex max-w-full">
+        <span title={target.label} className="inline-flex min-w-0 max-w-full">
           <Surface
             as="span"
             tone="panel-2"
@@ -75,7 +75,7 @@ function ResolvedTarget({
     return (
       <Link
         to={route}
-        className="inline-flex max-w-full rounded-full text-[var(--link)] hover:text-[var(--link-hover)] no-underline"
+        className="inline-flex min-w-0 max-w-full rounded-full text-[var(--link)] hover:text-[var(--link-hover)] no-underline"
         onClick={handleNavigate}
         title={target.label}
       >
@@ -92,8 +92,10 @@ function ResolvedTarget({
     );
   }
 
+  // A table cell shows the record's own name; the track it lives in is on hover (the parent sets the tooltip).
+  const shown = variant === 'cell' ? target.name ?? target.label : target.label;
   if (!route) {
-    return <span className="break-words">{target.label}</span>;
+    return <span className="break-words">{shown}</span>;
   }
   return (
     <Link
@@ -101,7 +103,7 @@ function ResolvedTarget({
       className={inlineLinkClass}
       onClick={handleNavigate}
     >
-      {target.label}
+      {shown}
     </Link>
   );
 }
@@ -177,7 +179,7 @@ export function RelationValue({
     }
     const wrapCls =
       variant === 'chips'
-        ? `inline-flex flex-wrap gap-1 ${className}`.trim()
+        ? `inline-flex min-w-0 max-w-full flex-wrap gap-1 ${className}`.trim()
         : `inline-flex flex-wrap gap-x-1 ${className}`.trim();
     return (
       <span className={wrapCls}>
@@ -218,7 +220,7 @@ export function RelationValue({
 
   if (variant === 'chips') {
     return (
-      <span className={`inline-flex flex-wrap gap-1 ${className}`.trim()}>
+      <span className={`inline-flex min-w-0 max-w-full flex-wrap gap-1 ${className}`.trim()}>
         {limited.map((t, i) => (
           <ResolvedTarget
             key={`${t.id}-${i}`}

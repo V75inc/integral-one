@@ -47,6 +47,10 @@ export interface TrackDetailViewChromeProps {
   onToggleActivity: () => void;
   /** Present only when the active view can be edited. */
   onEditLayout?: () => void;
+  /** Present only for people who can administer the track: drag a tab to reorder the tabs. */
+  onReorderViews?: (orderedViewIds: string[]) => void;
+  /** The App's ``defaults.tabs.show_single_tab``. False hides the strip when only one view is visible. Default true. */
+  showSingleTab?: boolean;
 }
 
 /** View tabs + right-rail toggles (or plain divider when no tabs). */
@@ -62,6 +66,8 @@ export function TrackDetailViewChrome({
   onToggleConfig,
   onToggleActivity,
   onEditLayout,
+  onReorderViews,
+  showSingleTab = true,
 }: TrackDetailViewChromeProps) {
   if (!trackId) {
     return <PageSection.Separator />;
@@ -109,7 +115,9 @@ export function TrackDetailViewChrome({
     </button>
   );
 
-  if (viewTabOptions.length >= 1 && activeView) {
+  const hideLoneTab = !showSingleTab && viewTabOptions.length === 1;
+
+  if (viewTabOptions.length >= 1 && activeView && !hideLoneTab) {
     return (
       <div className="border-b border-[var(--panel-border)]">
         <PageSection>
@@ -121,6 +129,7 @@ export function TrackDetailViewChrome({
               if (next) onChangeView(next);
             }}
             ariaLabel="Track views"
+            onReorder={onReorderViews}
             noBorder
             actions={
               <div className="flex items-center gap-1">

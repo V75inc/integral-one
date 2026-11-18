@@ -1,4 +1,5 @@
 import { Loader2 } from 'lucide-react';
+import { forwardRef } from 'react';
 import { LINE_ICON_STROKE } from './IconWell';
 interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: 'primary'|'secondary'|'ghost'|'danger'|'outline';
@@ -6,7 +7,7 @@ interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
   loading?: boolean;
   icon?: React.ReactNode;
 }
-export function Button({ variant='primary', size='md', loading, icon, children, className='', disabled, ...props }: ButtonProps) {
+export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button({ variant='primary', size='md', loading, icon, children, className='', disabled, ...props }, ref) {
   const v: Record<string,string> = {
     primary: 'bg-[var(--cta-bg)] hover:bg-[var(--cta-hover)] text-[var(--cta-fg)] shadow-sm',
     secondary: 'bg-[var(--panel-2)] hover:bg-[var(--panel)] text-[var(--text)] border border-[var(--panel-border)]',
@@ -19,7 +20,7 @@ export function Button({ variant='primary', size='md', loading, icon, children, 
     md: 'px-4 py-2 text-sm gap-2', lg: 'px-5 py-2.5 text-base gap-2',
   };
   return (
-    <button {...props} disabled={disabled||loading} data-variant={variant}
+    <button ref={ref} {...props} disabled={disabled||loading} data-variant={variant}
       className={`inline-flex items-center justify-center font-medium rounded-[var(--radius-input)] transition-[background-color,color,filter,transform] duration-fast ease-fast active:scale-[0.99] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus-ring-color)] ${v[variant]} ${s[size]} disabled:opacity-50 disabled:cursor-not-allowed ${className}`}>
       {loading ? (
         <Loader2
@@ -33,4 +34,4 @@ export function Button({ variant='primary', size='md', loading, icon, children, 
       {children}
     </button>
   );
-}
+});

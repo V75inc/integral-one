@@ -88,7 +88,7 @@ export function ReportCenterWidget({ view, entries, isLoading, fields }: ViewWid
     setSourceLoading(true);
     (async () => {
       try {
-        const allTracks = await tracksApi.list({ limit: 100 });
+        const allTracks = await tracksApi.list({ limit: 100, skipEntryCounts: true });
         const track = allTracks.find(item => item.id === sourceTrack) ||
           allTracks.find(item => slug(String(item.template_id || item.title)) === slug(sourceTrack));
         const [loaded, entryTypes] = await Promise.all([

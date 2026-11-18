@@ -32,14 +32,14 @@ async function startOrRetry(start, stop, options) {
   }
 }
 
-async function qualify(directory, { requireSettings = false } = {}) {
+async function qualify(directory, { requireSettings = false, retainEvidence = false } = {}) {
   const baseline = fs.readdirSync(directory).filter(name => /^integral_core-\d+\.\d+\.\d+(?:(?:a|b|rc)\d+)?-py3-none-any\.whl$/.test(name));
   assert.equal(baseline.length, 1, "Require one exact previous Core wheel");
   const resources = path.join(__dirname, "../resources");
   const current = invocation({ resources, command: "", prefix: "" });
   const prior = { file: current.file, args: ["tool", "run", "--python", "3.12", "--index-url", "https://pypi.org/simple", "--from", path.resolve(directory, baseline[0]), "integral"] };
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "one-upgrade-")), home = path.join(root, "store");
-  let cleanupCommand = prior;
+  let cleanupCommand = prior, passed = false;
   const json = file => JSON.parse(fs.readFileSync(file, "utf8"));
   const hash = bytes => crypto.createHash("sha256").update(bytes).digest("hex");
   const privateKeys = () => Object.entries(json(path.join(home, "installation.json")))
@@ -84,10 +84,42 @@ async function qualify(directory, { requireSettings = false } = {}) {
     assert.ok(fs.statSync(path.join(backupDirectory, "core.tar.gz")).size > 0, "A cold backup must precede engine replacement");
     assert.deepEqual(["activation.json", "setup-key.json"].map(name => hash(fs.readFileSync(path.join(backupDirectory, "one-account", name)))), accountBefore);
     cleanupCommand = current;
+    let expectedKeys = keysBefore;
+    const capabilityFile = path.join(resources, "core/storage-upgrade.json");
+    if (fs.existsSync(capabilityFile) && json(capabilityFile).managedStorage &&
+        !json(path.join(home, "installation.json")).runtime_database_password) {
+      // This approval applies only to the fresh synthetic home created above.
+      // Exercise the production bridge; never use direct `up` as migration.
+      const wheel = current.args[current.args.indexOf("--from") + 1];
+      const plan = path.join(root, "reviewed-storage-plan.json");
+      const planned = await runCli(current, ["storage-upgrade", "plan", "--home", home,
+        "--wheel", wheel, "--plan", plan, "--max-indexes", "2000",
+        "--max-index-bytes", "2000000000", "--max-build-bytes", "3000000000"]);
+      assert.equal(planned.review_required, true);
+      assert.equal(hash(fs.readFileSync(plan)), planned.sha256);
+      const manager = require("../desktop/runtime-updates/manager").createRuntimeManager({
+        app: { isPackaged: true, getVersion: () => require("../package.json").version },
+        resources, channel: require("../package.json").integralOneUpdates.channel,
+        bundledCore: require("../distribution.json").core, environment: {},
+        argv: ["qualification", `--home=${home}`, `--installer-storage-plan=${plan}`,
+          `--installer-storage-approved-hash=${planned.sha256}`], getRuntime: () => null,
+      });
+      const userData = path.join(root, "profile");
+      await manager.beforeBoot({ userData });
+      const journal = json(path.join(userData, "runtime-updates/installer-storage.json"));
+      assert.equal(journal.phase, "complete");
+      assert.equal(journal.approvedHash, planned.sha256);
+      // The bridge already verified the exact credential receipt. Pin its
+      // resulting identity for all subsequent readback and restart assertions.
+      expectedKeys = privateKeys();
+      assert.deepEqual(expectedKeys.filter(([key]) => key !== "runtime_database_password"), keysBefore);
+      assert.equal(expectedKeys.length, keysBefore.length + 1);
+      console.log("Reviewed synthetic legacy-home migration, cold snapshot and owned installer trial: passed.");
+    }
     const next = await start({ home, resources, command: current });
     assert.equal(next.version, require("../distribution.json").core.version, "Replacement must run the new pinned engine");
     assert.equal(next.installation_id, oldRuntime.installation_id);
-    assert.deepEqual(privateKeys(), keysBefore, "Installation keys changed across replacement");
+    assert.deepEqual(privateKeys(), expectedKeys, "Installation keys changed across replacement");
     const session = await localSession(next);
     const retainedResult = await api(next, session, `/api/entries/${entry.id}`);
     const retained = retainedResult.entry || retainedResult;
@@ -119,24 +151,27 @@ async function qualify(directory, { requireSettings = false } = {}) {
       assert.ok(savedPins.pinned.apps.includes(app.id), "Pinned App must survive a cold restart");
       const savedEntry = await api(restarted, restartedSession, `/api/entries/${entry.id}`);
       assert.equal((savedEntry.entry || savedEntry).body, "Synthetic upgrade continuity");
-      assert.deepEqual(privateKeys(), keysBefore, "Installation keys changed after restart");
+      assert.deepEqual(privateKeys(), expectedKeys, "Installation keys changed after restart");
       assert.deepEqual(["activation.json", "setup-key.json"].map(name => hash(fs.readFileSync(path.join(home, "one-account", name)))), accountBefore);
       verifyAccount(home, loadState(home));
       console.log("Release desktop settings: timezone, pinning, model setup transport and cold-restart retention passed.");
     }
     console.log("Previous Core → composed One engine: backup, App/Track/record, installation keys, account binding and local session retained.");
+    passed = true;
   } catch (error) {
     console.error(runtimeDiagnostics(home));
     throw error;
   } finally {
     const stopped = await runCli(cleanupCommand, ["stop", "--home", home, "--json"]);
     assert.equal(stopped.state, "stopped", "Retain synthetic home if shutdown cannot be confirmed");
-    fs.rmSync(root, { recursive: true, force: true });
+    if (passed && !retainEvidence) fs.rmSync(root, { recursive: true, force: true });
+    else console.log(`Synthetic upgrade evidence retained: ${root}`);
   }
 }
 module.exports = { qualify, startOrRetry };
 if (require.main === module) {
-  if (![3, 4].includes(process.argv.length) || (process.argv[3] && process.argv[3] !== "--require-settings"))
-    throw new Error("Usage: node scripts/qualify-upgrade.js <previous-Core-wheel-directory> [--require-settings]");
-  qualify(path.resolve(process.argv[2]), { requireSettings: process.argv[3] === "--require-settings" }).catch(error => { console.error(error.message); process.exitCode = 1; });
+  const flags = process.argv.slice(3);
+  if (process.argv.length < 3 || flags.some(flag => !["--require-settings", "--retain-evidence"].includes(flag)) || new Set(flags).size !== flags.length)
+    throw new Error("Usage: node scripts/qualify-upgrade.js <previous-Core-wheel-directory> [--require-settings] [--retain-evidence]");
+  qualify(path.resolve(process.argv[2]), { requireSettings: flags.includes("--require-settings"), retainEvidence: flags.includes("--retain-evidence") }).catch(error => { console.error(error.message); process.exitCode = 1; });
 }

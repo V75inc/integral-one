@@ -3,6 +3,7 @@ import {
   DEFAULT_KANBAN_GROUP_BY,
   buildKanbanWorkflowEnumLabels,
   entryTypeMatchesSlug,
+  findRequestedEntryType,
   generateKanbanColumnKey,
   isKanbanCardFieldCandidate,
   resolveDefaultKanbanCardFields,
@@ -398,5 +399,27 @@ describe('shouldRouteKanbanQuickAddToCompose', () => {
     expect(
       shouldRouteKanbanQuickAddToCompose(taskFields, 'status', { status: 'todo' })
     ).toBe(false);
+  });
+});
+
+describe('findRequestedEntryType', () => {
+  const types = [
+    { id: 'et-1', name: 'Company Profile', form_schema: { _manifest_entry_type_key: 'company_profile' } },
+    { id: 'et-2', name: 'Who can do what', form_schema: { _manifest_entry_type_key: 'payroll_permissions' } },
+  ];
+
+  it('finds a type by manifest key even when the display name differs', () => {
+    expect(findRequestedEntryType(types, 'payroll_permissions')?.id).toBe('et-2');
+  });
+
+  it('finds a type by id and by display name', () => {
+    expect(findRequestedEntryType(types, 'et-2')?.id).toBe('et-2');
+    expect(findRequestedEntryType(types, 'company_profile')?.id).toBe('et-1');
+    expect(findRequestedEntryType(types, 'Company Profile')?.id).toBe('et-1');
+  });
+
+  it('returns nothing for an empty or unknown request', () => {
+    expect(findRequestedEntryType(types, '')).toBeUndefined();
+    expect(findRequestedEntryType(types, 'payslip')).toBeUndefined();
   });
 });

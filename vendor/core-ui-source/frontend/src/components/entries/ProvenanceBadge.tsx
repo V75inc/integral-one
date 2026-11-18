@@ -26,6 +26,9 @@ interface Variant {
   border: string;
   icon: string;
   label: string;
+  /** What people read on the chip (the label stays the stable machine word). */
+  display?: string;
+  hint?: string;
 }
 
 // Variants keyed to Integral semantic tokens (var(--*)) so the chip
@@ -48,6 +51,8 @@ const VARIANT_STYLES: Record<ActorKind, Variant> = {
     border: 'border-[color:var(--ai-fg)]/30',
     icon: '✻',
     label: 'agent',
+    display: 'Made automatically',
+    hint: 'Written by the assistant or an app, not typed by a person. Click for details.',
   },
   connector: {
     bg: 'bg-[var(--info-bg)]',
@@ -55,6 +60,8 @@ const VARIANT_STYLES: Record<ActorKind, Variant> = {
     border: 'border-[color:var(--info-fg)]/30',
     icon: '⇄',
     label: 'connector',
+    display: 'Synced',
+    hint: 'Brought in from a connected service. Click for details.',
   },
   system: {
     bg: 'bg-[var(--warn-bg)]',
@@ -62,6 +69,8 @@ const VARIANT_STYLES: Record<ActorKind, Variant> = {
     border: 'border-[color:var(--warn-fg)]/30',
     icon: '⚙',
     label: 'system',
+    display: 'System',
+    hint: 'Written by the platform itself. Click for details.',
   },
 };
 
@@ -167,7 +176,7 @@ export function ProvenanceBadge({ entry, className = '' }: ProvenanceBadgeProps)
         aria-label={`Provenance: ${variant.label}`}
         aria-expanded={open}
         aria-haspopup="dialog"
-        title={`Provenance: ${variant.label}`}
+        title={variant.hint ?? `Provenance: ${variant.label}`}
         className={[
           'inline-flex items-center gap-1 rounded-[var(--radius-pill)]',
           'border px-1.5 py-0.5 text-[11px] leading-none',
@@ -181,7 +190,7 @@ export function ProvenanceBadge({ entry, className = '' }: ProvenanceBadgeProps)
         <span aria-hidden className="font-medium">
           {variant.icon}
         </span>
-        <span className="font-medium">{variant.label}</span>
+        <span className="font-medium">{variant.display ?? variant.label}</span>
       </button>
       {open ? (
         <div

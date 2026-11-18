@@ -3,8 +3,8 @@ const path = require("node:path");
 const { pathToFileURL } = require("node:url");
 const { randomUUID } = require("node:crypto");
 
-function createUpdateCenter({ app, BrowserWindow, ipcMain, Notification, getWorkspaceUrl }) {
-  let window = null, pending = null, model = null;
+function createUpdateCenter({ app, BrowserWindow, ipcMain, Notification, getWorkspaceUrl, onResume }) {
+  let window = null, pending = null, model = null, disposed = false;
   const source = path.join(__dirname, "update-ui", "index.html"), url = pathToFileURL(source).href;
   const notified = new Set();
   function trusted(event) {
@@ -47,6 +47,11 @@ function createUpdateCenter({ app, BrowserWindow, ipcMain, Notification, getWork
     if (automatic) window.showInactive();
     else { if (window.isMinimized()) window.restore(); window.show(); window.focus(); }
   }
+  function resume() {
+    if (disposed) return Promise.resolve();
+    if (pending || (model && model.buttons.length === 0)) return open(false);
+    return typeof onResume === "function" ? Promise.resolve().then(onResume) : Promise.resolve();
+  }
   async function showMessageBox(options) {
     finish(model?.cancelId ?? 1);
     model = { id: randomUUID(), title: options.message, detail: options.detail || "", buttons: options.buttons || ["OK"],
@@ -57,7 +62,7 @@ function createUpdateCenter({ app, BrowserWindow, ipcMain, Notification, getWork
     if (options.automatic && /available\.|ready to install\./.test(options.message) && !notified.has(options.message) && Notification?.isSupported?.()) {
       notified.add(options.message);
       const notification = new Notification({ title: "Integral One update", body: options.message, silent: true });
-      notification.on("click", () => { void open(false); });
+      notification.on("click", () => { void resume().catch(() => {}); });
       notification.show();
     }
     return answer;
@@ -67,11 +72,12 @@ function createUpdateCenter({ app, BrowserWindow, ipcMain, Notification, getWork
     send();
   }
   function dispose() {
+    disposed = true;
     finish(1);
     ipcMain.removeHandler("integral-one:updates-model"); ipcMain.removeHandler("integral-one:updates-action");
     if (window && !window.isDestroyed()) window.destroy(); window = null;
   }
   app.once("will-quit", dispose);
-  return { showMessageBox, progress, dispose };
+  return { showMessageBox, progress, resume, dispose };
 }
 module.exports = { createUpdateCenter };

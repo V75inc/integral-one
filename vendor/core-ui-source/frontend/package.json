@@ -4,8 +4,8 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "build": "tsc && vite build",
-    "build:assets": "vite build",
+    "build": "npm run check:app-ui-guides && tsc && vite build && node scripts/verify-ui-runtime.mjs",
+    "build:assets": "npm run check:app-ui-guides && vite build && node scripts/verify-ui-runtime.mjs",
     "dev": "vite --port 9006 --host 0.0.0.0",
     "lint": "eslint src",
     "lint:fix": "eslint src --fix",
@@ -13,7 +13,9 @@
     "preview": "vite preview --port 9006 --host 0.0.0.0",
     "sync:view-contracts": "cd ../backend && venv/bin/python scripts/sync_view_contracts.py",
     "test": "vitest",
-    "test:run": "vitest run"
+    "test:run": "vitest run",
+    "verify:ui-runtime": "node scripts/verify-ui-runtime.mjs",
+    "check:app-ui-guides": "node ../sdk/react/bin/app-ui-guides.mjs --check --target .. && node --test ../sdk/react/bin/app-ui-guides.test.mjs"
   },
   "dependencies": {
     "@assistant-ui/react": "^0.14.0",
@@ -59,6 +61,7 @@
     "remark-breaks": "^4.0.0",
     "remark-gfm": "^4.0.1",
     "tailwind-merge": "^3.6.0",
+    "tiptap-pagination-plus": "3.1.0",
     "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz"
   },
   "devDependencies": {

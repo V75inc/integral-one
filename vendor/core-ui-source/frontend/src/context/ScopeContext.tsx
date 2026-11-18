@@ -108,6 +108,15 @@ export function ScopeProvider({ children }: { children: ReactNode }) {
   // ``/me/scope`` query resolves, the server's answer overwrites this
   // — see the syncing effect below.
   const [scope, setScopeState] = useState<Scope | null>(() => readStoredScope());
+  // Keep confirmation separate from the optimistic React Query value. A failed
+  // PUT must remain retryable even though the visible workspace already changed.
+  const scopePersistenceRef = useRef<{
+    userId: string | null;
+    workspaceId: string | null;
+  } | null>({
+    userId: user?.id ?? null,
+    workspaceId: qc.getQueryData<MyScope>(['me', 'scope'])?.active_workspace_id ?? null,
+  });
 
   // Reset the in-memory scope whenever the signed-in user changes
   // (logout → login as different user, or session swap in the same
@@ -122,6 +131,7 @@ export function ScopeProvider({ children }: { children: ReactNode }) {
     const currentId = user?.id ?? null;
     if (lastUserIdRef.current === currentId) return;
     lastUserIdRef.current = currentId;
+    scopePersistenceRef.current = null;
     setScopeState(currentId ? readStoredScope() : null);
   }, [user?.id]);
 
@@ -132,7 +142,14 @@ export function ScopeProvider({ children }: { children: ReactNode }) {
   // revoked workspace after a DB purge or admin action.
   const scopeQuery = useQuery({
     queryKey: ['me', 'scope'],
-    queryFn: () => usersApi.getMyScope(),
+    queryFn: async () => {
+      const previous = scopePersistenceRef.current;
+      const data = await usersApi.getMyScope();
+      if (lastUserIdRef.current === (user?.id ?? null) && scopePersistenceRef.current === previous) {
+        scopePersistenceRef.current = { userId: user?.id ?? null, workspaceId: data.active_workspace_id };
+      }
+      return data;
+    },
     enabled: Boolean(user),
     staleTime: 60_000,
   });
@@ -177,13 +194,21 @@ export function ScopeProvider({ children }: { children: ReactNode }) {
   const setScope = useCallback(
     (next: Scope) => {
       setActiveScopeHeader(`ws:${next.workspaceId}`);
-      setScopeState(next);
+      setScopeState(previous => previous?.workspaceId === next.workspaceId ? previous : next);
       writeStoredScope(next);
+      // App/Track navigation reasserts the workspace. If it already agrees
+      // with the server, another PUT only clears read caches and emits a
+      // records-changed event. A localStorage hint alone is not confirmation.
+      if (scopePersistenceRef.current?.userId === (user?.id ?? null) &&
+          scopePersistenceRef.current?.workspaceId === next.workspaceId) return;
       // Persist to the server. We don't await — the local cache flip
       // gives instant UX, and the server-side ``request_scope``
       // resolver will accept the next list call's header even if the
       // explicit ``PUT /users/me/scope`` hasn't landed yet.
+      const persistence = { userId: user?.id ?? null, workspaceId: next.workspaceId };
+      scopePersistenceRef.current = persistence;
       usersApi.setMyScope(next.workspaceId).catch(() => {
+        if (scopePersistenceRef.current === persistence) scopePersistenceRef.current = null;
         /* best-effort: server will heal on next list call */
       });
       // Write the new scope directly into the cache instead of invalidating.
@@ -196,7 +221,7 @@ export function ScopeProvider({ children }: { children: ReactNode }) {
         old ? { ...old, active_workspace_id: next.workspaceId } : old,
       );
     },
-    [qc],
+    [qc, user?.id],
   );
 
   // Publish header value on every scope change so axios + chat fetch
@@ -244,6 +269,8 @@ export function ScopeProvider({ children }: { children: ReactNode }) {
       'feed',
       'entries',
       'entryTypes',
+      'relation-options',
+      'related-record-operations',
       'skills',
       'connectors',
     ] as const;

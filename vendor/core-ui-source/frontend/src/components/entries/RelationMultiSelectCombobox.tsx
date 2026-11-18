@@ -5,6 +5,7 @@ import {
   useEffect,
   useCallback,
   type KeyboardEvent,
+  type ReactNode,
 } from 'react';
 import { Link } from 'react-router-dom';
 import {
@@ -45,6 +46,9 @@ export interface RelationMultiSelectComboboxProps {
   onChange: (val: string[]) => void;
   options: RelationMultiSelectOption[];
   loading?: boolean;
+  onOpenChange?: (open: boolean) => void;
+  onSearchChange?: (query: string) => void;
+  footer?: ReactNode;
   placeholder?: string;
   readonly?: boolean;
   disabled?: boolean;
@@ -59,6 +63,9 @@ export function RelationMultiSelectCombobox({
   onChange,
   options,
   loading = false,
+  onOpenChange,
+  onSearchChange,
+  footer,
   placeholder,
   readonly = false,
   disabled = false,
@@ -91,6 +98,9 @@ export function RelationMultiSelectCombobox({
   const { targets } = useRelationLabels(selected, field.relation);
 
   const [isOpen, setIsOpen] = useState(false);
+  const openCallback = useRef(onOpenChange);
+  openCallback.current = onOpenChange;
+  useEffect(() => { openCallback.current?.(isOpen); }, [isOpen]);
   const [placement, setPlacement] = useState<'bottom' | 'top'>('bottom');
   const [searchQuery, setSearchQuery] = useState('');
   const containerRef = useRef<HTMLDivElement>(null);
@@ -149,9 +159,9 @@ export function RelationMultiSelectCombobox({
 
   const filteredOptions = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
-    if (!q) return options;
+    if (onSearchChange || !q) return options;
     return options.filter(opt => opt.label.toLowerCase().includes(q));
-  }, [options, searchQuery]);
+  }, [options, searchQuery, onSearchChange]);
 
   const toggleOption = useCallback(
     (id: string) => {
@@ -329,7 +339,7 @@ export function RelationMultiSelectCombobox({
           ].join(' ')}
         >
           {/* Search box if options > 5 */}
-          {options.length > 5 && (
+          {(onSearchChange || options.length > 5) && (
             <Surface tone="panel-2" border="none" className="p-2 border-b border-[var(--panel-border)] bg-opacity-60 shrink-0">
               <div className="relative flex items-center">
                 <Search size={14} className="absolute left-2.5 opacity-60" />
@@ -337,7 +347,7 @@ export function RelationMultiSelectCombobox({
                   ref={searchInputRef}
                   type="text"
                   value={searchQuery}
-                  onChange={e => setSearchQuery(e.target.value)}
+                  onChange={e => { setSearchQuery(e.target.value); onSearchChange?.(e.target.value); }}
                   placeholder={`Filter ${field.name.toLowerCase()}…`}
                   className="w-full rounded-md border border-[var(--panel-border)] bg-transparent pl-9 pr-7 py-1.5 text-xs focus:outline-none focus:border-[var(--brand-accent)] focus:ring-1 focus:ring-[var(--brand-accent)]"
                   onClick={e => e.stopPropagation()}
@@ -345,7 +355,7 @@ export function RelationMultiSelectCombobox({
                 {searchQuery && (
                   <button
                     type="button"
-                    onClick={() => setSearchQuery('')}
+                    onClick={() => { setSearchQuery(''); onSearchChange?.(''); }}
                     className="absolute right-2 p-0.5 opacity-60 hover:opacity-100"
                   >
                     <X size={12} />
@@ -433,6 +443,7 @@ export function RelationMultiSelectCombobox({
             )}
           </div>
 
+          {footer}
           {/* Footer with Done button */}
           <Surface tone="panel-2" border="none" className="p-2 border-t border-[var(--panel-border)] flex items-center justify-end shrink-0">
             <button

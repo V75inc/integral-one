@@ -16,10 +16,12 @@ protocol.registerSchemesAsPrivileged([
 ]);
 const config = require("./accounts/config").loadConfig();
 const { createController } = require("./accounts/controller");
-const controller = createController({
-  electron,
-  config,
-});
+let controller;
+function accountController() {
+  // The desktop host acquires the single product lock before beforeBoot.
+  // A losing copy must not register itself as the global callback handler.
+  return controller ||= createController({ electron, config });
+}
 const resources = app.isPackaged
   ? process.resourcesPath
   : path.join(__dirname, "..", "resources");
@@ -34,8 +36,8 @@ if (
 let host;
 let profileRuntime;
 const initializeProfile = require("./accounts/local-profile").createProfileInitializer({
-  getProfile: controller.accountProfile,
-  authorize: controller.authorizeSession,
+  getProfile: () => accountController().accountProfile(),
+  authorize: (...args) => accountController().authorizeSession(...args),
 });
 async function prepareProfile(runtime = profileRuntime) {
   if (!runtime) return;
@@ -54,6 +56,7 @@ const runtimeUpdates = require("./runtime-updates/manager").createRuntimeManager
 const updateCenter = require("./update-center").createUpdateCenter({
   app, BrowserWindow: electron.BrowserWindow, ipcMain: electron.ipcMain, Notification: electron.Notification,
   getWorkspaceUrl: () => profileRuntime?.web_url,
+  onResume: () => updates.check(true),
 });
 const updates = require("./updates").createUpdates({
   app,
@@ -74,19 +77,22 @@ host = require("@integral/desktop-host").runDesktop({
   windowTitle: "Integral | one",
   mode: "local",
   userDataName: "Integral",
+  singleInstanceDataName: "Integral",
   iconRoot: path.join(__dirname, "icons"),
   windowsTitleBar: true,
   resources,
+  workspacePreload: path.join(__dirname, "workspace-preload.js"),
   helpMenuItems: updates.menuItems,
+  updates: { state: updates.snapshot, check: () => updateCenter.resume(), subscribe: updates.subscribe },
   onReady: updates.start,
-  beforeBoot: async context => { await controller.beforeBoot(context); await runtimeUpdates.beforeBoot(context); },
+  beforeBoot: async context => { await accountController().beforeBoot(context); await runtimeUpdates.beforeBoot(context); },
   beforeWorkspace: ({ runtime }) => prepareProfile(runtime),
   account: {
-    profile: controller.accountProfile,
-    authorizeSession: controller.authorizeSession,
-    signOut: controller.signOut,
-    signIn: async () => { await controller.signIn(); await prepareProfile(); },
-    resumeOffline: controller.resumeOffline,
+    profile: () => accountController().accountProfile(),
+    authorizeSession: (...args) => accountController().authorizeSession(...args),
+    signOut: () => accountController().signOut(),
+    signIn: async () => { await accountController().signIn(); await prepareProfile(); },
+    resumeOffline: () => accountController().resumeOffline(),
   },
   loadingScreen: {
     title: "Integral | one",

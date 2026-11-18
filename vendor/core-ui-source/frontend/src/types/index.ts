@@ -211,7 +211,12 @@ export interface OperationalModelFieldSpec {
   name: string;
   type: string;
   required?: boolean;
+  /** Required on a new record only: marked and refused on create, while records saved before it stay valid. */
+  required_on_create?: boolean;
   readonly?: boolean;
+  /** Read-only while this condition holds on the record's current values (same shape
+   *  as visible_if): ``{field, equals | in | not_in}``. */
+  readonly_if?: { field: string; equals?: unknown; in?: unknown[]; not_in?: unknown[] };
   /** Excluded from the CREATE-entry form only (EntryFormExpanded's
    *  dynamicFields) — still renders normally once the entry exists (edit
    *  mode, detail page, related_views). For fields a server-side hook
@@ -244,6 +249,9 @@ export interface OperationalModelFieldSpec {
   /** Enumerated allowed values. Element type depends on ``type`` — string for
    *  ``select``/``multi_select``, number for numeric enums, etc. */
   enum?: unknown[];
+  /** How a choice is shown when its stored value is not the wording people use (``biweekly`` shown as
+   *  ``Fortnightly``). Display only: the stored value is what is saved, filtered and compared. */
+  enum_labels?: Record<string, string>;
   widget?: string;
   placeholder?: string;
   help?: string;
@@ -323,6 +331,8 @@ export interface EntryTypeBodyBaseField {
   label?: string;
   placeholder?: string;
   help?: string;
+  /** The record cannot be created without it: marked in the form and refused on create. */
+  required?: boolean;
   /** Sort key vs. custom fields (default 1000). Lower renders earlier. */
   order?: number;
 }
@@ -395,6 +405,9 @@ export interface OperationalModelFormSchema {
   ui_contributions?: Array<{
     placement: string;
     extension_view_key?: string;
+    component_key?: string; owns_field_data?: boolean;
+    fallback_view?: string;
+    props?: Record<string, unknown>;
     view?: string;
     view_type?: string;
     config?: Record<string, unknown>;
@@ -456,6 +469,9 @@ export interface CreateWizardStep {
 
 export interface CreateWizardPeriodOption {
   label: string;
+  /** Listed but not selectable (e.g. a period that already has a record). */
+  unavailable?: boolean;
+  reason?: string;
   [fieldKey: string]: unknown;
 }
 
@@ -477,9 +493,22 @@ export interface DeclarativeViewConfig {
 }
 
 /** Resolved from the track’s effective operational model tier (manifest ``track.defaults``). */
+/** How an App wants a track's tabs: ``order`` lists view keys; ``show_single_tab: false`` hides a lone tab's strip. */
+export interface TrackTabsConfig {
+  order?: string[];
+  show_single_tab?: boolean;
+}
+
+/** How an App wants a track's toolbar: ``show_search_and_filters: false`` hides the search box and Filters. */
+export interface TrackToolbarConfig {
+  show_search_and_filters?: boolean;
+}
+
 export interface TrackOperationalModelDefaults {
   default_entry_type?: string;
   default_view?: string;
+  tabs?: TrackTabsConfig;
+  toolbar?: TrackToolbarConfig;
 }
 
 /** Provenance for tracks auto-spawned by an Entry's relation field
@@ -501,6 +530,8 @@ export interface Track {
   description?: string;
   /** Custom #RGB / #RRGGBB accent; omit or empty uses app brand accent (`--brand-accent`). */
   accent_color?: string;
+  /** A name from the manifest icon list; shown beside the track name when set. */
+  icon?: string;
   visibility: string;
   owner_id: string;
   owner?: User;
@@ -717,6 +748,8 @@ export interface EntryBacklink {
 export interface RelationFieldTarget {
   id: string;
   label: string;
+  /** The record's own name, without the track it lives in (``label`` adds that: "Design (Departments)"). Cells show this. */
+  name?: string;
   kind: 'entry' | 'track';
   trackId?: string;
 }

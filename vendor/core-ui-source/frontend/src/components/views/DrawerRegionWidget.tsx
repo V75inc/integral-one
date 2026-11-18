@@ -31,7 +31,7 @@ type DrawerRegionSpec =
   | { key: string; kind: 'view'; title?: string; view: string }
   | { key: string; kind: 'form'; title?: string; fields: ConditionalFieldEntry[]; columns?: number };
 
-export function DrawerRegionWidget({ view, entries, isLoading, onEntryOpen }: ViewWidgetProps) {
+export function DrawerRegionWidget({ view, entries, isLoading, onEntryOpen, viewContext }: ViewWidgetProps) {
   const config = (view.config || {}) as Record<string, unknown>;
   const bindings = (config.__bindings || {}) as Record<string, unknown>;
   const regions = (Array.isArray(config.regions) ? config.regions : []) as DrawerRegionSpec[];
@@ -58,7 +58,7 @@ export function DrawerRegionWidget({ view, entries, isLoading, onEntryOpen }: Vi
 
   const renderRegion = (region: DrawerRegionSpec) => {
     if (region.kind === 'view') {
-      return <ComposableViewSlot trackId={view.track_id} viewKey={region.view} bindings={bindings} />;
+      return <ComposableViewSlot trackId={view.track_id} viewKey={region.view} bindings={bindings} viewContext={viewContext} />;
     }
     const syntheticView: SavedView = {
       ...view,

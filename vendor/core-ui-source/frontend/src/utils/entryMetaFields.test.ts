@@ -70,6 +70,19 @@ describe('entryMetaFields', () => {
     expect(missing.map(f => f.key)).toEqual(['member', 'status']);
   });
 
+  it('formatCustomFieldValue numbers follow the field widget', () => {
+    const base = { key: 'n', name: 'N', type: 'number' };
+    const money = { ...base, widget: 'currency' } as OperationalModelFieldSpec;
+    const grouped = { ...base, widget: 'number' } as OperationalModelFieldSpec;
+    const plain = base as OperationalModelFieldSpec;
+    expect(formatCustomFieldValue(money, 443520)).toBe('443,520.00');
+    expect(formatCustomFieldValue(money, '1330560.5')).toBe('1,330,560.50');
+    expect(formatCustomFieldValue(grouped, 46061.019)).toBe('46,061.02');
+    expect(formatCustomFieldValue(plain, 443520)).toBe('443520');
+    expect(formatCustomFieldValue(money, null)).toBe('');
+    expect(formatCustomFieldValue(money, 'n/a')).toBe('n/a');
+  });
+
   it('formatCustomFieldValue boolean', () => {
     const f = { key: 'x', name: 'X', type: 'boolean' } as OperationalModelFieldSpec;
     expect(formatCustomFieldValue(f, true)).toBe('Yes');

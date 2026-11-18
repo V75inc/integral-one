@@ -20,7 +20,7 @@
  * cell, etc.).
  */
 
-import { type ElementType, type ReactNode } from 'react';
+import { type ElementType, type ReactNode, type HTMLAttributes } from 'react';
 
 /**
  * Semantic typography roles. Each maps to a (size, line-height, weight,
@@ -109,7 +109,7 @@ const WEIGHT_CLASSES: Record<TextWeight, string> = {
   bold: 'font-bold',
 };
 
-export interface TextProps {
+export interface TextProps extends Omit<HTMLAttributes<HTMLElement>, 'children'> {
   children: ReactNode;
   /** Semantic typography role. */
   variant?: TextVariant;
@@ -118,6 +118,10 @@ export interface TextProps {
   tone?: TextTone;
   /** Weight override. Leave unset to use the variant's default weight. */
   weight?: TextWeight;
+  /** Horizontal alignment of the text inside its box. Default: the start. */
+  align?: 'start' | 'center' | 'end';
+  /** Draw digits at equal width so amounts line up. */
+  numeric?: boolean;
   /** Render element. Default: `span` for body-ish variants, `h2` for
    *  `heading-lg`, etc. — see `defaultElement` in the implementation.
    *  Override when semantic HTML demands a different tag. */
@@ -185,6 +189,8 @@ export function Text({
   variant = 'body',
   tone,
   weight,
+  align,
+  numeric = false,
   as,
   truncate = false,
   className,
@@ -192,6 +198,7 @@ export function Text({
   htmlFor,
   title,
   'data-testid': testId,
+  ...rest
 }: TextProps) {
   const Element = (as ?? defaultElement(variant)) as ElementType;
   const resolvedTone = tone ?? defaultTone(variant);
@@ -201,6 +208,8 @@ export function Text({
     TONE_CLASSES[resolvedTone],
     weight ? WEIGHT_CLASSES[weight] : '',
     truncate ? 'truncate min-w-0' : '',
+    align === 'end' ? 'text-right' : align === 'center' ? 'text-center' : '',
+    numeric ? 'tabular-nums' : '',
     className ?? '',
   ]
     .filter(Boolean)
@@ -208,6 +217,7 @@ export function Text({
 
   return (
     <Element
+      {...rest}
       id={id}
       htmlFor={htmlFor}
       title={title}

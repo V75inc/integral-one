@@ -27,7 +27,7 @@ type ModalRegionSpec =
   | { key: string; kind: 'view'; title?: string; view: string }
   | { key: string; kind: 'form'; title?: string; fields: ConditionalFieldEntry[]; columns?: number };
 
-export function ModalRegionWidget({ view, entries, isLoading, onEntryOpen }: ViewWidgetProps) {
+export function ModalRegionWidget({ view, entries, isLoading, onEntryOpen, viewContext }: ViewWidgetProps) {
   const config = (view.config || {}) as Record<string, unknown>;
   const bindings = (config.__bindings || {}) as Record<string, unknown>;
   const regions = (Array.isArray(config.regions) ? config.regions : []) as ModalRegionSpec[];
@@ -43,7 +43,7 @@ export function ModalRegionWidget({ view, entries, isLoading, onEntryOpen }: Vie
 
   const renderRegion = (region: ModalRegionSpec) => {
     if (region.kind === 'view') {
-      return <ComposableViewSlot trackId={view.track_id} viewKey={region.view} bindings={bindings} />;
+      return <ComposableViewSlot trackId={view.track_id} viewKey={region.view} bindings={bindings} viewContext={viewContext} />;
     }
     const syntheticView: SavedView = {
       ...view,

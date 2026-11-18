@@ -8,6 +8,7 @@ vi.mock('../Sidebar', () => ({ Sidebar: () => <nav aria-label="Primary navigatio
   <Link to="/slow">Slow page</Link><Link to="/fast">Fast page</Link>
 </nav> }));
 vi.mock('../TopBar', () => ({ TopBar: () => <div>Persistent toolbar</div> }));
+vi.mock('../AppMenuPanel', () => ({ AppMenuPanel: () => null, useCurrentAppId: () => ({ appId: null, trackId: '' }) }));
 vi.mock('../../../features/ai-chat', () => ({
   AssistantDock: () => <div>Persistent assistant</div>, AssistantDockToggle: () => null,
 }));

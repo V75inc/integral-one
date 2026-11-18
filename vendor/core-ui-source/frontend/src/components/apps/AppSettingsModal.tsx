@@ -10,9 +10,23 @@ import { Button } from '../ui';
 import { Text } from '../../ui';
 import { AppFunctionAccess } from '../access/AppFunctionAccess';
 import { AppSettingsForm } from './AppSettingsForm';
+import { AppSettingsPageHost, type AppSettingsPageSpec } from './AppSettingsPageHost';
 import { appsApi } from '../../api/apps';
 import { errorMessageFromAxios } from '../../api/helpers';
 import { useToast } from '../../context/ToastContext';
+
+/**
+ * Fields an App marks ``ui:setup_only`` are asked once, in the install form, and kept out of this dialog (the App has
+ * its own screen for changing them later). The install form shows every field.
+ */
+function withoutSetupOnlyFields(schema: Record<string, unknown>): Record<string, unknown> {
+  const properties = (schema?.properties || {}) as Record<string, Record<string, unknown>>;
+  const hidden = Object.keys(properties).filter(key => properties[key]?.['ui:setup_only'] === true);
+  if (!hidden.length) return schema;
+  const kept = Object.fromEntries(Object.entries(properties).filter(([key]) => !hidden.includes(key)));
+  const required = ((schema.required as string[] | undefined) || []).filter(key => !hidden.includes(key));
+  return { ...schema, properties: kept, required };
+}
 
 function seedDefaultsFromSchema(
   schema: Record<string, unknown>
@@ -35,6 +49,20 @@ function seedDefaultsFromSchema(
     }
   }
   return seeded;
+}
+
+/** A settings page an App declares beside its fields (``ui:pages`` in its settings schema): a hidden track's screen. */
+export type AppSettingsPage = AppSettingsPageSpec;
+
+function settingsPages(schema: Record<string, unknown> | null): AppSettingsPage[] {
+  const raw = schema?.['ui:pages'];
+  if (!Array.isArray(raw)) return [];
+  return raw.flatMap(item => {
+    const page = item as Partial<AppSettingsPage> | null;
+    return page && typeof page.label === 'string' && typeof page.track === 'string'
+      ? [{ label: page.label, description: typeof page.description === 'string' ? page.description : undefined, track: page.track, view: typeof page.view === 'string' ? page.view : undefined }]
+      : [];
+  });
 }
 
 export interface AppSettingsModalProps {
@@ -68,6 +96,7 @@ export function AppSettingsModal({
   const [loadError, setLoadError] = useState(false);
   const [retry, setRetry] = useState(0);
   const hasFields = Boolean(schema && Object.keys(schema.properties || {}).length);
+  const pages = settingsPages(schema);
   const dirty = JSON.stringify(value) !== JSON.stringify(initialValue);
 
   useEffect(() => {
@@ -80,7 +109,7 @@ export function AppSettingsModal({
       .getAppSettings(appId)
       .then(res => {
         if (cancelled) return;
-        const nextSchema = res.settings_schema || {};
+        const nextSchema = withoutSetupOnlyFields(res.settings_schema || {});
         setSchema(nextSchema);
         const loaded = { ...seedDefaultsFromSchema(nextSchema), ...(res.settings || {}) };
         setValue(loaded);
@@ -116,7 +145,7 @@ export function AppSettingsModal({
   }
 
   return (
-    <Modal open={open} onClose={onClose} title={`${appName} settings`}>
+    <Modal open={open} onClose={onClose} title={`${appName} settings`} width={pages.length ? 'max-w-dialog-workspace' : undefined} tall={pages.length > 0}>
       <Modal.Body>
         {functionAccessWorkspaceId && hasFields && <div role="tablist" aria-label="App settings sections" className="mb-5 flex flex-wrap gap-2">
           <Button size="sm" role="tab" aria-selected={section === 'settings'} variant={section === 'settings' ? 'primary' : 'outline'} onClick={() => setSection('settings')}>Settings</Button>
@@ -126,6 +155,10 @@ export function AppSettingsModal({
           <Text variant="body-sm" tone="muted" as="p" className="mb-4">Manage permission to run App-defined operations. These grants do not replace access to App records.</Text>
           <AppFunctionAccess appId={appId} workspaceId={functionAccessWorkspaceId} />
         </> : <>
+        {pages.map(page => <section key={page.track + page.label} aria-label={page.label} className="mb-6">
+          <AppSettingsPageHost appId={appId} page={page} />
+        </section>)}
+        {pages.length > 0 && hasFields ? <Text variant="heading-sm" as="h3" className="mb-3 mt-2">Options</Text> : null}
         {loading ? (
           <Text variant="body-sm" tone="subtle" as="p">
             Loading settings…

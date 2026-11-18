@@ -1,5 +1,8 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+import apiClient from '../client';
 import {
+  extensionsApi,
+  LegacyOperationOutputUnavailable,
   requireOperationOutput,
   RecordedOperationOutputWithheld,
   type AppOperationInvokeResponse,
@@ -13,6 +16,8 @@ describe('recorded operation output', () => {
     expect(requireOperationOutput(legacy)).toBe(legacy);
     const available = { ...legacy, output_disposition: 'available' as const, current_state_verified: false as const, operation_receipt: receipt };
     expect(requireOperationOutput(available)).toBe(available);
+    const businessData = {...legacy, output: {replayed: true, result_unavailable: true, rows: []}};
+    expect(requireOperationOutput(businessData)).toBe(businessData);
   });
 
   it('cannot turn recorded completion into empty business output or a retry', () => {
@@ -32,5 +37,12 @@ describe('recorded operation output', () => {
       expect('output' in withheld).toBe(false);
     }
     expect('output' in result).toBe(false);
+  });
+  it('rejects the legacy replay marker at the shared operation API boundary', async () => {
+    const post = vi.spyOn(apiClient, 'post').mockResolvedValueOnce({data: {app_id: 'app', operation_key: 'run', output: {replayed: true, result_unavailable: true}}});
+    try {
+      await expect(extensionsApi.invokeOperation('app', 'run')).rejects.toBeInstanceOf(LegacyOperationOutputUnavailable);
+      expect(post).toHaveBeenCalledOnce();
+    } finally { post.mockRestore(); }
   });
 });

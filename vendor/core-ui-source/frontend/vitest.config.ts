@@ -4,6 +4,7 @@ import { availableParallelism } from 'node:os';
 
 export default defineConfig({
   plugins: [react()],
+  resolve: {dedupe: ['react', 'react-dom'], alias: {'@integral/sdk-react': new URL('../sdk/react/src/index.tsx', import.meta.url).pathname}},
   test: {
     environment: 'jsdom',
     setupFiles: ['./src/test/setup.ts'],

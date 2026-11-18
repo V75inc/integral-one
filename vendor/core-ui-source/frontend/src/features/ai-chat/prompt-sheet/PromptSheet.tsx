@@ -112,10 +112,11 @@ function PromptSheetView({
           onApprove={sheet.approveWrite}
           onReject={sheet.rejectWrite}
           onRevised={() => void sheet.refresh()}
+          error={sheet.error}
         />
       )}
 
-      {sheet.error ? (
+      {sheet.error && sheet.current.kind === 'question' ? (
         <ExpandableChatError summary={<Text as="span" variant="body-sm" tone="danger">{sheet.error}</Text>} className="mt-2">
           <Text as="p" variant="body-sm" tone="danger">{sheet.error}</Text>
         </ExpandableChatError>
@@ -254,14 +255,26 @@ function WritePage({
   onApprove,
   onReject,
   onRevised,
+  error,
 }: {
   item: PromptStagedWriteItem;
   busy: boolean;
   onApprove: () => Promise<void>;
   onReject: () => Promise<void>;
   onRevised: () => void;
+  error: string | null;
 }) {
-  const pending = item.status === 'pending';
+  const terminal = ['consumed', 'expired', 'revoked'].includes(item.staged_state ?? '');
+  const pending = item.status === 'pending' && !terminal;
+  const heading = item.staged_state === 'consumed'
+    ? 'This change was applied'
+    : item.staged_state === 'expired'
+      ? 'This proposal expired'
+      : item.staged_state === 'revoked' || item.status === 'rejected' || item.status === 'cancelled'
+        ? 'This change was cancelled'
+        : busy ? 'Applying this change…'
+          : item.last_error ? 'This change needs attention'
+            : item.staged_state === 'blessed' ? 'Your change is being applied' : 'Allow this change?';
   const errorCode = item.last_error?.error_code;
   const staleProposal = errorCode === 'record_revision_conflict' || errorCode === 'schema_revision_conflict';
   const unmetGoal = errorCode === 'goal_criteria_unmet';
@@ -281,21 +294,26 @@ function WritePage({
 
   return (
     <div>
-      <Text
+      {!item.last_error && !error && <Text
         as="p"
         variant="heading-sm"
         weight="medium"
         className="mb-3"
       >
-        {busy ? 'Applying this change…' : item.last_error ? 'This change needs attention' : item.staged_state === 'blessed' ? 'Your change is being applied' : 'Allow this change?'}
-      </Text>
-      {item.last_error && (
+        {heading}
+      </Text>}
+      {/* One failure surface owns both the immediate response and durable card.
+          Keep distinct diagnostics in disclosure instead of another error banner. */}
+      {(item.last_error || error) && (
         <div role="alert" className="mb-2">
-          <ExpandableChatError summary={<Text as="span" variant="meta" tone="danger">{failureSummary}</Text>}>
+          <ExpandableChatError summary={<Text as="span" variant="meta" tone="danger">{item.last_error ? failureSummary : error}</Text>}>
             <Text as="p" variant="meta" tone="danger">
-              {item.last_error.message || 'The change could not be applied.'}
+              {item.last_error?.message || error || 'The change could not be applied.'}
               {item.completed_operations ? ` ${item.completed_operations} changes were already saved.${needsFreshProposal ? '' : " Trying again continues with what's left."}` : ''}
             </Text>
+            {error && item.last_error && error !== item.last_error.message && (
+              <Text as="p" variant="meta" tone="danger">{error}</Text>
+            )}
           </ExpandableChatError>
         </div>
       )}

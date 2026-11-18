@@ -19,10 +19,19 @@ function baseTrack(over: Partial<Track> = {}): Track {
 }
 
 describe('buildTrackBreadcrumbs', () => {
-  it('keeps Tracks › App › title for ordinary tracks', () => {
+  it('keeps Apps › App › Track for App-owned tracks', () => {
+    const crumbs = buildTrackBreadcrumbs(baseTrack({ title: 'Boards' }));
+    expect(crumbs.map(c => c.label)).toEqual(['Apps', 'Projects', 'Boards']);
+    expect(crumbs[0].to).toBe('/apps');
+  });
+
+  it('retains distinct App and Track when their labels match', () => {
     const crumbs = buildTrackBreadcrumbs(baseTrack());
-    expect(crumbs.map(c => c.label)).toEqual(['Tracks', 'Projects', 'Projects']);
-    expect(crumbs[0].to).toBe('/tracks');
+    expect(crumbs.map(c => c.label)).toEqual(['Apps', 'Projects', 'Projects']);
+  });
+
+  it('says only Loading while the Track is not known yet', () => {
+    expect(buildTrackBreadcrumbs(null).map(c => c.label)).toEqual(['Tracks', 'Loading…']);
   });
 
   it('inserts parent track and project for anchored details', () => {
@@ -40,13 +49,14 @@ describe('buildTrackBreadcrumbs', () => {
       })
     );
     expect(crumbs.map(c => c.label)).toEqual([
+      'Apps',
       'Projects',
       'Internal Projects',
       'JVConnect',
       'Details',
     ]);
-    expect(crumbs[1].to).toBe('/tracks/t-projects');
-    expect(crumbs[2].to).toBe('/tracks/t-projects?entry=e-proj');
+    expect(crumbs[2].to).toBe('/tracks/t-projects');
+    expect(crumbs[3].to).toBe('/tracks/t-projects?entry=e-proj');
   });
 
   it('humanizes financials_track and contracts_track leaves', () => {
@@ -97,13 +107,14 @@ describe('buildTrackBreadcrumbs', () => {
       { entryTitle: 'Ship login hardening' }
     );
     expect(crumbs.map(c => c.label)).toEqual([
+      'Apps',
       'Projects',
       'Internal Projects',
       'Contoso',
       'Details',
       'Ship login hardening',
     ]);
-    expect(crumbs[3].to).toBe('/tracks/t-details');
+    expect(crumbs[4].to).toBe('/tracks/t-details');
   });
 
   it('inserts from-parent when drilling Project → Contact', () => {
@@ -127,11 +138,25 @@ describe('buildTrackBreadcrumbs', () => {
       }
     );
     expect(crumbs.map(c => c.label)).toEqual([
+      'Apps',
       'CRM',
       'Contoso e-commerce',
       'Contacts',
       'Contoso Corp',
     ]);
-    expect(crumbs[1].to).toBe('/tracks/t-projects?entry=e-proj');
+    expect(crumbs[2].to).toBe('/tracks/t-projects?entry=e-proj');
   });
+});
+
+it('retains standalone Track and entry hierarchy', () => {
+  const crumbs = buildTrackBreadcrumbs(baseTrack({ app: undefined }), { entryTitle: 'Record' });
+  expect(crumbs.map(c => c.label)).toEqual(['Tracks', 'Projects', 'Record']);
+  expect(crumbs[1].to).toBe('/tracks/t-projects');
+});
+
+it('keeps Tracks parent for standalone relation and anchored trails', () => {
+  const from = { entryId: 'e', trackId: 'parent', title: 'Parent' };
+  expect(buildTrackBreadcrumbs(baseTrack({ app: undefined }), { from })[0]).toEqual({ label: 'Tracks', to: '/tracks' });
+  const track = baseTrack({ app: undefined, anchor_source: { entry_id: 'e', entry_title: 'Parent', track_id: 'parent', field_key: 'details' } });
+  expect(buildTrackBreadcrumbs(track)[0]).toEqual({ label: 'Tracks', to: '/tracks' });
 });

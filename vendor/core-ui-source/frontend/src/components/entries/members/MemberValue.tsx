@@ -73,7 +73,7 @@ export function MemberValue({
     }
     if (variant === 'chips') {
       return (
-        <span className={`inline-flex flex-wrap gap-1.5 ${className}`.trim()}>
+        <span className={`inline-flex min-w-0 max-w-full flex-wrap gap-1.5 ${className}`.trim()}>
           {cleanList.map((val, idx) => (
             <MemberValue
               key={String(val) + '-' + idx}

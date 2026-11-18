@@ -26,6 +26,11 @@ export interface AppearanceSettings {
   entryDialogExpanded: boolean;
   /** Device-local choice shared by entry detail panels; omitted until chosen. */
   entryDetailsPanelOpen?: boolean;
+  /**
+   * Inside an App, the main menu narrows to icons and a panel beside it lists the App's pages and Tracks.
+   * Omitted means on.
+   */
+  appMenu?: boolean;
 }
 
 /** Global retrieval (search) mode applied to every search surface. */

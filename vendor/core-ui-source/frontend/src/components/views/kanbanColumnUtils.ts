@@ -79,6 +79,26 @@ export function entryTypeMatchesSlug(name: string, slug: string): boolean {
   return nameSlug.replace(/_/g, '') === want.replace(/_/g, '');
 }
 
+/**
+ * The entry type a caller asked for by name, id or manifest key, if any.
+ *
+ * A settings section or a widget's own Add names its type by manifest key
+ * (``payroll_permissions``), which need not resemble the display name
+ * ("Who can do what"). Matching only by a slug of the display name sent such
+ * a request to the track's default type.
+ */
+export function findRequestedEntryType<
+  T extends { id?: string; name?: string; form_schema?: { _manifest_entry_type_key?: string } | null }
+>(entryTypes: readonly T[], requested: string | null | undefined): T | undefined {
+  const want = String(requested || '').trim();
+  if (!want) return undefined;
+  return (
+    entryTypes.find(et => et.id === want) ??
+    entryTypes.find(et => String(et.form_schema?._manifest_entry_type_key || '') === want) ??
+    entryTypes.find(et => entryTypeMatchesSlug(et.name || '', want))
+  );
+}
+
 /** True when ``slug`` matches any member of the track's allowed entry-type slug set. */
 export function slugMatchesAllowedEntryTypes(
   slug: string,

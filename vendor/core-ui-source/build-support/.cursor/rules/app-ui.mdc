@@ -1,0 +1,10 @@
+---
+description: Integral shared App UI contract
+alwaysApply: true
+---
+
+<!-- integral-app-ui:start -->
+Read @AGENTS.md and @APP_UI_GUIDE.md before any App UI work. Follow the public
+Core SDK, shared host theme and migration/checklist in that local guide. These
+instructions apply without a manually named skill or an explicit user reminder.
+<!-- integral-app-ui:end -->

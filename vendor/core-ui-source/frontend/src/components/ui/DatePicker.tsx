@@ -32,6 +32,9 @@ export type DatePickerProps = {
   disabled?: boolean;
   placeholder?: string;
   'aria-label'?: string;
+  'aria-describedby'?: string;
+  invalid?: boolean;
+  required?: boolean;
   id?: string;
   /** seamless = borderless composer row; field = bordered app-input shell */
   variant?: 'seamless' | 'field';
@@ -68,6 +71,7 @@ export function DatePicker({
   disabled = false,
   placeholder,
   'aria-label': ariaLabel,
+  'aria-describedby': ariaDescribedBy, invalid = false, required,
   id,
   variant = 'field',
   className = '',
@@ -403,7 +407,9 @@ export function DatePicker({
           value={inputDisplayValue}
           placeholder={resolvedPlaceholder}
           aria-label={ariaLabel ?? (empty ? resolvedPlaceholder : display)}
-          aria-invalid={inputError || undefined}
+          aria-invalid={inputError || invalid || undefined}
+          aria-describedby={ariaDescribedBy}
+          required={required}
           aria-expanded={open}
           aria-haspopup="dialog"
           aria-controls={open ? panelId : undefined}

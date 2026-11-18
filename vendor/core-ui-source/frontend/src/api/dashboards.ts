@@ -57,7 +57,8 @@ export interface AppHomeResponse {
   home: AppHome | null;
   home_revision?: string;
   definition_revision?: number | null;
-  source?: 'instance' | 'package' | 'preview';
+  source?: 'instance' | 'package' | 'preview' | 'default';
+  disabled?: boolean;
   preview?: boolean;
   live_data?: boolean;
   error?: string;
@@ -199,3 +200,9 @@ export const dashboardsApi = {
     return data as { widget_types: DashboardWidgetTypeSpec[] };
   },
 };
+
+/** A cached Home must not survive an authoritative access/resource refusal. */
+export function isHomeAccessDenied(error: unknown): boolean {
+  const status = (error as { response?: { status?: number } } | null)?.response?.status;
+  return status === 401 || status === 403 || status === 404;
+}

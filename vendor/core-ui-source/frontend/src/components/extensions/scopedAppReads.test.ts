@@ -1,0 +1,40 @@
+import {QueryClient} from '@tanstack/react-query';
+import {afterEach, expect, it, vi} from 'vitest';
+import {prepareReadScope, readScopedAppQuery} from './scopedAppReads';
+const clients: QueryClient[] = [];
+function client() {const value = new QueryClient(); clients.push(value); return value;}
+afterEach(() => {for (const value of clients.splice(0)) value.clear();});
+it('shares canonical in-flight reads but cancels only the final consumer', async () => {
+  const cache = client();
+  let complete!: (value: Record<string, unknown>) => void;
+  let transport!: AbortSignal;
+  const dispatch = vi.fn((_input, signal) => {transport = signal; return new Promise<Record<string, unknown>>(resolve => {complete = resolve;});});
+  const first = new AbortController(); const second = new AbortController();
+  const a = readScopedAppQuery(cache, ['user', 'ws', 'app', 'component', 'release', false], 'lookup', {b: 2, a: 1}, dispatch, first.signal);
+  const b = readScopedAppQuery(cache, ['user', 'ws', 'app', 'component', 'release', false], 'lookup', {a: 1, b: 2}, dispatch, second.signal);
+  expect(dispatch).toHaveBeenCalledTimes(1);
+  const rejection = expect(a).rejects.toThrow('cancelled'); first.abort(); await rejection;
+  expect(transport.aborted).toBe(false);
+  complete({items: ['still readable']});
+  await expect(b).resolves.toEqual({items: ['still readable']});
+  const third = new AbortController();
+  const c = readScopedAppQuery(cache, ['other'], 'lookup', {}, dispatch, third.signal);
+  const cancelled = expect(c).rejects.toThrow('cancelled'); third.abort(); await cancelled;
+  expect(transport.aborted).toBe(true);
+});
+it('reuses fresh reads and isolates release, preview, principal and workspace', async () => {
+  const cache = client();
+  const dispatch = vi.fn(async () => ({items: ['scoped']}));
+  const read = (scope: unknown[], fresh?: number) => readScopedAppQuery(cache, scope, 'lookup', {}, dispatch, undefined, {staleTime: fresh});
+  const namespace = ['user', 'ws', 'app', 'component', 'r1', false];
+  await read(namespace); await read(namespace);
+  expect(dispatch).toHaveBeenCalledTimes(1);
+  await read(namespace, 0);
+  await read(['user', 'ws', 'app', 'component', 'r2', false]);
+  await read(['user', 'ws', 'app', 'component', 'r1', true]);
+  expect(dispatch).toHaveBeenCalledTimes(4);
+  prepareReadScope(cache, 'user', 'ws'); prepareReadScope(cache, 'other', 'ws');
+  expect(cache.getQueryCache().getAll()).toHaveLength(0);
+  await read(['other', 'ws', 'app', 'component', 'r1', false]);
+  expect(dispatch).toHaveBeenCalledTimes(5);
+});

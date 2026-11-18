@@ -1,22 +1,22 @@
 {
   "contract_version": 1,
   "product": "integral-one",
-  "product_version": "0.1.13",
+  "product_version": "0.1.14",
   "mode": "local",
   "desktop_host": {
-    "version": "0.1.7-dev.16",
-    "artifact": "vendor/integral-desktop-host-0.1.7-dev.16.tgz",
-    "sha256": "f8904867040d2c39b03e06ec5eb37233182cf9dc42ea8ae1b94f7d46a7ed8a0f"
+    "version": "0.1.7-dev.18",
+    "artifact": "vendor/integral-desktop-host-0.1.7-dev.18.tgz",
+    "sha256": "40a11a8719f1b5b981383a51cf18e0762f80817a4ba8d594f87d0b587d66a213"
   },
   "core": {
-    "version": "0.1.1rc62",
-    "source_commit": "36c528c887005bb5535742743410f9db2f1f3c91",
+    "version": "0.1.1rc65",
+    "source_commit": "db43b63a4dfc2998b502128f5a9c697837c010d1",
     "source_state": "Published wheel matches exact Core release tag; consumer qualification required",
     "desktop_contract_version": 1,
-    "wheel_sha256": "7b8467b199c2b8ded50f408a71d35ce4c45d12b9657265d58d14d1c839f65b54",
-    "wheel_filename": "integral_core-0.1.1rc62-py3-none-any.whl",
-    "ui_manifest_sha256": "b678442edf12efeda82f4b35e9f238ca2d457703af6f0770dcd8adbd519a43ca",
-    "base_wheel": "vendor/core-runtime/integral_core-0.1.1rc62-py3-none-any.whl",
+    "wheel_sha256": "82ae819fb2ff491261c6565e3b78f35ee51d455206b166f49aa6f15d8d4300df",
+    "wheel_filename": "integral_core-0.1.1rc65-py3-none-any.whl",
+    "ui_manifest_sha256": "7cc59f505935f6fadaf1775dc43e92670eb33de98e22a87072e16a48a4b28fb3",
+    "base_wheel": "vendor/core-runtime/integral_core-0.1.1rc65-py3-none-any.whl",
     "runtime_contract_version": 1,
     "runtime_preset": "local"
   },

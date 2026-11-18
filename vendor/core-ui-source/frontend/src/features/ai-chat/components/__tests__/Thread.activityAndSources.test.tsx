@@ -22,7 +22,7 @@ vi.mock('../../AIChatSurface', () => ({
   useChatActivity: () => activity,
 }));
 
-import { ActivityStrip, SourceView, liveWorkSynopsis, latestActiveTool, PromptSheetResumeNote } from '../Thread';
+import { ActivityStrip, SentFileChip, SourceView, liveWorkSynopsis, latestActiveTool, PromptSheetResumeNote } from '../Thread';
 import { hasAssistantDebugPayload } from '../assistantMessagePresentation';
 import { THREAD_ALREADY_RESPONDING } from '../../threadSessionRegistry';
 
@@ -155,5 +155,23 @@ describe('metadata-only assistant messages', () => {
     ).toBe(true);
     expect(hasAssistantDebugPayload({ finalContent: '' })).toBe(false);
     expect(hasAssistantDebugPayload(undefined)).toBe(false);
+  });
+});
+
+// jsdom has no layout engine: these assert the responsive shrink/ellipsis contract.
+describe('SentFileChip', () => {
+  it('keeps a long filename intact while bounding it to the bubble width', () => {
+    const filename = 'very-long-unbroken-project-name-'.repeat(20) + '.docx';
+    const { container } = render(<SentFileChip filename={filename} />);
+    const label = screen.getByTitle(filename);
+    expect(label).toHaveTextContent(filename);
+    expect(label).toHaveClass('min-w-0', 'truncate');
+    expect(label.parentElement).toHaveClass('min-w-0', 'max-w-full');
+    expect(container.querySelector('svg')).toHaveClass('shrink-0');
+  });
+
+  it('keeps a readable fallback for unnamed files', () => {
+    render(<SentFileChip />);
+    expect(screen.getByTitle('Attached file')).toHaveTextContent('Attached file');
   });
 });

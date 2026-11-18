@@ -1,14 +1,20 @@
+# Build from the Core repository root: docker build -f frontend/Dockerfile .
 # Production SPA image — static assets behind nginx; API/WebSocket routing
 # is handled by Traefik (see deploy/docker-compose.prod.yml).
 
-FROM node:20-alpine AS builder
+FROM node:22-alpine AS builder
 
-WORKDIR /app
+WORKDIR /app/frontend
 
-COPY package.json package-lock.json ./
+COPY frontend/package.json frontend/package-lock.json ./
 RUN npm ci
 
-COPY . .
+COPY frontend/ .
+# Preserve monorepo sibling paths: SDK imports and the build's --target ..
+# guide gate both resolve against /app, not the container filesystem root.
+COPY sdk/react/ /app/sdk/react/
+COPY APP_UI_GUIDE.md AGENTS.md CLAUDE.md /app/
+COPY .cursor/rules/app-ui.mdc /app/.cursor/rules/app-ui.mdc
 
 # Same-origin /api when unset (Traefik path routing on one hostname).
 # Override at build time for split-host deploys, e.g.:
@@ -31,8 +37,8 @@ FROM nginx:1.27-alpine AS runtime
 # /docker-entrypoint.d/20-envsubst-on-templates.sh renders them into
 # /etc/nginx/conf.d/default.conf on container start.
 ARG NGINX_CONF=nginx.conf
-COPY ${NGINX_CONF} /etc/nginx/templates/default.conf.template
-COPY --from=builder /app/dist /usr/share/nginx/html
+COPY frontend/${NGINX_CONF} /etc/nginx/templates/default.conf.template
+COPY --from=builder /app/frontend/dist /usr/share/nginx/html
 
 # Default the CSP's connect-src to the API origin this image was built against.
 #
@@ -70,7 +76,7 @@ ENV VITE_API_URL=${VITE_API_URL}
 # literal "${CSP_EXTRA_CONNECT}", and the browser drops the whole policy —
 # green container, broken CSP. Verified by rendering the config in the built
 # image.
-COPY --chmod=0755 docker-entrypoint.d/15-csp-connect-default.envsh \
+COPY --chmod=0755 frontend/docker-entrypoint.d/15-csp-connect-default.envsh \
      /docker-entrypoint.d/15-csp-connect-default.envsh
 
 EXPOSE 80

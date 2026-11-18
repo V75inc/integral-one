@@ -23,7 +23,9 @@ describe('EntryDetail type resolution', () => {
     );
   });
 
-  it('keeps the read-only body static — no inline commit', () => {
+  it('keeps the read-only body static until an explicit field edit', () => {
     expect(source).not.toMatch(/onCommitField=\{canEdit \? commitCustomField/);
+    expect(source).toContain('<EntryInlineFields');
+    expect(source).toContain('readOnly={!canEdit}');
   });
 });

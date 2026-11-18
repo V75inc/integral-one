@@ -7,6 +7,7 @@
  */
 
 import { createContext, useContext } from 'react';
+import type {EntryFieldMetadata} from '@integral/sdk-react';
 
 export type ContributionValidateResult = {
   ok: boolean;
@@ -16,6 +17,7 @@ export type ContributionValidateResult = {
 
 export type ContributionSubmitResult = {
   ok: boolean;
+  field_errors?: Record<string, string>;
   error?: string;
   value?: unknown;
   outcomeRecorded?: boolean;
@@ -34,6 +36,9 @@ export type ContributionLifecycleApi = {
   entryTypeKey?: string;
   appId?: string;
   customFields: Record<string, unknown>;
+  related?: unknown;
+  fields?: EntryFieldMetadata[];
+  fieldErrors?: Record<string, string>;
   onDraftPatch?: (patch: {
     custom_fields?: Record<string, unknown>;
     related?: unknown;

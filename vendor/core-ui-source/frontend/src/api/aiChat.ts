@@ -1,5 +1,8 @@
 import { apiClient } from './index';
+import { createSingleFlight } from './singleFlight';
 import type { ChatEntityRef } from '../types/chatEntityRefs';
+
+const threadListFlight = createSingleFlight<AIChatThread[]>(2000);
 
 export interface MandateReviewSummary {
   work_item_id: string;
@@ -234,11 +237,13 @@ export const aiChatApi = {
     };
     if (options.providerId) params.provider_id = options.providerId;
     if (options.agentId) params.agent_id = options.agentId;
-    const res = await apiClient.get<{ threads: AIChatThread[] }>(
-      '/chat/threads',
-      { params },
-    );
-    return res.data.threads;
+    return threadListFlight.run(JSON.stringify(params), async () => {
+      const res = await apiClient.get<{ threads: AIChatThread[] }>(
+        '/chat/threads',
+        { params },
+      );
+      return res.data.threads;
+    });
   },
 
   async createThread(

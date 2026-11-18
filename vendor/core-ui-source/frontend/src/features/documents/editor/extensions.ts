@@ -1,4 +1,5 @@
 import { Extension, Node, mergeAttributes } from '@tiptap/core';
+import { TableRow } from '@tiptap/extension-table-row';
 import { fieldTokenDisplayText, formatFieldRefDisplay } from '../fieldRef';
 
 export interface FieldTokenAttrs {
@@ -399,6 +400,10 @@ export const RepeatSection = Node.create({
   addAttributes() {
     return {
       collectionKey: { default: '' },
+      // The templates and the renderer name the collection ``collection``. The editor used to
+      // know only ``collectionKey``, so saving a template from the editor dropped the name and
+      // the repeat stopped expanding. Both are kept.
+      collection: { default: '' },
       label: { default: 'Repeat' },
     };
   },
@@ -413,6 +418,7 @@ export const RepeatSection = Node.create({
       mergeAttributes(HTMLAttributes, {
         'data-repeat-section': 'true',
         'data-collection-key': node.attrs.collectionKey,
+        'data-collection': node.attrs.collection,
         class: 'doc-repeat',
       }),
       0,
@@ -448,5 +454,30 @@ export const ConditionalSection = Node.create({
       }),
       0,
     ];
+  },
+});
+
+
+/**
+ * A table row that repeats once per item of a collection (payslip earnings, invoice lines).
+ *
+ * The row itself carries the collection name (``repeat``). The older form, a ``repeatSection``
+ * block placed between the rows of a table, is not a valid child of a table: the table could not
+ * hold it, so the editor tore the table apart on load. Keeping the repeat on the row keeps the
+ * table whole, and the renderer expands the row into one row per item.
+ */
+export const RepeatTableRow = TableRow.extend({
+  addAttributes() {
+    return {
+      ...this.parent?.(),
+      repeat: {
+        default: null,
+        parseHTML: element => element.getAttribute('data-repeat') || null,
+        renderHTML: attributes =>
+          attributes.repeat
+            ? { 'data-repeat': attributes.repeat, class: 'doc-repeat-row' }
+            : {},
+      },
+    };
   },
 });

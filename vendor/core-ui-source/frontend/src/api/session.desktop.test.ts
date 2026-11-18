@@ -7,7 +7,7 @@ import { checkSessionDeadline, clearTokens, getAccessToken, installActivityListe
 import { applySessionPolicy } from './sessionPolicy';
 import { configureSessionRuntime, isHostManagedSession } from './sessionRuntime';
 import { enableSessionRecovery, getSessionRecovery, requestSessionRecovery } from './sessionRecovery';
-import { getSessionConnection } from './sessionConnection';
+import { getSessionConnection, subscribeHostSessionRecovery } from './sessionConnection';
 
 beforeEach(() => {
   vi.useFakeTimers();
@@ -30,12 +30,16 @@ afterEach(() => {
 
 it('renews an inactive desktop with no refresh token, idle dialog, or account refresh call', async () => {
   const post = vi.spyOn(axios, 'post');
+  const recovered = vi.fn();
+  const unsubscribe = subscribeHostSessionRecovery(recovered);
   await vi.advanceTimersByTimeAsync(55_000);
   expect(host.session).toHaveBeenCalledOnce();
   expect(getAccessToken()).toBe('fresh');
   expect(requestSessionRecovery('renew')).toBe(false);
   expect(getSessionRecovery()).toBeNull();
   expect(post).not.toHaveBeenCalled();
+  expect(recovered).not.toHaveBeenCalled();
+  unsubscribe();
 });
 it('awaits one host exchange when concurrent requests wake after expiry', async () => {
   vi.setSystemTime(Date.now() + 120_000);
@@ -44,24 +48,33 @@ it('awaits one host exchange when concurrent requests wake after expiry', async 
   expect(host.session).toHaveBeenCalledOnce();
 });
 it('retains account and workspace state through a runtime outage, retries, and clears reconnecting on recovery', async () => {
+  const recovered = vi.fn();
+  const unsubscribe = subscribeHostSessionRecovery(recovered);
   localStorage.setItem('integral.scope', 'workspace');
   host.session.mockRejectedValueOnce(new Error('runtime restarting'));
   vi.setSystemTime(Date.now() + 120_000);
   await checkSessionDeadline();
   expect(getAccessToken()).toBeNull();
   expect(getSessionConnection()).toBe('reconnecting');
+  expect(recovered).not.toHaveBeenCalled();
   expect(getSessionRecovery()).toBeNull();
   expect(localStorage.getItem('integral.scope')).toBe('workspace');
   expect(localStorage.getItem('t75_user')).toContain('owner');
   await vi.advanceTimersByTimeAsync(5000);
   expect(getAccessToken()).toBe('fresh');
   expect(getSessionConnection()).toBeNull();
+  expect(recovered).toHaveBeenCalledOnce();
+  unsubscribe();
 });
 it('does not send a retained page to another installation owner', async () => {
+  const recovered = vi.fn();
+  const unsubscribe = subscribeHostSessionRecovery(recovered);
   vi.mocked(axios.get).mockResolvedValue({ data: { user: { id: 'foreign' } } });
   expect(await refreshAccessToken()).toBeNull();
   expect(localStorage.getItem('t75_token')).toBe('old');
   expect(getSessionConnection()).toBe('recovery');
+  expect(recovered).not.toHaveBeenCalled();
+  unsubscribe();
 });
 it('ignores a native response after explicit logout and stops background recovery', async () => {
   let finish!: (value: unknown) => void;

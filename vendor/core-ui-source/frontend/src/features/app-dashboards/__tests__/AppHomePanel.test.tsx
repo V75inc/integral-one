@@ -156,3 +156,53 @@ it.each([
   expect(screen.getByRole('link', { name: /Equipment Find the right kit/ })).toHaveAttribute('href', '/tracks/n.Track.equipment');
   expect(Boolean(screen.queryByText('2 entries'))).toBe(layout !== 'resource_hub');
 });
+
+
+it('preserves the Track API purpose and former Start here deep link on default Home', async () => {
+  vi.mocked(dashboardsApi.home).mockResolvedValue({ source: 'default', home: { title: 'Home', widgets: [] } });
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  render(<QueryClientProvider client={client}><MemoryRouter>
+    <AppHomePanel appId="a1" workspaceId="ws1" defaultTrack={{ id: 'legacy', title: 'Guidance', purpose: 'Existing instructions' }} tracks={[{ id: 'legacy', title: 'Guidance' }, { id: 'work', title: 'Work' }]} />
+  </MemoryRouter></QueryClientProvider>);
+  expect(await screen.findByText('Existing instructions')).toBeInTheDocument();
+  expect(screen.getAllByRole('link', { name: 'Open Guidance' })).toHaveLength(1);
+  expect(screen.getByRole('link', { name: 'Open Guidance' })).toHaveAttribute('href', '/tracks/legacy');
+  expect(screen.getByRole('link', { name: 'Work' })).toHaveAttribute('href', '/tracks/work');
+  expect(screen.queryByText('Start here')).not.toBeInTheDocument();
+});
+
+it('withholds previously cached Home when access is revoked', async () => {
+  vi.mocked(dashboardsApi.home).mockResolvedValue({ home } as never);
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  mount(client);
+  await screen.findByText('Current work');
+  vi.mocked(dashboardsApi.home).mockRejectedValue({ response: { status: 403 } });
+  await act(async () => { await client.invalidateQueries({ queryKey: ['app-home-data'] }); });
+  expect(await screen.findByText('This home is no longer available.')).toBeInTheDocument();
+  expect(screen.queryByText('Current work')).not.toBeInTheDocument();
+});
+
+
+it('keeps both Home caches denied through transient errors and remount until an authorized success', async () => {
+  vi.mocked(dashboardsApi.home).mockResolvedValue({ home } as never);
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  client.setQueryData(['app-home-definition', 'a1', 'ws1'], { home });
+  client.setQueryData(['app-home-definition', 'other', 'ws1'], { home });
+  const first = mount(client);
+  await screen.findByText('Current work');
+  vi.mocked(dashboardsApi.home).mockRejectedValue({ response: { status: 403 } });
+  await act(async () => { await client.invalidateQueries({ queryKey: ['app-home-data'] }); });
+  await screen.findByText('This home is no longer available.');
+  expect(client.getQueryData(['app-home-definition', 'a1', 'ws1'])).toEqual({ home: null, error: 'home_access_denied' });
+  expect(client.getQueryData(['app-home-definition', 'other', 'ws1'])).toEqual({ home });
+  vi.mocked(dashboardsApi.home).mockRejectedValue({ response: { status: 500 } });
+  await act(async () => { await client.invalidateQueries({ queryKey: ['app-home-data'] }); });
+  expect(screen.queryByText('Current work')).not.toBeInTheDocument();
+  first.unmount();
+  mount(client);
+  await screen.findByText('This home is no longer available.');
+  expect(screen.queryByText('Current work')).not.toBeInTheDocument();
+  vi.mocked(dashboardsApi.home).mockResolvedValue({ home } as never);
+  await act(async () => { await client.invalidateQueries({ queryKey: ['app-home-data'] }); });
+  expect(await screen.findByText('Current work')).toBeInTheDocument();
+});

@@ -1,3 +1,6 @@
+import { useRecordNavigationDraftGuard, type RecordNavigation } from '../../hooks/useRecordNavigation';
+import { RecordNavigationControls } from './RecordNavigationControls';
+import { BacklinkList } from './BacklinkList';
 import { useEntryHostRefresh } from '../../hooks/useEntryHostRefresh';
 import { errorMessageFromAxios } from '../../api/helpers';
 import { tagFilterHref } from '../../utils/tagFilters';
@@ -63,7 +66,7 @@ import { EntrySocialActions } from './EntrySocialActions';
 import { AttachmentRowList } from './attachments';
 import type { AttachmentRecord } from '../../api/attachments';
 import { EntryFormExpandedView, useEntryExpandedForm } from './EntryFormExpanded';
-import { EntryMetaFields } from './EntryMetaFields';
+import { EntryInlineFields } from './EntryInlineFields';
 import { EntryComposeModal, type EntryComposeSeed } from './EntryComposer';
 import {
   isViewDesignerEnabled,
@@ -119,6 +122,7 @@ function slug(value: string): string {
 
 interface EntryDetailProps {
   entry: Entry;
+  recordNavigation?: RecordNavigation;
   onClose(): void;
   onUpdate?(e: Entry): void;
   /** Optimistically remove the entry from the parent list (feed / track cache). */
@@ -156,6 +160,7 @@ const PANEL_TABS: { key: PanelTabKey; label: string }[] = [
 
 export function EntryDetail({
   entry: initialEntry,
+  recordNavigation,
   onClose,
   onUpdate,
   onDelete,
@@ -314,7 +319,7 @@ export function EntryDetail({
     try {
       let toTrack: string | undefined;
       try {
-        const tracks = await tracksApi.list();
+        const tracks = await tracksApi.list({ skipEntryCounts: true });
         // Prefer Customer Projects (CRM handoff). Title used to be "Projects";
         // template_id stays ``projects``. Never pick Internal Projects.
         const ranked = (tracks || [])
@@ -711,13 +716,15 @@ export function EntryDetail({
     <EntryContributionSlot
       ref={editContributionApiRef}
       placement="entry_detail"
-      appId={track?.app?.id || entry.track?.app?.id || editForm.appId}
+      appId={track?.app?.id || trackContext?.app?.id || entry.app?.id || entry.track?.app?.id || editForm.appId}
       formSchema={editForm.entryTypeFormSchema || entryTypeFormSchema}
       trackId={entry.track_id}
       entryId={entry.id}
       entryTypeKey={entry.type}
       mode="edit"
       customFields={editForm.fieldValues}
+      fieldErrors={editForm.problems}
+      onFieldDataOwnerChange={editForm.setFieldDataOwner}
       onDraftPatch={patch => editForm.applyContributionPatch(patch)}
     />
   );
@@ -822,11 +829,18 @@ export function EntryDetail({
     );
   }, [anchoredEntryTypes]);
 
+  // A record opened from a list on a full page (a payslip on its pay run) opens in a dialog over that page; the page
+  // keeps its place. In a dialog host the record still replaces the content, with a way back.
+  const [previewEntry, setPreviewEntry] = useState<Entry | null>(null);
   const handleEmbeddedEntryOpen = useCallback((task: Entry) => {
+    if (variant === 'page') {
+      setPreviewEntry(task);
+      return;
+    }
     setParentEntry(entry);
     setEntry(task);
     setIsEditing(false);
-  }, [entry]);
+  }, [entry, variant]);
 
   const handleBackToParent = useCallback(() => {
     if (!parentEntry) return;
@@ -1219,7 +1233,7 @@ export function EntryDetail({
       {entry.created_at ? (
         <span className="tabular-nums">{formatRelativeTime(entry.created_at)}</span>
       ) : null}
-      {entry.app?.id ? (
+      {entry.app?.id && (entry.app.name || 'App') !== entry.track?.title ? (
         <Link
           to={appPath(entry.app.id)}
           className="text-[var(--text-muted)] hover:text-[var(--text)] transition-colors duration-fast"
@@ -1229,6 +1243,10 @@ export function EntryDetail({
         </Link>
       ) : null}
       {entry.track?.id ? (
+        <>
+          {entry.app?.id && (entry.app.name || 'App') !== entry.track.title ? (
+            <span aria-hidden className="text-[var(--text-subtle)]">›</span>
+          ) : null}
         <Link
           to={`/tracks/${entry.track.id}`}
           className="text-[var(--text-muted)] hover:text-[var(--text)] transition-colors duration-fast"
@@ -1239,6 +1257,7 @@ export function EntryDetail({
         >
           {entry.track.title}
         </Link>
+        </>
       ) : null}
       <WatchersControl
         entryId={entry.id}
@@ -1284,42 +1303,7 @@ export function EntryDetail({
     refs: typeof referencedBy,
     label: string,
     totalHint?: number
-  ) => {
-    const total = totalHint ?? refs.length;
-    return (
-      <div className="space-y-1">
-        <div className="flex items-center gap-1.5 text-[var(--text-subtle)]">
-          <ArrowUpRight
-            size={12}
-            strokeWidth={LINE_ICON_STROKE}
-            aria-hidden
-          />
-          <span>
-            {label} ({total}
-            {total > refs.length ? `; showing ${refs.length}` : ''})
-          </span>
-        </div>
-        <ul className="ml-[18px] flex flex-wrap gap-x-3 gap-y-1">
-          {refs.map(ref => (
-            <li key={ref.id} className="inline-flex items-center gap-1">
-              <Link
-                to={`/tracks/${ref.track_id}?entry=${encodeURIComponent(ref.id)}`}
-                className="text-[var(--link)] hover:underline"
-                onClick={e => e.stopPropagation()}
-              >
-                {ref.title || 'Untitled'}
-              </Link>
-              {ref.track_title ? (
-                <span className="text-[var(--text-subtle)]">
-                  · {ref.track_title}
-                </span>
-              ) : null}
-            </li>
-          ))}
-        </ul>
-      </div>
-    );
-  };
+  ) => <BacklinkList refs={refs} label={label} total={totalHint} />;
   const backlinksRow =
     anchorSource ||
     referencedBy.length > 0 ||
@@ -1630,8 +1614,15 @@ export function EntryDetail({
     });
   }
 
+  const recordDraftOpen = isEditing || postToFeedOpen || Boolean(commentText.trim())
+    || Boolean(replyingToId) || Boolean(editingCommentId);
+  // A draft may begin while an adjacent record read is still in flight.
+  // Cancel synchronously on commit so its eventual response cannot discard it.
+  useRecordNavigationDraftGuard(recordNavigation, recordDraftOpen);
+
   const headerActions = (
     <div className="flex flex-wrap items-center gap-1.5">
+      {recordNavigation ? <RecordNavigationControls navigation={recordNavigation} disabled={recordDraftOpen} /> : null}
       {!isEditing && activeWorkspace?.id ? (
         <ResidentAssignmentControl entryId={entry.id} workspaceId={activeWorkspace.id} />
       ) : null}
@@ -1639,6 +1630,7 @@ export function EntryDetail({
         <Button
           variant="outline"
           size="sm"
+          disabled={recordNavigation?.busy}
           aria-label={isEditing ? 'Cancel edit' : 'Edit entry'}
           icon={isEditing ? <X size={14} strokeWidth={LINE_ICON_STROKE} /> : <Edit2 size={14} strokeWidth={LINE_ICON_STROKE} />}
           onClick={() => setIsEditing(editing => !editing)}
@@ -1730,6 +1722,11 @@ export function EntryDetail({
                   setEntry(updated);
                   onUpdate?.(updated);
                 }}
+                onFileSaved={(updated, file) => {
+                  setEntry(updated);
+                  setAttachments(prev => [file, ...prev.filter(a => a.id !== file.id)]);
+                  onUpdate?.(updated);
+                }}
               />
             ),
           }
@@ -1811,9 +1808,17 @@ export function EntryDetail({
                 {Object.values(entry.read_time_fields?.status || {}).includes('unavailable') ? (
                   <div role="status"><Text as="p" variant="body-sm" tone="muted">Some live fields could not be checked. Their values are unknown.</Text></div>
                 ) : null}
-                <EntryMetaFields
+                <EntryInlineFields
+                  entry={entry}
+                  onSaved={saved => {
+                    setEntry(saved);
+                    onUpdateRef.current?.(saved);
+                  }}
                   fields={dynamicFields}
-                  readOnlyKeys={Object.keys(entry.read_time_fields?.values || {})}
+                  readOnlyKeys={Array.from(new Set([
+                    ...Object.keys(entry.read_time_fields?.values || {}),
+                    ...Object.keys(entry.read_time_fields?.status || {}),
+                  ]))}
                   values={{
                     ...((entry.custom_fields || {}) as Record<string, unknown>),
                     ...(entry.read_time_fields?.values || {}),
@@ -1836,10 +1841,8 @@ export function EntryDetail({
                     fromTrackId: entry.track_id,
                     fromTitle: entry.title || 'Untitled',
                   }}
-                  // Read-only body: values are static here. Editing is the
-                  // explicit Edit button, which swaps to the form. Passing
-                  // onCommitField/entryId turned text, number, relation and
-                  // file rows into inline editors on hover.
+                  // Keep the reading surface static (#232). Editing a field
+                  // requires its explicit Edit action and a separate Save.
                 />
               </div>
               ) : null}
@@ -2001,6 +2004,22 @@ export function EntryDetail({
           entryId={entry.id}
           appId={track?.app?.id || entry.track?.app?.id}
           entryTypeKey={entry.type}
+        />
+      ) : null}
+      {previewEntry ? (
+        <EntryDetail
+          key={`preview:${previewEntry.id}`}
+          entry={previewEntry}
+          variant="modal"
+          onClose={() => setPreviewEntry(null)}
+          onUpdate={updated => {
+            setPreviewEntry(updated);
+            onUpdateRef.current?.(entry);
+          }}
+          onDelete={() => {
+            setPreviewEntry(null);
+            void refreshHostEntry();
+          }}
         />
       ) : null}
     </>

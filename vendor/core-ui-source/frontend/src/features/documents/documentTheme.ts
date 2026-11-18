@@ -2,13 +2,14 @@
 
 import type { CSSProperties } from 'react';
 
-export type PageSizeKey = 'letter' | 'legal' | 'a4' | 'letter_landscape';
+export type PageSizeKey = 'letter' | 'legal' | 'a4' | 'letter_landscape' | 'a4_landscape';
 
 export const PAGE_SIZE_INCHES: Record<PageSizeKey, [number, number]> = {
   letter: [8.5, 11],
   legal: [8.5, 14],
   a4: [8.27, 11.69],
   letter_landscape: [11, 8.5],
+  a4_landscape: [11.69, 8.27],
 };
 
 export const DEFAULT_PAGE_SIZE: PageSizeKey = 'letter';
@@ -66,6 +67,7 @@ export function normalizePageSize(raw?: string | null): PageSizeKey {
   if (key === 'us_legal') key = 'legal';
   if (key === 'legal') return 'legal';
   if (key === 'a4') return 'a4';
+  if (key === 'a4_landscape' || key === 'a4-landscape') return 'a4_landscape';
   if (key === 'landscape' || key === 'letter-landscape' || key === 'letter_landscape') {
     return 'letter_landscape';
   }

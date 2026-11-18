@@ -33,7 +33,7 @@ export function QuickProviderSetup({ data, disabled, onBusyChange }: {
   const managed = data.key_policy === "platform_only";
   const available = Boolean(data.effective.model && data.effective.source !== "unavailable");
   const connection = savedConnection(data, provider);
-  const model = defaultModel(provider);
+  const model = data.model_policy?.providers[provider]?.preferred_heavy ?? defaultModel(provider);
   const modelName = RECOMMENDED_MODELS[provider].find(item => item.id === model)?.label || model;
   const readOnly = managed || !data.effective.editable;
   const setup = useMutation({
@@ -53,7 +53,7 @@ export function QuickProviderSetup({ data, disabled, onBusyChange }: {
       progress.current = { provider: selectedProvider, connectionId: saved.id };
       // Updating the current key must preserve deliberate model/routing tuning.
       if (active?.connection_id === saved.id) return;
-      const recommended = defaultModel(selectedProvider);
+      const recommended = current.model_policy?.providers[selectedProvider]?.preferred_heavy ?? defaultModel(selectedProvider);
       const reused = current.profiles.find(profile => profile.connection_id === saved.id && profile.model === recommended && Object.keys(profile.generation_settings).length === 0);
       const profile: ModelProfile = reused || await aiConfigurationApi.saveProfile({
         name: RECOMMENDED_MODELS[selectedProvider].find(item => item.id === recommended)?.label || recommended,
@@ -64,7 +64,7 @@ export function QuickProviderSetup({ data, disabled, onBusyChange }: {
       });
     },
     onMutate: () => onBusyChange(true),
-    onSuccess: () => { progress.current = null; setEditing(false); showToast("Your AI provider is ready.", "success"); },
+    onSuccess: () => { progress.current = null; setEditing(false); showToast("Provider saved. Model availability depends on your provider account.", "success"); },
     onError: error => showToast(errorMessageFromAxios(error, "Could not finish AI setup. Check your provider and API key, then try again."), "error"),
     onSettled: async () => {
       // Refresh partial saves too, so retry reuses the validated provider/profile.
@@ -90,7 +90,7 @@ export function QuickProviderSetup({ data, disabled, onBusyChange }: {
           <Text as="h3" variant="heading-sm">{readOnly && !available ? "Workspace AI" : editing ? "Update your AI provider" : available ? "Your AI is connected" : "Connect your AI provider"}</Text>
           <Text as="p" variant="body-sm" tone="muted">
             {readOnly ? managed ? "AI is managed for this installation." : "This workspace uses its owner's AI setup."
-              : editing ? "Choose a provider or update its API key." : available ? "You're ready to chat and work with Integral." : "Choose a provider and add your API key. Integral takes care of the model settings."}
+              : editing ? "Choose a provider or update its API key." : available ? "You're ready to chat and work with Integral." : "Choose a provider and add your API key. Integral selects the model for you."}
           </Text>
         </div>
       </div>
@@ -117,6 +117,7 @@ export function QuickProviderSetup({ data, disabled, onBusyChange }: {
           </div>
         </Stack>
       </form>}
+      {available && data.effective.harness_policy && !data.effective.harness_policy.recommended && <Text as="p" variant="body-sm" tone={data.effective.harness_policy.tier === "light" ? "warn" : "muted"}>{data.effective.harness_policy.message}</Text>}
       {!readOnly && <Text as="p" variant="meta" tone="muted">API usage is billed by your provider.</Text>}
     </Stack>
   </Surface>;

@@ -1,0 +1,22 @@
+import {act, fireEvent, render, screen, waitFor} from '@testing-library/react';
+import {afterEach, expect, it, vi} from 'vitest';
+import {cleanup} from '@testing-library/react';
+import {AsyncCombobox} from './AsyncCombobox';
+afterEach(() => {cleanup(); vi.useRealTimers();});
+it('opens lazily, debounces literal remote searches and pages explicitly', async () => {
+  const load = vi.fn(async (q: string, cursor: string | null) => ({items: [{id: cursor || 'one', label: q ? 'Email match' : 'First customer'}], next_cursor: cursor ? null : 'next'}));
+  render(<AsyncCombobox label="Customer" value="" loadPage={load} onChange={vi.fn()} />);
+  expect(load).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole('combobox'));
+  await screen.findByText('First customer');
+  fireEvent.click(screen.getByText('Next'));
+  await waitFor(() => expect(load.mock.calls[1]?.[1]).toBe('next'));
+  const input = screen.getByRole('combobox');
+  vi.useFakeTimers();
+  fireEvent.change(input, {target: {value: 'literal.*[email]'}});
+  await act(async () => {vi.advanceTimersByTime(249);});
+  expect(load).toHaveBeenCalledTimes(2);
+  await act(async () => {vi.advanceTimersByTime(1);});
+  expect(load.mock.calls[2]?.slice(0, 2)).toEqual(['literal.*[email]', null]);
+  expect(screen.getByText('Email match')).toBeInTheDocument();
+});

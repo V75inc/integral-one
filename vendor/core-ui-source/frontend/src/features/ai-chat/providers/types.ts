@@ -21,7 +21,7 @@ export interface ChatLatency {
   firstTokenMs?: number; totalMs?: number; tps?: number;
   preparationMs?: number; providerFirstTokenMs?: number;
   firstToolRequestedMs?: number; firstToolStartedMs?: number;
-  firstOperationalToolMs?: number; queueMs?: number;
+  firstOperationalToolMs?: number; firstDomainResultMs?: number; queueMs?: number;
   lightPassMs?: number; lightResponseMs?: number; heavyStartedMs?: number; heavyFirstTokenMs?: number; escalationMs?: number;
   clientFirstTextMs?: number; clientFirstToolMs?: number; clientCompletionMs?: number;
 }

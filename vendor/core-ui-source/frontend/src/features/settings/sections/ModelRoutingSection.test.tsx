@@ -284,3 +284,38 @@ it.each([false, true])(
     );
   },
 );
+
+it("restricts known light profiles to the light role without silently changing legacy routing", () => {
+  const data = structuredClone(configuration);
+  data.profiles[0].harness_policy = { tier: "light", recommended: false, evidence: "role_policy", message: "Light role only." };
+  data.default_profile_id = "light";
+  data.routing!.heavy_profile_id = "light";
+  show(data);
+  fireEvent.click(screen.getByRole("button", { name: "Configure routing" }));
+  const main = screen.getByLabelText("Main model");
+  expect(within(main).getByRole("option", { name: /Quick/ })).toBeDisabled();
+  expect(screen.getByRole("button", { name: "Save routing" })).toBeDisabled();
+  fireEvent.change(screen.getByLabelText("Routing mode"), { target: { value: "light_heavy" } });
+  expect(within(screen.getByLabelText("Light model")).getByRole("option", { name: /Quick/ })).not.toBeDisabled();
+});
+
+it("keeps preferred models quiet and shows warnings only for unsuitable selections", () => {
+  const data = structuredClone(configuration);
+  data.profiles[1].harness_policy = {tier:"heavy", recommended:true, evidence:"observed", message:"Preferred starting point, not certified."};
+  data.effective.harness_policy = data.profiles[1].harness_policy;
+  data.profiles[0].harness_policy = {tier:"light", recommended:false, evidence:"light_only", message:"Light role warning."};
+  show(data);
+  expect(screen.queryByText(/not certified/)).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", {name:"Configure routing"}));
+  expect(screen.queryByText(/not certified/)).not.toBeInTheDocument();
+  fireEvent.change(screen.getByLabelText("Routing mode"), {target:{value:"light_heavy"}});
+  fireEvent.change(screen.getByLabelText("Light model"), {target:{value:"light"}});
+  expect(screen.queryByText(/Light role warning/)).not.toBeInTheDocument();
+});
+
+it("retains an honest warning for an unverified custom model", () => {
+  const data = structuredClone(configuration);
+  data.effective.harness_policy = {tier:"unverified", recommended:false, evidence:"unverified", message:"Harness suitability is unverified."};
+  show(data);
+  expect(screen.getByText("Harness suitability is unverified.")).toBeVisible();
+});

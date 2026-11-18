@@ -49,13 +49,36 @@ type HarnessProps = {
   entryId?: string;
   mode?: 'create' | 'edit';
   onPatch?: (entryId: string, patch: unknown) => void;
+  onSearch?: (query: string) => void;
+  onOpen?: (open: boolean) => void;
 };
+
+it('forwards typed search to the shared remote picker', () => {
+  const onSearch = vi.fn();
+  render(<Harness onSearch={onSearch} />);
+  fireEvent.change(screen.getByLabelText('Search contacts'), {
+    target: { value: 'Synthetic customer beyond the first page' },
+  });
+  expect(onSearch).toHaveBeenCalledWith('Synthetic customer beyond the first page');
+});
+
+it('loads only the requested creation permission when a remote field opens', async () => {
+  const onOpen = vi.fn();
+  render(<Harness onOpen={onOpen} />);
+  expect(extensionsApi.listOperations).not.toHaveBeenCalled();
+  fireEvent.focus(screen.getByLabelText('Contact'));
+  await waitFor(() => expect(extensionsApi.listOperations).toHaveBeenCalledWith('app-1', 'create_contact'));
+  expect(onOpen).toHaveBeenCalledWith(true);
+});
+
 function Harness({
   appId = 'app-1',
   trackId = 'track-1',
   entryId = 'parent-1',
   mode = 'create',
   onPatch,
+  onSearch,
+  onOpen,
 }: HarnessProps) {
   const [client] = useState(
     () => new QueryClient({ defaultOptions: { queries: { retry: false } } })
@@ -100,13 +123,19 @@ function Harness({
             },
             value: fields.contact,
             onChange: (id) => setFields((prev) => ({ ...prev, contact: id })),
+            onRelationSearch: onSearch,
+            onRelationOpen: onOpen,
           }}
           renderField={(props) => (
+            <>
+            <input aria-label="Search contacts" onChange={(event) => props.onRelationSearch?.(event.target.value)} />
             <input
               aria-label={props.field.name}
+              onFocus={() => props.onRelationOpen?.(true)}
               value={String(props.value || '')}
               onChange={(event) => props.onChange(event.target.value)}
             />
+            </>
           )}
         />
       </ContributionLifecycleContext.Provider>

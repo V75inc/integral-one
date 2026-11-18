@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { flushSync } from 'react-dom';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
+import { entryPath } from '../../utils/resourcePaths';
 import { Maximize2, Minimize2, Plus, Send } from 'lucide-react';
 import { Button, LINE_ICON_STROKE } from '../ui';
 import { Modal } from '../ui/Modal';
@@ -15,6 +16,7 @@ import {
   type EntryContributionSlotHandle,
 } from './EntryContributionSlot';
 import { CreateWizardModal, findCreateWizardEntryType } from './CreateWizardModal';
+import {preloadReactComponent} from '../extensions/preloadReactComponent';
 
 /** Stable empty list: default param ``tracks = []`` is a *new* array every render and breaks effect deps. */
 const EMPTY_TRACKS: Track[] = [];
@@ -107,9 +109,11 @@ export function EntryComposeModal({
       appId={form.appId}
       formSchema={form.entryTypeFormSchema}
       trackId={track?.id || form.selectedTrackId || undefined}
-      entryTypeKey={form.type}
+      entryTypeKey={form.entryTypeKey || form.type}
       mode="create"
       customFields={form.fieldValues}
+      fieldErrors={form.problems}
+      onFieldDataOwnerChange={form.setFieldDataOwner}
       onDraftPatch={patch => form.applyContributionPatch(patch)}
     />
   );
@@ -183,6 +187,7 @@ export function EntryComposer({
   onCreated
 }: EntryComposerProps) {
   const tracksList = tracks === undefined ? EMPTY_TRACKS : tracks;
+  const navigate = useNavigate();
   const { showToast } = useToast();
   const [modalOpen, setModalOpen] = useState(false);
   const [composeSeed, setComposeSeed] = useState<EntryComposeSeed>({});
@@ -204,6 +209,19 @@ export function EntryComposer({
     showToast
   });
   const actionLabel = profilePreview.composerActionLabel;
+  const preloadContribution = resolveEntryContribution(profilePreview.entryTypeFormSchema, 'entry_compose');
+  const preloadKey = preloadContribution?.component_key;
+  const preloadApp = profilePreview.appId;
+  const preloadWorkspace = track?.workspace_id || track?.app?.workspace_id;
+  const preloadProps = JSON.stringify(preloadContribution?.props || {});
+  useEffect(() => {
+    if (!preloadApp || !preloadKey || !preloadWorkspace) return;
+    const controller = new AbortController();
+    // Track metadata identifies the likely next form. Do not fetch its data
+    // or retain its admission as authority for a later mount.
+    void preloadReactComponent(preloadApp, preloadKey, preloadWorkspace, JSON.parse(preloadProps), controller.signal).catch(() => undefined);
+    return () => controller.abort();
+  }, [preloadApp, preloadKey, preloadWorkspace, preloadProps]);
 
   // Opt-in per entry type (form_schema.create_wizard) — e.g. payroll-app's
   // pay_run — routes to the generic multi-step CreateWizardModal instead
@@ -349,6 +367,10 @@ export function EntryComposer({
           onCreated={entry => {
             onCreated?.(entry);
             setWizardOpen(false);
+            // A record that opens as its own page (a pay run, an invoice) is where the person works next.
+            if (wizardEntryType.form_schema?.open_as_page && entry?.id) {
+              navigate(entryPath(entry.id, entry.track_id || track.id));
+            }
           }}
         />
       ) : null}

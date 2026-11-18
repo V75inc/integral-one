@@ -1,11 +1,13 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Surface } from '../../ui';
 import { useQuery } from '@tanstack/react-query';
 import { extensionsApi } from '../../api/extensions';
+import { entriesApi } from '../../api';
 import { useScope } from '../../context/ScopeContext';
 import { useNavigate } from 'react-router-dom';
 import { useContributionLifecycle } from '../entries/contributionLifecycle';
 import { Button } from '../ui';
+import { AppReactComponentHost } from '../extensions/AppReactComponentHost';
 import { AppExtensionViewHost } from '../extensions/AppExtensionViewHost';
 import { ExtensionViewFallback } from '../extensions/ExtensionViewFallback';
 import {
@@ -66,14 +68,30 @@ export function ExtensionViewWidget(props: ViewWidgetProps) {
   // A host failure belongs to one authorized mount. A different App, view or
   // workspace starts a new session, including iframe state and error handling.
   const identity = JSON.stringify([appId, viewKey, workspaceId]);
-  return <ExtensionViewSession key={identity} {...props} appId={appId} viewKey={viewKey} workspaceId={workspaceId} />;
+  const componentKey = String(props.view.config?.component_key || '');
+  const lifecycle = useContributionLifecycle();
+  // A related view on a record's page has no form lifecycle: its record arrives as the first entry (or in the
+  // bindings), the same sources the iframe host reads.
+  const entryId = String(bindings.entryId || lifecycle?.entryId || (props.viewContext === 'track-list' ? '' : props.entries?.[0]?.id) || '').trim();
+  const trackId = String(props.track?.id || bindings.trackId || lifecycle?.trackId || props.view.track_id || '').trim();
+  const legacy = <ExtensionViewSession key={identity} {...props} appId={appId} viewKey={viewKey} workspaceId={workspaceId} />;
+  if (!componentKey) return legacy;
+  return <AppReactComponentHost key={identity} appId={appId} componentKey={componentKey}
+    placement={lifecycle?.placement || 'track'} lifecycle={lifecycle || undefined}
+    context={{entryId: entryId || undefined, trackId: trackId || undefined}}
+    props={(props.view.config?.component_props as Record<string, unknown>) || {}} fallback={legacy} />;
 }
 
 function ExtensionViewSession({
-  view, entries, track, appId, viewKey, workspaceId,
+  view, entries, track, appId, viewKey, workspaceId, onEntryOpen,
 }: ViewWidgetProps & { appId: string; viewKey: string; workspaceId: string }) {
   const bindings = ((view.config || {}) as { __bindings?: ContributionBindings }).__bindings || {};
   const lifecycle = useContributionLifecycle();
+  const frame = useRef<import('../extensions/AppExtensionViewHost').AppExtensionViewHostHandle>(null);
+  useEffect(() => lifecycle?.register({
+    requestValidate: async () => frame.current ? frame.current.requestValidate() : {ok: false, error: 'The App form is not ready.'},
+    requestSubmit: async id => frame.current ? frame.current.requestSubmit(id) : {ok: false, error: 'The App form is not ready.'},
+  }), [lifecycle?.register]);
   const trackId = String(
     track?.id || bindings.trackId || lifecycle?.trackId || view.track_id || '',
   ).trim();
@@ -161,9 +179,29 @@ function ExtensionViewSession({
   }
 
   const hs = handshakeQuery.data;
+  // A record of the track this view is on (a bank, a rate, the company profile in Settings)
+  // opens as a dialog over the view, the way the track's own list opens its records.
+  // Records of other tracks (payslips, filings) and views on a record page keep the full page.
+  const openEntryFromView = (openId: string) => {
+    const fullPage = `/entries/${encodeURIComponent(openId)}`;
+    const onTrackPage = Boolean(trackId) && !bindings.entryId && !lifecycle?.entryId;
+    if (!onTrackPage) { navigate(fullPage); return; }
+    void entriesApi.get(openId).then(
+      entry => {
+        if (entry && entry.track_id === trackId) {
+          if (onEntryOpen) { onEntryOpen(entry, { forceModal: true }); return; }
+          navigate(`/tracks/${encodeURIComponent(trackId)}?entry=${encodeURIComponent(openId)}`);
+          return;
+        }
+        navigate(fullPage);
+      },
+      () => navigate(fullPage),
+    );
+  };
   const isTemplateEditor = viewKey === 'template_editor';
   return (
     <AppExtensionViewHost
+      ref={frame}
       key={hs.handshake_token}
       appId={appId}
       viewKey={viewKey}
@@ -174,7 +212,7 @@ function ExtensionViewSession({
       context={hostContext}
       onDraftPatch={lifecycle?.onDraftPatch}
       onError={() => setFailed(true)}
-      onOpenEntry={entryId => navigate(`/entries/${encodeURIComponent(entryId)}`)}
+      onOpenEntry={openEntryFromView}
       onNavigatePath={path => navigate(path)}
       className={
         isTemplateEditor ? EXTENSION_VIEW_TEMPLATE_EDITOR_SHELL_CLASS : undefined

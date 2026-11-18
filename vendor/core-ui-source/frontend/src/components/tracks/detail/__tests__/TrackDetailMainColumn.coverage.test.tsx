@@ -7,8 +7,8 @@ import type { Entry, SavedView, Track } from '../../../../types';
 
 vi.mock('../../TrackFilterStrip', () => ({ TrackFilterStrip: () => null }));
 vi.mock('../../../entries/EntryComposer', () => ({ EntryComposer: () => null }));
-vi.mock('../../../../views', () => ({ ViewRenderer: ({ entries }: { entries: Entry[] }) => (
-  <div>{entries.length ? entries.map(entry => <h3 key={entry.id}>{entry.title}</h3>) : 'Legacy widget: no entries to display'}</div>
+vi.mock('../../../../views', () => ({ ViewRenderer: ({ entries, viewContext }: { entries: Entry[]; viewContext?: string }) => (
+  <div data-testid="track-view" data-view-context={viewContext}>{entries.length ? entries.map(entry => <h3 key={entry.id}>{entry.title}</h3>) : 'Legacy widget: no entries to display'}</div>
 ) }));
 
 function mount({ entries = [], restricted = false, active = true }: {
@@ -28,7 +28,7 @@ function mount({ entries = [], restricted = false, active = true }: {
     onEntryOpen: noop, onEntryDelete: noop, onEntryDeleteFailed: noop,
     onEntryEdit: noop, onEntryUpdate: noop, onEntryPersist: async () => {},
     onViewUpdate: noop, onKanbanColumnEnumSync: async () => {}, onEntryCreate: noop,
-    entryTypes: [], trackEntryTypeFields: [], hasNextPage: false,
+    entryTypes: [], trackEntryTypeFields: [], fieldFilters: [], setFieldFilters: vi.fn(), hasNextPage: false,
     isFetchingNextPage: false, fetchNextPage: noop,
     emptyStateContent: <div>Page fallback: no entries yet</div>,
     recordReadBoundaryNotice: restricted ? <RecordReadBoundaryNotice searching appId="known-app" /> : undefined,
@@ -53,6 +53,7 @@ describe('Track read coverage across view widgets', () => {
 
   it('keeps ordinary empty rendering when there is no restriction', () => {
     mount();
+    expect(screen.getByTestId('track-view')).toHaveAttribute('data-view-context', 'track-list');
     expect(screen.getByText('Legacy widget: no entries to display')).toBeVisible();
     expect(screen.queryByRole('status', { name: 'App record coverage' })).not.toBeInTheDocument();
   });

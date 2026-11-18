@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef } from 'react';
 import { EditorContent, useEditor, type Editor } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
+import { PaginationPlus } from 'tiptap-pagination-plus';
 import Placeholder from '@tiptap/extension-placeholder';
 import Link from '@tiptap/extension-link';
 import TextAlign from '@tiptap/extension-text-align';
@@ -9,7 +10,6 @@ import { TextStyle } from '@tiptap/extension-text-style';
 import Color from '@tiptap/extension-color';
 import Highlight from '@tiptap/extension-highlight';
 import { Table } from '@tiptap/extension-table';
-import { TableRow } from '@tiptap/extension-table-row';
 import { TableCell } from '@tiptap/extension-table-cell';
 import { TableHeader } from '@tiptap/extension-table-header';
 import {
@@ -18,6 +18,7 @@ import {
   FieldToken,
   PageBreak,
   RepeatSection,
+  RepeatTableRow,
   SignaturePlaceholder,
 } from './extensions';
 import { DocumentEditorToolbar } from './DocumentEditorToolbar';
@@ -31,6 +32,8 @@ import { scrollDocEditorSelectionIntoView } from './scrollSelectionIntoView';
 import {
   DEFAULT_MARGINS_IN,
   DEFAULT_PAGE_SIZE,
+  PAGE_SIZE_INCHES,
+  PX_PER_INCH,
   pageContentBoxStyle,
   pageWidthPx,
   type MarginsInches,
@@ -55,6 +58,37 @@ export interface DocumentTemplateEditorProps {
   placeholder?: string;
   pageSize?: PageSizeKey;
   margins?: MarginsInches;
+  /** Show real pages (page boxes, gaps, page numbers) instead of one tall sheet. */
+  paged?: boolean;
+  /** Header and footer HTML per side; ``{page}`` is replaced per page. */
+  pageChrome?: Partial<PageChrome>;
+}
+
+export interface PageChrome {
+  headerLeft: string;
+  headerRight: string;
+  footerLeft: string;
+  footerRight: string;
+}
+
+export const DEFAULT_PAGE_CHROME: PageChrome = {
+  headerLeft: '',
+  headerRight: '',
+  footerLeft: '',
+  footerRight: 'Page {page}',
+};
+
+/** Page geometry in CSS pixels for the pagination extension (96 px per inch). */
+export function paginationGeometry(pageSize: PageSizeKey, margins: MarginsInches) {
+  const [wIn, hIn] = PAGE_SIZE_INCHES[pageSize];
+  return {
+    pageWidth: Math.round(wIn * PX_PER_INCH),
+    pageHeight: Math.round(hIn * PX_PER_INCH),
+    marginTop: Math.round(margins.top * PX_PER_INCH),
+    marginBottom: Math.round(margins.bottom * PX_PER_INCH),
+    marginLeft: Math.round(margins.left * PX_PER_INCH),
+    marginRight: Math.round(margins.right * PX_PER_INCH),
+  };
 }
 
 export function DocumentTemplateEditor({
@@ -66,6 +100,8 @@ export function DocumentTemplateEditor({
   placeholder,
   pageSize = DEFAULT_PAGE_SIZE,
   margins = DEFAULT_MARGINS_IN,
+  paged = false,
+  pageChrome,
 }: DocumentTemplateEditorProps) {
   const onChangeRef = useRef(onChange);
   onChangeRef.current = onChange;
@@ -94,7 +130,7 @@ export function DocumentTemplateEditor({
         placeholder: placeholder || 'Start writing your template…',
       }),
       Table.configure({ resizable: true }),
-      TableRow,
+      RepeatTableRow,
       TableHeader,
       TableCell,
       FieldToken,
@@ -103,9 +139,24 @@ export function DocumentTemplateEditor({
       RepeatSection,
       ConditionalSection,
       PreservePasteFormatting,
+      ...(paged
+        ? [
+            PaginationPlus.configure({
+              ...paginationGeometry(pageSize, margins),
+              pageGap: 32,
+              pageGapBorderSize: 0,
+              pageBreakBackground: 'var(--bg)',
+              contentMarginTop: 0,
+              contentMarginBottom: 0,
+              ...DEFAULT_PAGE_CHROME,
+              ...(pageChrome || {}),
+            }),
+          ]
+        : []),
     ],
+    // The paged extension is chosen when the editor is created; geometry updates below.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [],
+    [paged],
   );
 
   const editor = useEditor(
@@ -145,6 +196,27 @@ export function DocumentTemplateEditor({
   useEffect(() => {
     if (editor) onReadyRef.current?.(editor);
   }, [editor]);
+
+  useEffect(() => {
+    if (!editor || !paged) return;
+    const g = paginationGeometry(pageSize, margins);
+    editor
+      .chain()
+      .updatePageWidth(g.pageWidth)
+      .updatePageHeight(g.pageHeight)
+      .updateMargins({ top: g.marginTop, bottom: g.marginBottom, left: g.marginLeft, right: g.marginRight })
+      .run();
+  }, [editor, paged, pageSize, margins]);
+
+  useEffect(() => {
+    if (!editor || !paged) return;
+    const chrome = { ...DEFAULT_PAGE_CHROME, ...(pageChrome || {}) };
+    editor
+      .chain()
+      .updateHeaderContent(chrome.headerLeft, chrome.headerRight)
+      .updateFooterContent(chrome.footerLeft, chrome.footerRight)
+      .run();
+  }, [editor, paged, pageChrome]);
 
   useEffect(() => {
     if (!editor || !value) return;
@@ -219,7 +291,11 @@ export function DocumentTemplateEditor({
     <div className="doc-template-editor">
       <DocumentEditorToolbar editor={editor} />
       <div ref={scrollRef} className="doc-editor-scroll">
-        <div ref={pageRef} className="doc-page" style={pageStyle}>
+        <div
+          ref={pageRef}
+          className={paged ? 'doc-page doc-page--paged' : 'doc-page'}
+          style={paged ? { width: `${naturalPageWidth}px` } : pageStyle}
+        >
           <EditorContent editor={editor} />
         </div>
       </div>

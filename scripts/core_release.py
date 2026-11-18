@@ -13,6 +13,7 @@ import os
 import re
 import shutil
 import subprocess
+import sys
 import tempfile
 import urllib.parse
 import urllib.request
@@ -186,46 +187,14 @@ def inspect_wheel(wheel, source, version):
 
 
 def snapshot(source, output):
-    output.mkdir()
-    files = (
-        subprocess.check_output(["git", "ls-files", "-z", "frontend"], cwd=source)
-        .decode()
-        .split("\0")
+    # The exact Core tag defines both the UI inputs and how to compose them.
+    subprocess.run(
+        [sys.executable, "scripts/distribution.py", "snapshot", "--output", str(output)],
+        cwd=source,
+        check=True,
+        stdout=sys.stderr,
     )
-    for name in filter(None, files):
-        rel = Path(name)
-        if any(
-            part in {"node_modules", "dist", ".env"} or part.startswith(".env.")
-            for part in rel.parts
-        ):
-            continue
-        original = source / rel
-        if original.is_symlink() or not original.is_file():
-            raise ValueError("Unsupported Core UI source")
-        target = output / rel
-        target.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copyfile(original, target)
-    for name in ["LICENSE", "NOTICE"]:
-        shutil.copyfile(source / "backend" / name, output / name)
-    shutil.copyfile(source / "scripts/distribution.py", output / "compose.py")
-    inventory = {
-        p.relative_to(output).as_posix(): digest(p)
-        for p in sorted(output.rglob("*"))
-        if p.is_file()
-    }
-    descriptor = {
-        "contract_version": 1,
-        "source_commit": subprocess.check_output(
-            ["git", "rev-parse", "HEAD"], cwd=source, text=True
-        ).strip(),
-        "source_tree_sha256": hashlib.sha256(
-            json.dumps(inventory, sort_keys=True).encode()
-        ).hexdigest(),
-        "files": inventory,
-        "license_state": "Apache-2.0 Core and One; inherited component grants retained",
-    }
-    write_json(output / "core-source.json", descriptor)
-    return descriptor
+    return json.loads((output / "core-source.json").read_text())
 
 
 def write_json(file, value):
@@ -245,17 +214,22 @@ def prepare(root, policy, version, metadata, source, runtime_only=False):
         wheel = temp / asset["filename"]
         wheel.write_bytes(data)
         count = inspect_wheel(wheel, source, version)
-        descriptor = snapshot(source, temp / "ui")
         tag_commit = subprocess.check_output(
             ["git", "rev-parse", f"v{version}^{{commit}}"], cwd=source, text=True
         ).strip()
+        head = subprocess.check_output(
+            ["git", "rev-parse", "HEAD"], cwd=source, text=True
+        ).strip()
         if (
-            descriptor["source_commit"] != tag_commit
+            head != tag_commit
             or subprocess.check_output(
                 ["git", "status", "--porcelain"], cwd=source, text=True
             ).strip()
         ):
             raise ValueError("Require a clean exact Core release tag checkout")
+        descriptor = snapshot(source, temp / "ui")
+        if descriptor["source_commit"] != tag_commit:
+            raise ValueError("Core UI snapshot does not match the release tag")
         pins = json.loads((root / "distribution.json").read_text())
         package = json.loads((root / "package.json").read_text())
         lock = json.loads((root / "package-lock.json").read_text())

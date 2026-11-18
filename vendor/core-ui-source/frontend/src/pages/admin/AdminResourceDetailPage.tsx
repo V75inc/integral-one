@@ -13,6 +13,8 @@ import {
 } from '../../components/ui';
 import { useSetCrumbs } from '../../context/CrumbsContext';
 import { AdminEntityLink, AdminOwnerCell } from '../../components/admin/AdminEntityLink';
+import { parseDateFieldValue } from '../../utils/dateFieldValue';
+import { browserTimezone, formatUserDateTime } from '../../utils/userTimezone';
 
 export function AdminResourceDetailPage({
   resourceType,
@@ -32,6 +34,7 @@ export function AdminResourceDetailPage({
         : adminApi.getTrack(resourceId!),
     enabled: !!resourceId,
   });
+  const createdAt = parseDateFieldValue(resource?.created_at, 'datetime');
 
   useSetCrumbs([
     { label: 'Admin', to: '/admin' },
@@ -87,7 +90,7 @@ export function AdminResourceDetailPage({
               {resource.created_at ? (
                 <div>
                   <Text as="dt" variant="label" tone="subtle">Created</Text>
-                  <dd className="mt-0.5">{resource.created_at}</dd>
+                  <dd className="mt-0.5">{createdAt ? formatUserDateTime(createdAt, browserTimezone()) : '—'}</dd>
                 </div>
               ) : null}
             </dl>

@@ -18,6 +18,16 @@ if (chromeArgument) {
 }
 
 contextBridge.exposeInMainWorld('integralDesktop', Object.freeze({
+  updates: Object.freeze({
+    getState: () => ipcRenderer.invoke('integral:updates-state'),
+    check: () => ipcRenderer.invoke('integral:updates-check'),
+    onChange(callback) {
+      if (typeof callback !== 'function') throw new Error('Expected an update listener.');
+      const listener = (_event, state) => callback(state);
+      ipcRenderer.on('integral:updates-state', listener);
+      return () => ipcRenderer.removeListener('integral:updates-state', listener);
+    },
+  }),
   profile: () => ipcRenderer.invoke('integral:account-profile'),
   signOut: () => ipcRenderer.invoke('integral:account-signOut'),
   signIn: () => ipcRenderer.invoke('integral:account-signIn'),

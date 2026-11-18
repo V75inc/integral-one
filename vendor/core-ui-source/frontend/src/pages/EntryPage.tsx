@@ -1,10 +1,14 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { entriesApi } from '../api';
+import { entriesApi, tracksApi } from '../api';
+import { useScopeOptional } from '../context/ScopeContext';
+import { useSetCrumbs } from '../context/CrumbsContext';
+import { useWorkspaceCrumbPrefix } from '../hooks/useWorkspaceCrumbPrefix';
+import { buildTrackBreadcrumbs } from '../utils/buildTrackBreadcrumbs';
 import { EntryDetail } from '../components/entries/EntryDetail';
 import { usePublishPageContext } from '../hooks/usePublishPageContext';
 import { trackPath } from '../utils/resourcePaths';
-import type { Entry } from '../types';
+import type { Entry, Track } from '../types';
 import { Surface, Text } from '../ui';
 
 /**
@@ -21,6 +25,49 @@ export function EntryPage() {
   const navigate = useNavigate();
   const [entry, setEntry] = useState<Entry | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // The workspace the entry lives in ('' when it could not be read). Files,
+  // comments and related records are read under the active workspace scope, so
+  // a link opened from another workspace must switch scope first; otherwise the
+  // entry loads but its files are refused and the page shows "No file yet".
+  const [entryWorkspaceId, setEntryWorkspaceId] = useState<string | null>(null);
+  const [track, setTrack] = useState<Track | null>(null);
+  const scopeCtx = useScopeOptional();
+  const scope = scopeCtx?.scope ?? null;
+  const setScope = scopeCtx?.setScope;
+
+  useEffect(() => {
+    if (!entry?.track_id) return;
+    let cancelled = false;
+    setEntryWorkspaceId(null);
+    tracksApi
+      .get(entry.track_id)
+      .then(t => {
+        if (cancelled) return;
+        setTrack(t);
+        setEntryWorkspaceId(t.app?.workspace_id || t.workspace_id || '');
+      })
+      .catch(() => {
+        if (!cancelled) setEntryWorkspaceId('');
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [entry?.track_id]);
+
+  // Home › Workspace › App › Track › this entry, the same trail the track page shows,
+  // instead of the bare "Entries" the URL alone gives.
+  const workspaceCrumbs = useWorkspaceCrumbPrefix(entryWorkspaceId || null);
+  useSetCrumbs(
+    track
+      ? [...workspaceCrumbs, ...buildTrackBreadcrumbs(track, { entryTitle: entry?.title || null })]
+      : []
+  );
+
+  useEffect(() => {
+    if (setScope && entryWorkspaceId && scope?.workspaceId !== entryWorkspaceId) {
+      setScope({ workspaceId: entryWorkspaceId });
+    }
+  }, [entryWorkspaceId, scope?.workspaceId, setScope]);
 
   useEffect(() => {
     if (!entryId) return;
@@ -61,7 +108,12 @@ export function EntryPage() {
     );
   }
 
-  if (!entry) {
+  // Without a scope provider (embedded or in tests) there is nothing to switch.
+  const scopeReady =
+    !scopeCtx ||
+    entryWorkspaceId === '' ||
+    (!!entryWorkspaceId && scope?.workspaceId === entryWorkspaceId);
+  if (!entry || !scopeReady) {
     return (
       <div className="min-h-screen">
         <Surface tone="panel" border="default" className="h-14" />

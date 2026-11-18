@@ -12,7 +12,7 @@ function Filters() {
     <TrackFilterStrip
       filterType={type}
       setFilterType={setType}
-      entryTypeSlugs={['task']}
+      entryTypeSlugs={['task', 'note']}
       search={search}
       setSearch={setSearch}
       selectedTags={tags}
