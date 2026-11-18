@@ -106,16 +106,19 @@ for (const phase of ["before-renames", "home-retained", "snapshot-restored"]) {
     assert.equal(restored.state().pending, null);
   });
 }
-test("cold snapshots preserve only Core's generated interpreter links without following them", async t => {
+test("cold snapshots preserve Core's generated venv links without following them", async t => {
  const f=fixture(t), bin=path.join(f.home,'database-runtime/bin');fs.mkdirSync(bin,{recursive:true});
  if(process.platform==='win32')return;
  const external=path.join(f.dir,'python3.12');fs.writeFileSync(external,'external interpreter is not copied');
+ fs.mkdirSync(path.join(f.home,'database-runtime/lib'));
+ fs.symlinkSync('lib',path.join(f.home,'database-runtime/lib64'));
  fs.symlinkSync(external,path.join(bin,'python'));fs.symlinkSync('python',path.join(bin,'python3'));fs.symlinkSync('python',path.join(bin,'python3.12'));
  await f.boot();await f.manager.stage(f.candidate);await f.manager.install();
  const snapshot=f.manager.state().pending.snapshot;
  assert.ok(fs.lstatSync(path.join(snapshot,'database-runtime/bin/python')).isSymbolicLink());
  assert.equal(fs.readlinkSync(path.join(snapshot,'database-runtime/bin/python')),external);
  assert.equal(fs.readlinkSync(path.join(snapshot,'database-runtime/bin/python3')),'python');
+ assert.equal(fs.readlinkSync(path.join(snapshot,'database-runtime/lib64')),'lib');
 });
 test("a newer desktop can replace an older external runtime with its bundled fallback",async t=>{
  const f=fixture(t);await f.boot();await f.manager.stage(f.candidate);await f.manager.install();await f.restart();

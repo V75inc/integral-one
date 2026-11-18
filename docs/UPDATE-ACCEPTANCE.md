@@ -1,6 +1,6 @@
 # One update acceptance: local preparation, not release approval
 
-The persistent in-app update indicator remains a release acceptance gate under Eldon’s clean-update priority. The local implementation lives in One’s sandboxed workspace preload, so a supported external Core UI does not need the newest One frontend overlay to show it. Status opens the trusted update center and cannot itself install. Native Help and OS notification entry points remain available. The desktop-host preload option is generic; One owns indicator copy and presentation. The distinct local host artifact is 0.1.7-dev.18; no host or One release has been published by this work.
+The persistent in-app update indicator remains a release acceptance gate under Eldon’s clean-update priority. The local implementation lives in One’s sandboxed workspace preload, so a supported external Core UI does not need the newest One frontend overlay to show it. Status opens the trusted update center and cannot itself install. Native Help and OS notification entry points remain available. The desktop-host preload option is generic; One owns indicator copy and presentation. The distinct local host artifact is 0.1.7-dev.19; no host or One release has been published by this work.
 
 ## Keep these gates separate
 

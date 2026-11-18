@@ -27,10 +27,11 @@ function copyHome(source, target) {
   fs.cpSync(source, target, { recursive: true, errorOnExist: true, force: false, dereference: false, verbatimSymlinks: true, filter: file => {
     const stat = fs.lstatSync(file);
     if (stat.isSymbolicLink()) {
-      // Core's disposable pgserver venv contains these three interpreter links.
+      // The pgserver venv contains interpreter links and a Unix lib64 alias.
       // Preserve only their literal targets; never follow a link into a backup.
       const relative = path.relative(source, file).split(path.sep).join("/"), link = fs.readlinkSync(file);
-      if ((/^database-runtime\/bin\/python(?:3|3\.12)$/.test(relative) && link === "python") ||
+      if ((relative === "database-runtime/lib64" && link === "lib") ||
+          (/^database-runtime\/bin\/python(?:3|3\.12)$/.test(relative) && link === "python") ||
           (relative === "database-runtime/bin/python" && path.isAbsolute(link) && path.basename(link) === "python3.12")) return true;
     }
     if (stat.isSymbolicLink() || (!stat.isDirectory() && !stat.isFile())) throw new Error("Workspace backup refuses links or special files.");

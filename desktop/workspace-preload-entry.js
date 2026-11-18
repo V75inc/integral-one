@@ -14,7 +14,11 @@ if (process.isMainFrame !== false) {
       return () => ipcRenderer.removeListener("integral:updates-state", listener);
     },
   };
-  const mount = () => mountUpdateIndicator(document, bridge);
+  const mount = () => {
+    // Electron can preload the initial empty document before the workspace commits.
+    if (document.location.protocol !== "http:") return;
+    mountUpdateIndicator(document, bridge);
+  };
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", mount, { once: true });
   else mount();
 }

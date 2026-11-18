@@ -45,7 +45,12 @@ test('cold provisioning survives five minutes and reports only fixed progress me
   t.mock.timers.enable({ apis: ['setTimeout'] });
   const child = fakeProcess(), progress = [];
   const result = runCli({file: 'uv', args: ['tool', 'run']}, ['up'], {
-    timeout: 30 * 60_000, spawnProcess: () => child, onProgress: message => progress.push(message),
+    timeout: 30 * 60_000,
+    spawnProcess: (_file, _args, { env }) => {
+      assert.equal(env.PYTHONUTF8, '1');
+      return child;
+    },
+    onProgress: message => progress.push(message),
   });
   child.stderr.emit('data', 'Downloading cpy');
   child.stderr.emit('data', 'thon-3.12 (20MiB)\nDownloading private-package (1MiB)\n');

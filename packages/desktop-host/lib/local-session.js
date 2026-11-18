@@ -22,8 +22,10 @@ async function localSession(runtime, { readFile = fs.readFileSync, request = fet
 }
 
 function trustedSender(event, window, workspace) {
-  return Boolean(window && event.sender === window.webContents && event.senderFrame === window.webContents.mainFrame &&
-    new URL(event.senderFrame.url).origin === new URL(workspace).origin);
+  const frame = event.senderFrame;
+  if (!window || !frame || event.sender !== window.webContents || frame !== window.webContents.mainFrame) return false;
+  return URL.canParse(frame.url) && URL.canParse(workspace) &&
+    new URL(frame.url).origin === new URL(workspace).origin;
 }
 
 /** Recheck authority after IPC work; sign-out or navigation can happen in flight. */
