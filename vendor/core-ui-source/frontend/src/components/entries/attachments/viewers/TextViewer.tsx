@@ -6,6 +6,7 @@ import type { Attachment } from '../../../../types';
 import { useAttachmentBlob } from './useAttachmentBlob';
 import { ViewerStatus } from './ViewerStatus';
 import { resolveAttachmentMime } from '../../../../utils/attachmentMime';
+import { parseCsv } from '../../../../utils/csvParse';
 
 /**
  * Renders text/markdown/json/csv attachments.
@@ -51,6 +52,7 @@ export function TextViewer({ attachment }: { attachment: Attachment }) {
   const mime = resolveAttachmentMime(attachment);
   const isMarkdown = mime === 'text/markdown' || mime === 'text/x-markdown';
   const isJson = mime === 'application/json';
+  const isCsv = mime === 'text/csv';
 
   let body: React.ReactNode;
   if (isMarkdown) {
@@ -58,6 +60,31 @@ export function TextViewer({ attachment }: { attachment: Attachment }) {
       <article className="prose prose-sm max-w-none px-6 py-4 text-[var(--text)]">
         <ReactMarkdown remarkPlugins={[remarkGfm]}>{text}</ReactMarkdown>
       </article>
+    );
+  } else if (isCsv) {
+    const rows = parseCsv(text);
+    const [head, ...rest] = rows;
+    body = !head ? (
+      <div className="px-4 py-3 text-xs text-[var(--text-muted)]">This file is empty.</div>
+    ) : (
+      <table className="w-max min-w-full border-collapse text-xs text-[var(--text)]">
+        <thead>
+          <tr>
+            {head.map((c, i) => (
+              <th key={i} className="sticky top-0 whitespace-nowrap border-b border-[var(--panel-border)] bg-[var(--panel-2)] px-3 py-2 text-left font-semibold">{c}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {rest.map((r, ri) => (
+            <tr key={ri} className="even:bg-[var(--panel-2)]/50">
+              {head.map((_, ci) => (
+                <td key={ci} className="whitespace-nowrap border-b border-[var(--panel-border)] px-3 py-1.5">{r[ci] ?? ''}</td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
     );
   } else if (isJson) {
     let formatted = text;

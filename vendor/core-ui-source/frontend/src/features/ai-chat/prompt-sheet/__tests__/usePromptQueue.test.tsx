@@ -28,6 +28,35 @@ afterEach(() => { cleanup(); vi.useRealTimers(); vi.clearAllMocks(); });
 async function settled() { await act(async () => { await Promise.resolve(); }); }
 
 describe('approval queue refresh', () => {
+  it('preserves manual navigation across polls, reordered items and resolution', async () => {
+    const first = { ...openQueue('expired').queue.items[0], status: 'rejected', staged_state: 'expired' };
+    const second = { ...openQueue('consumed').queue.items[0], status: 'approved', staged_state: 'consumed' };
+    const third = openQueue('new').queue.items[0];
+    const response = (items: unknown[]) => ({ ...openQueue(), queue: { status: 'open', items } }) as Awaited<ReturnType<typeof getPromptQueue>>;
+    vi.mocked(getPromptQueue).mockResolvedValue(response([first, second, third]));
+    const { result } = renderHook(() => usePromptQueue()); await settled();
+    expect(result.current.current?.id).toBe('new');
+    act(() => result.current.page.prev());
+    expect(result.current.current?.id).toBe('consumed');
+    await act(async () => { await vi.advanceTimersByTimeAsync(5000); });
+    expect(result.current.current?.id).toBe('consumed');
+    act(() => result.current.page.prev());
+    await act(async () => { await result.current.refresh(); });
+    expect(result.current.current?.id).toBe('expired');
+    act(() => result.current.page.next());
+    vi.mocked(getPromptQueue).mockResolvedValue(response([third, first, second]));
+    await act(async () => { await result.current.refresh(); });
+    expect(result.current.current?.id).toBe('consumed');
+    expect(result.current.page.index).toBe(2);
+    vi.mocked(getPromptQueue).mockResolvedValue(response([first, third]));
+    await act(async () => { await result.current.refresh(); });
+    expect(result.current.current?.id).toBe('new');
+    vi.mocked(getPromptQueue).mockResolvedValue(response([first, { ...third, status: 'approved', staged_state: 'consumed' }]));
+    await act(async () => { await result.current.refresh(); });
+    expect(result.current.current?.id).toBe('new');
+    expect(result.current.current?.status).toBe('approved');
+  });
+
   it('keeps an applied result distinct from a failed review refresh', async () => {
     vi.mocked(getStagingTokenState).mockResolvedValue({ requires_strong_confirmation: false } as never);
     vi.mocked(blessStagingToken).mockResolvedValue({ok: true, consumed: true, staged_change: {state: 'consumed'}, execute_result: {ok: true}} as never);

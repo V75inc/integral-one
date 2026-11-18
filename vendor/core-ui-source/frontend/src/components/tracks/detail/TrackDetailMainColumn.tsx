@@ -1,8 +1,13 @@
-import { type ReactNode, type RefObject } from 'react';
+import { type ReactNode, type RefObject, useMemo } from 'react';
 import { Loader2 } from 'lucide-react';
 import { TrackFilterStrip } from '../TrackFilterStrip';
+import type { FieldFilter } from '../fieldFilters';
+import { ListPager } from '../../ui/ListPager';
+import { FilterChips } from '../../views/FilterChips';
+import { trackFilterSpecs } from '../../views/columnFilterModel';
 import { EntryComposer } from '../../entries/EntryComposer';
 import { FilterActionRow, LINE_ICON_STROKE, filterBar } from '../../ui';
+import { Surface } from '../../../ui';
 import { ViewRenderer } from '../../../views';
 import type { ViewWidgetProps } from '../../../views/types';
 import type {
@@ -16,6 +21,8 @@ import type {
 export interface TrackDetailMainColumnProps {
   isPagesView: boolean;
   rightRailOpen: boolean;
+  /** The App's ``defaults.toolbar.show_search_and_filters``. False hides the search box and Filters. Default true. */
+  showSearchAndFilters?: boolean;
   filterType: string;
   setFilterType: (v: string) => void;
   entryTypeSlugs: string[];
@@ -63,6 +70,13 @@ export interface TrackDetailMainColumnProps {
   onEntryCreate: NonNullable<ViewWidgetProps['onEntryCreate']>;
   entryTypes: EntryTypeNode[];
   trackEntryTypeFields: OperationalModelFieldSpec[];
+  fieldFilters: FieldFilter[];
+  setFieldFilters: (value: FieldFilter[]) => void;
+  /** Table lists: the server's order for the whole list, the exact total, and the page controls. */
+  sort?: { field: string; path?: string; dir: 'asc' | 'desc' } | null;
+  onSortChange?: (next: { field: string; path?: string; dir: 'asc' | 'desc' }) => void;
+  entriesTotal?: number;
+  pager?: { page: number; pageSize: number; total: number; busy?: boolean; onPage: (page: number) => void; onPageSize: (size: number) => void };
   hasNextPage: boolean | undefined;
   isFetchingNextPage: boolean;
   fetchNextPage: () => void;
@@ -74,6 +88,7 @@ export interface TrackDetailMainColumnProps {
 export function TrackDetailMainColumn({
   isPagesView,
   rightRailOpen,
+  showSearchAndFilters = true,
   filterType,
   setFilterType,
   entryTypeSlugs,
@@ -115,6 +130,12 @@ export function TrackDetailMainColumn({
   onEntryCreate,
   entryTypes,
   trackEntryTypeFields,
+  fieldFilters,
+  setFieldFilters,
+  sort,
+  onSortChange,
+  entriesTotal,
+  pager,
   hasNextPage,
   isFetchingNextPage,
   fetchNextPage,
@@ -122,6 +143,7 @@ export function TrackDetailMainColumn({
   recordReadBoundaryNotice,
   trackEntriesSentinelRef,
 }: TrackDetailMainColumnProps) {
+  const filterSpecs = useMemo(() => trackFilterSpecs(trackEntryTypeFields, track?.id), [trackEntryTypeFields, track?.id]);
   return (
     <section
       className={`min-w-0 ${
@@ -136,12 +158,19 @@ export function TrackDetailMainColumn({
     >
       {!isPagesView ? (
         <>
+          {/* A track that hides search and Filters, with nothing to add here,
+              gets no toolbar row at all: an empty row only left a gap. */}
+          {showSearchAndFilters || canCreateEntry ? (
           <FilterActionRow>
+            {showSearchAndFilters ? (
             <div className="w-full max-w-xl min-w-[min(100%,18rem)]">
               <TrackFilterStrip
                 filterType={filterType}
                 setFilterType={setFilterType}
                 entryTypeSlugs={entryTypeSlugs}
+                filterSpecs={filterSpecs}
+                fieldFilters={fieldFilters}
+                onFieldFiltersChange={setFieldFilters}
                 tagEntries={tagFilterEntries}
                 selectedTags={filterTags}
                 onTagsChange={setFilterTags}
@@ -155,6 +184,9 @@ export function TrackDetailMainColumn({
                 retrievalDegraded={retrievalDegraded}
               />
             </div>
+            ) : (
+              <div className="min-w-0 flex-1" />
+            )}
             <div className="flex items-center gap-2 shrink-0">
               {canCreateEntry ? (
                 <EntryComposer
@@ -171,6 +203,7 @@ export function TrackDetailMainColumn({
               ) : null}
             </div>
           </FilterActionRow>
+          ) : null}
 
           {semanticMode && retrievalMissingCount > 0 ? (
             <div className="mb-3 text-xs text-[color:var(--text-subtle)]">
@@ -201,11 +234,17 @@ export function TrackDetailMainColumn({
         </div>
       ) : null}
 
+      {!isPagesView && fieldFilters.length > 0 ? (
+        <Surface tone="panel" border="entry-table" radius="card" padding="none" className="mb-3 overflow-hidden">
+          <FilterChips specs={filterSpecs} filters={fieldFilters} onChange={setFieldFilters} total={entriesTotal} />
+        </Surface>
+      ) : null}
       {recordReadBoundaryNotice}
       {recordReadBoundaryNotice && filteredEntries.length === 0 ? null : activeView ? (
         <>
           <ViewRenderer
             view={activeView}
+            viewContext="track-list"
             entries={filteredEntries}
             isLoading={entriesPending}
             onEntryOpen={onEntryOpen}
@@ -224,6 +263,11 @@ export function TrackDetailMainColumn({
               track?.operational_model_defaults?.default_entry_type
             }
             fields={trackEntryTypeFields}
+            columnFilters={fieldFilters}
+            onColumnFiltersChange={setFieldFilters}
+            totalCount={entriesTotal}
+            sort={sort}
+            onSortChange={onSortChange}
             filterType={filterType}
             onFilterChange={setFilterType}
             fetchMore={
@@ -237,6 +281,17 @@ export function TrackDetailMainColumn({
             isEditor={canCreateEntry}
             track={track ?? undefined}
           />
+          {pager ? (
+            <ListPager
+              page={pager.page}
+              pageSize={pager.pageSize}
+              total={pager.total}
+              busy={pager.busy}
+              onPageChange={pager.onPage}
+              onPageSizeChange={pager.onPageSize}
+              label="entries"
+            />
+          ) : null}
           {isFetchingNextPage ? (
             <div className="flex justify-center py-4 text-[color:var(--text-muted)]">
               <Loader2

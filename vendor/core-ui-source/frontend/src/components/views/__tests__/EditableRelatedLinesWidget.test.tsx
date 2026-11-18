@@ -1,4 +1,5 @@
-import { render, screen, waitFor, within } from '@testing-library/react';
+import {StrictMode, useState} from 'react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const invokeOperation = vi.fn();
@@ -136,4 +137,93 @@ describe('EditableRelatedLinesWidget', () => {
     expect(entriesApi.delete).not.toHaveBeenCalled();
     expect(invokeOperation).toHaveBeenCalledTimes(1);
   });
+});
+
+it('settles async tax totals when the parent echoes a new draft object', async () => {
+  invokeOperation.mockResolvedValue({output: {items: [{id: 'standard', code: 'STANDARD', rate_percent: 14}]}});
+  const patches = vi.fn();
+  const props = lineView({parent_total_field: 'total', parent_tax_field: 'tax', tax_column: 'tax_code',
+    column_options: {tax_code: {tool: 'list_codes'}}});
+  function Host() {
+    const [fields, setFields] = useState<Record<string, unknown>>({tax_inclusive: false});
+    return <ContributionLifecycleContext.Provider value={{mode: 'create', placement: 'entry_compose', appId: 'app1', trackId: 'track1', customFields: fields,
+      register: () => () => {}, onDraftPatch: patch => {
+        patches(patch);
+        if (patches.mock.calls.length > 5) throw new Error('Draft echo loop');
+        setFields(previous => ({...previous, ...patch.custom_fields}));
+      }}}><EditableRelatedLinesWidget {...props} /></ContributionLifecycleContext.Provider>;
+  }
+  render(<Host />);
+  await waitFor(() => expect(patches).toHaveBeenCalled());
+  expect(patches).toHaveBeenCalledTimes(1);
+  expect(patches).toHaveBeenCalledWith(expect.objectContaining({custom_fields: {total: 0, tax: 0}}));
+});
+
+it('adds consecutive draft rows without updating the parent during render', () => {
+  const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+  const patches = vi.fn();
+  const props = lineView({parent_total_field: 'total'});
+  function Host() {
+    const [fields, setFields] = useState<Record<string, unknown>>({});
+    return <ContributionLifecycleContext.Provider value={{mode: 'create', placement: 'entry_compose', customFields: fields, register: () => () => {},
+      onDraftPatch: patch => {
+        patches(patch);
+        setFields(previous => ({...previous, ...patch.custom_fields}));
+      }}}><EditableRelatedLinesWidget {...props} /></ContributionLifecycleContext.Provider>;
+  }
+  try {
+    render(<StrictMode><Host /></StrictMode>);
+    const add = screen.getByRole('button', {name: /add line/i});
+    fireEvent.click(add);
+    fireEvent.click(add);
+    expect(patches.mock.lastCall?.[0].related.lines).toHaveLength(3);
+    expect(errors.mock.calls.some(args => String(args[0]).includes('Cannot update a component'))).toBe(false);
+  } finally {
+    errors.mockRestore();
+  }
+});
+
+it('resolves selected tax IDs through a declared read without zeroing totals while metadata is pending', async () => {
+  const {AppUIProvider} = await import('@integral/sdk-react');
+  let complete!: (value: any) => void;
+  const query = vi.fn(() => new Promise<Record<string, unknown>>(resolve => {complete = resolve;}));
+  const api = {query} as unknown as import('@integral/sdk-react').AppUI;
+  const patch = vi.fn();
+  let handle!: ContributionLifecycleHandle;
+  invokeOperation.mockClear();
+  render(<AppUIProvider value={api}><ContributionLifecycleContext.Provider value={{mode: 'create', placement: 'entry_compose', customFields: {total: 114, tax: 14, tax_inclusive: false}, onDraftPatch: patch, register: member => {handle = member; return () => {};}}}>
+    <EditableRelatedLinesWidget {...lineView({defaults: {quantity: 1, unit_price: 100, tax_code: 'beyond-page'}, parent_total_field: 'total', parent_tax_field: 'tax', tax_column: 'tax_code', tax_inclusive_field: 'tax_inclusive', column_options: {tax_code: {query: 'declared_tax', tool: 'legacy_tax'}}})} />
+  </ContributionLifecycleContext.Provider></AppUIProvider>);
+  await waitFor(() => expect(query).toHaveBeenCalled());
+  expect(query.mock.calls[0]).toEqual(['declared_tax', {ids: ['beyond-page'], limit: 50}, expect.any(AbortSignal)]);
+  expect(invokeOperation).not.toHaveBeenCalled();
+  expect(patch.mock.calls.every(([value]) => value.custom_fields.tax !== 0)).toBe(true);
+  expect((await handle.requestValidate()).ok).toBe(false);
+  await import('@testing-library/react').then(({act}) => act(async () => {complete({output: {items: [{id: 'beyond-page', label: 'VAT14', rate_percent: 14}]}});}));
+  await waitFor(() => expect(screen.getByRole('combobox', {name: 'Tax code'})).toHaveValue('VAT14'));
+  expect((await handle.requestValidate()).ok).toBe(true);
+});
+
+
+it.each([true, false])('retains returned line IDs while opting into the tool input schema: %s', async optIn => {
+  let handle: ContributionLifecycleHandle | undefined;
+  invokeOperation.mockReset();
+  invokeOperation.mockResolvedValue({output: {line_ids: ['saved-line']}});
+  render(
+    <ContributionLifecycleContext.Provider value={{
+      mode: 'create', placement: 'entry_compose', appId: 'app1', customFields: {},
+      register: next => {handle = next; return () => {};},
+    }}>
+      <EditableRelatedLinesWidget {...lineView({
+        persist_mode: 'tool', persist_tool: 'persist_records',
+        ...(optIn ? {persist_line_id_field: 'entry_id'} : {}),
+        defaults: {description: 'Synthetic row', quantity: 1, unit_price: 10},
+      })} />
+    </ContributionLifecycleContext.Provider>,
+  );
+  await waitFor(() => expect(handle).toBeDefined());
+  await act(async () => {expect((await handle!.requestSubmit('parent-1')).ok).toBe(true);});
+  expect(invokeOperation.mock.calls[invokeOperation.mock.calls.length - 1]?.[2].lines[0].entry_id).toBeUndefined();
+  await act(async () => {expect((await handle!.requestSubmit('parent-1')).ok).toBe(true);});
+  expect(invokeOperation.mock.calls[invokeOperation.mock.calls.length - 1]?.[2].lines[0].entry_id).toBe(optIn ? 'saved-line' : undefined);
 });

@@ -38,9 +38,10 @@ import { orderSavedViews } from '../../utils/savedViewTabs';
 interface TrackConfigPanelProps {
   trackId: string;
   canEdit: boolean;
+  appTabOrder?: string[];
 }
 
-export function TrackConfigPanel({ trackId, canEdit }: TrackConfigPanelProps) {
+export function TrackConfigPanel({ trackId, canEdit, appTabOrder }: TrackConfigPanelProps) {
   const confirm = useConfirm();
   const { showToast } = useToast();
   const queryClient = useQueryClient();
@@ -64,7 +65,7 @@ export function TrackConfigPanel({ trackId, canEdit }: TrackConfigPanelProps) {
     queryKey: viewsForTrackQueryKey(trackId),
     queryFn: () => trackViewsApi.list(trackId)
   });
-  const views = useMemo(() => orderSavedViews(viewsQuery.data ?? []), [viewsQuery.data]);
+  const views = useMemo(() => orderSavedViews(viewsQuery.data ?? [], appTabOrder), [viewsQuery.data, appTabOrder]);
   const [orderingViews, setOrderingViews] = useState(false);
 
   const loading =

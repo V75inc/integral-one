@@ -25,6 +25,7 @@ import {
   manifestAppTracks,
 } from '../../utils';
 import { AppPackageDetails } from '../apps/AppPackageDetails';
+import { TrackIconPicker } from './TrackIconPicker';
 import { TrackDestinationPicker, type TrackDestinationKind } from './TrackDestinationPicker';
 import { TrackTemplateCatalog } from './TrackTemplateCatalog';
 import type { OperationalModelPickerItem } from '../library/OperationalModelPicker';
@@ -65,6 +66,8 @@ export function TrackModal({
   const { scope } = useScope();
   const isEdit = !!editTrack;
   const [title, setTitle] = useState(editTrack?.title || '');
+  const [icon, setIcon] = useState(editTrack?.icon || '');
+  const [iconChanged, setIconChanged] = useState(false);
   const [purpose, setPurpose] = useState(
     editTrack?.purpose || editTrack?.description || ''
   );
@@ -138,9 +141,11 @@ export function TrackModal({
       setOperationalModelChoice('');
       setChosenParentAppId(appId || '');
       setDestinationKind(appId ? 'app' : 'top-level');
+      setIcon(editTrack?.icon || '');
+      setIconChanged(false);
       if (!isEdit) { setTitle(''); setPurpose(''); }
     }
-  }, [open, isEdit, appId, scope?.workspaceId]);
+  }, [open, isEdit, appId, scope?.workspaceId, editTrack?.icon]);
 
   useEffect(() => {
     if (!open || isEdit) {
@@ -211,6 +216,8 @@ export function TrackModal({
   useEffect(() => {
     if (editTrack) {
       setTitle(editTrack.title || '');
+      setIcon(editTrack.icon || '');
+      setIconChanged(false);
       setPurpose(editTrack.purpose || editTrack.description || '');
       setVisibilityChoice(normalizeTrackVisibility(editTrack.visibility));
     }
@@ -218,6 +225,14 @@ export function TrackModal({
 
   const selectedLibraryModel = libraryPackages.find(model => operationalModelChoice === `library:${model.id}`);
   const selectedAppSource = appSources.find(source => source.value === operationalModelChoice);
+  const selectedTemplate = templates.find(template => operationalModelChoice === `template:${template.id}`);
+  const modelTier = (selectedLibraryModel || selectedTemplate)?.manifest?.track;
+  const modelIcon = modelTier && typeof modelTier === 'object' && typeof (modelTier as Record<string, unknown>).icon === 'string'
+    ? String((modelTier as Record<string, unknown>).icon) : '';
+  const inheritedIcon = operationalModelChoice.startsWith('manifest:')
+    ? manifestTracks.find(track => operationalModelChoice === `manifest:${track.key}`)?.icon || ''
+    : modelIcon;
+  const selectedIcon = isEdit || iconChanged ? icon : inheritedIcon;
   const selectedName = selectedLibraryModel?.name || selectedAppSource?.name || (operationalModelChoice === 'blank' ? 'Custom track' : destinationAppId ? 'App defaults' : 'Choose a template');
   const selectedCounts = selectedLibraryModel
     ? summarizeLibraryManifest(selectedLibraryModel.manifest ?? {}) : null;
@@ -271,6 +286,7 @@ export function TrackModal({
         t = await tracksApi.update(editTrack.id, {
           title: title.trim(),
           purpose: purpose.trim(),
+          ...(iconChanged ? { icon } : {}),
           ...(visibilityChoice !== 'inherit' ? { visibility: visibilityChoice } : {}),
         });
       } else {
@@ -278,6 +294,7 @@ export function TrackModal({
         const body: CreateTrackBody = {
           title: title.trim(),
           purpose: purpose.trim(),
+          ...(iconChanged ? { icon } : {}),
           ...(scope?.workspaceId ? { workspace_id: scope.workspaceId } : {}),
           ...(effectiveAppId ? { app_id: effectiveAppId } : {}),
         };
@@ -289,6 +306,8 @@ export function TrackModal({
       await onCreated(t);
       onClose();
       setTitle('');
+      setIcon('');
+      setIconChanged(false);
       setPurpose('');
       setVisibilityChoice('private');
       setOperationalModelChoice('');
@@ -358,6 +377,10 @@ export function TrackModal({
           noResize
         />
       </div>
+      <TrackIconPicker value={selectedIcon} disabled={loading} onChange={value => {
+        setIcon(value);
+        setIconChanged(true);
+      }} />
       {!isEdit && <Text variant="body-sm" tone="muted" as="p">
         Add to: {destinationAppId ? (parentAppOptions.find(app => app.id === destinationAppId)?.name || appDetail?.name || 'Selected App') : 'Top-level Tracks'}
       </Text>}

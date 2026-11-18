@@ -29,15 +29,25 @@ export type AppSelectProps = {
   options: AppSelectOption[];
   id?: string;
   'aria-label'?: string;
+  'aria-invalid'?: boolean;
+  'aria-describedby'?: string;
+  required?: boolean;
   disabled?: boolean;
   /** `field` matches `.app-input`; `pill` matches compact composer controls */
   variant?: 'field' | 'pill';
   className?: string;
+  /** Stretch the entire control, including its wrapper in flex rows. Field controls default to fluid. */
+  fluid?: boolean;
   /** When `value` is missing from `options`, trigger shows this (or raw `value`) */
   placeholder?: string;
   /** Opt-in type-ahead: a search box inside the open list filters the options. */
   searchable?: boolean;
   onSearchChange?: (query: string) => void;
+  remoteSearch?: boolean;
+  selectedLabel?: string;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+  footer?: ReactNode;
 };
 
 export function AppSelect({
@@ -46,14 +56,27 @@ export function AppSelect({
   options,
   id,
   'aria-label': ariaLabel,
+  'aria-invalid': ariaInvalid, 'aria-describedby': ariaDescribedBy, required,
   disabled,
   variant = 'field',
   className = '',
+  fluid = variant === 'field',
   placeholder,
   searchable = false,
-  onSearchChange,
+  onSearchChange, remoteSearch = false, selectedLabel: selectedLabelOverride,
+  open: controlledOpen, onOpenChange, footer,
 }: AppSelectProps) {
-  const [open, setOpen] = useState(false);
+  const [internalOpen, setInternalOpen] = useState(false);
+  const open = controlledOpen ?? internalOpen;
+  const openCallback = useRef(onOpenChange);
+  openCallback.current = onOpenChange;
+  // Remote pickers must close their read lifecycle when an editor unmounts.
+  useEffect(() => () => { openCallback.current?.(false); }, []);
+  const setOpen = (next: boolean | ((previous: boolean) => boolean)) => {
+    const value = typeof next === 'function' ? next(open) : next;
+    setInternalOpen(value);
+    onOpenChange?.(value);
+  };
   const [coords, setCoords] = useState<{
     triggerTop: number;
     triggerBottom: number;
@@ -66,7 +89,7 @@ export function AppSelect({
   const [query, setQuery] = useState('');
   const [activeIndex, setActiveIndex] = useState(0);
   const triggerRef = useRef<HTMLButtonElement | HTMLInputElement | null>(null);
-  const listRef = useRef<HTMLUListElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
   const listboxId = useId();
 
   const selected = options.find(o => o.value === value);
@@ -164,10 +187,10 @@ export function AppSelect({
   const fieldTrigger =
     'flex w-full min-w-0 items-center justify-between gap-2 text-left cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed';
   const pillTrigger =
-    'flex min-w-0 max-w-full items-center justify-between gap-2 rounded-md border border-[var(--panel-border)] bg-[var(--panel-2)] px-3 py-1.5 pr-2 text-left text-sm text-[var(--text)] cursor-pointer outline-none transition focus:ring-2 focus:ring-[var(--focus-ring-color)] disabled:opacity-50 disabled:cursor-not-allowed';
+    'flex min-w-0 max-w-full items-center justify-between gap-2 rounded-md border border-[var(--field-border)] bg-[var(--field-bg)] px-3 py-1.5 pr-2 text-left text-sm text-[var(--text)] cursor-pointer outline-none transition hover:border-[var(--field-border-hover)] focus:ring-2 focus:ring-[var(--focus-ring-color)] disabled:opacity-50 disabled:cursor-not-allowed';
 
   const filteredOptions = useMemo(() => {
-    if (!searchable || !query.trim()) return options;
+    if (remoteSearch || !searchable || !query.trim()) return options;
     const q = query.trim().toLowerCase();
     return options.filter(opt => {
       const label = typeof opt.label === 'string' ? opt.label : opt.value;
@@ -176,7 +199,7 @@ export function AppSelect({
         label.toLowerCase().includes(q)
       );
     });
-  }, [options, query, searchable]);
+  }, [options, query, searchable, remoteSearch]);
 
   function handleSearchKeyDown(e: ReactKeyboardEvent<HTMLInputElement>) {
     if (e.key === 'Escape') {
@@ -208,10 +231,9 @@ export function AppSelect({
   }
 
   const list = open && coords && (
-    <ul
+    <div
       ref={listRef}
-      id={listboxId}
-      role="listbox"
+      data-integral-popover-owner={listboxId}
       className="fixed z-popover box-border overflow-y-auto overflow-x-hidden rounded-[var(--radius-input)] border border-[var(--panel-border)] bg-[var(--panel)] py-1 shadow-lg outline-none"
       style={{
         ...(coords.placement === 'up'
@@ -224,6 +246,7 @@ export function AppSelect({
         maxHeight: coords.maxH,
       }}
     >
+      <ul id={listboxId} role="listbox">
       {filteredOptions.map((opt, idx) => {
         const isSelected = opt.value === value;
         const isActive = searchable && idx === activeIndex;
@@ -234,6 +257,7 @@ export function AppSelect({
             <button
               type="button"
               role="option"
+              tabIndex={searchable ? -1 : 0}
               aria-selected={isSelected}
               data-active={isActive || undefined}
               disabled={opt.disabled}
@@ -267,17 +291,19 @@ export function AppSelect({
           </li>
         );
       })}
-    </ul>
+      </ul>
+      {footer}
+    </div>
   );
 
   const selectedLabel = selected
     ? typeof (selected.triggerLabel ?? selected.label) === 'string'
       ? String(selected.triggerLabel ?? selected.label)
       : String(selected.value)
-    : '';
+    : selectedLabelOverride || '';
 
   return (
-    <div className="min-w-0">
+    <div className={fluid ? 'min-w-0 w-full flex-1' : 'min-w-0'}>
       {searchable ? (
         <div className="relative">
           <input
@@ -288,10 +314,14 @@ export function AppSelect({
             type="text"
             role="combobox"
             aria-label={ariaLabel}
+            aria-invalid={ariaInvalid || undefined}
+            aria-describedby={ariaDescribedBy}
+            aria-required={required || undefined}
             aria-expanded={open}
             aria-haspopup="listbox"
             aria-controls={listboxId}
             aria-autocomplete="list"
+            required={required}
             autoComplete="off"
             disabled={disabled}
             value={open ? query : selectedLabel}
@@ -317,7 +347,7 @@ export function AppSelect({
               if (!open) setOpen(true);
             }}
             onKeyDown={handleSearchKeyDown}
-            className={`${variant === 'field' ? fieldTrigger : pillTrigger} ${className} pr-7`}
+            className={`${variant === 'field' ? fieldTrigger : pillTrigger} ${className} ${fluid ? 'w-full' : ''} pr-7`}
           />
           <ChevronDown
             size={variant === 'pill' ? 14 : 16}
@@ -338,7 +368,7 @@ export function AppSelect({
           aria-haspopup="listbox"
           aria-controls={listboxId}
           disabled={disabled}
-          className={`${variant === 'field' ? fieldTrigger : pillTrigger} ${className}`}
+          className={`${variant === 'field' ? fieldTrigger : pillTrigger} ${className} ${fluid ? 'w-full' : ''}`}
           onClick={() => {
             if (disabled) return;
             // Reset the type-ahead filter each time the list opens.

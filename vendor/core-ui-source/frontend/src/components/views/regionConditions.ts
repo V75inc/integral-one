@@ -7,7 +7,11 @@
  *  if a widget needs something richer (in/not-equals/etc) later.
  */
 export type VisibleIf = {
-  field: string;
+  /** Every condition must match (combine with the field test below, if any). */
+  all?: VisibleIf[];
+  /** At least one condition must match. */
+  any?: VisibleIf[];
+  field?: string;
   /** Matches when the field equals this value. */
   equals?: unknown;
   /** Matches when the field equals any of these values. */
@@ -21,6 +25,9 @@ export type VisibleIf = {
  *  `values[cond.field] === cond.equals`. */
 export function isVisible(cond: VisibleIf | undefined, values: Record<string, unknown> | undefined): boolean {
   if (!cond) return true;
+  if (Array.isArray(cond.all) && !cond.all.every(c => isVisible(c, values))) return false;
+  if (Array.isArray(cond.any) && !cond.any.some(c => isVisible(c, values))) return false;
+  if (!cond.field) return true;
   const value = values?.[cond.field];
   if (Array.isArray(cond.in)) return cond.in.includes(value);
   if (Array.isArray(cond.not_in)) return !cond.not_in.includes(value);

@@ -22,7 +22,9 @@
  *   defaults?
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import {useOptionalAppUI, type LookupPage, type LookupOption} from '@integral/sdk-react';
+import {AsyncCombobox} from '../extensions/AsyncCombobox';
 import { Plus, Trash2 } from 'lucide-react';
 import { entriesApi, tracksApi } from '../../api';
 import { extensionsApi, requireOperationOutput, RecordedOperationOutputWithheld } from '../../api/extensions';
@@ -69,6 +71,7 @@ function asRecord(raw: unknown): Record<string, unknown> {
 
 interface ColumnOptionSpec {
   tool: string;
+  query?: string;
   input: Record<string, unknown>;
   itemsKey: string;
   labelFields: string[];
@@ -144,6 +147,7 @@ function newDraftLine(defaults: Record<string, unknown>, n: number): DraftLine {
 
 export function EditableRelatedLinesWidget({ view }: ViewWidgetProps) {
   const lifecycle = useContributionLifecycle();
+  const appUI = useOptionalAppUI();
   const config = (view.config || {}) as Record<string, unknown>;
   const bindings = (config.__bindings || {}) as Record<string, unknown>;
 
@@ -158,9 +162,10 @@ export function EditableRelatedLinesWidget({ view }: ViewWidgetProps) {
     for (const [col, raw] of Object.entries(asRecord(config.column_options))) {
       const spec = asRecord(raw);
       const tool = typeof spec.tool === 'string' ? spec.tool.trim() : '';
-      if (!tool) continue;
+      const query = typeof spec.query === 'string' ? spec.query.trim() : '';
+      if (!tool && !query) continue;
       specs[col] = {
-        tool,
+        tool, query,
         input: asRecord(spec.input),
         itemsKey: typeof spec.items_key === 'string' && spec.items_key ? spec.items_key : 'items',
         labelFields: asStringArray(spec.label_fields),
@@ -218,11 +223,15 @@ export function EditableRelatedLinesWidget({ view }: ViewWidgetProps) {
       : undefined;
   const listCatalogTool =
     typeof config.list_catalog_tool === 'string' ? config.list_catalog_tool : undefined;
+  const catalogQuery = appUI && typeof config.catalog_query === 'string' ? config.catalog_query : '';
   const catalogEmptyHint =
     typeof config.catalog_empty_hint === 'string' ? config.catalog_empty_hint.trim() : '';
   const persistMode = String(config.persist_mode || 'tool').toLowerCase();
   const persistTool =
     typeof config.persist_tool === 'string' ? config.persist_tool : undefined;
+  const persistLineIdField = typeof config.persist_line_id_field === 'string' &&
+    /^[a-zA-Z][a-zA-Z0-9_]{0,127}$/.test(config.persist_line_id_field)
+    ? config.persist_line_id_field : undefined;
   const configuredDocumentKind =
     typeof config.document_kind === 'string'
       ? config.document_kind.trim().toLowerCase()
@@ -271,6 +280,8 @@ export function EditableRelatedLinesWidget({ view }: ViewWidgetProps) {
   const [catalog, setCatalog] = useState<CatalogItem[]>([]);
   const [catalogLoaded, setCatalogLoaded] = useState(false);
   const [columnOptions, setColumnOptions] = useState<Record<string, ColumnChoice[]>>({});
+  const [lookupError, setLookupError] = useState('');
+  const [lookupRevision, retryLookup] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const linesRef = useRef(lines);
@@ -285,6 +296,47 @@ export function EditableRelatedLinesWidget({ view }: ViewWidgetProps) {
     return map;
   }, [columnOptions, taxColumn]);
 
+  const querySources = useMemo(() => ({
+    ...(catalogQuery && catalogRelationField ? {[catalogRelationField]: catalogQuery} : {}),
+    ...Object.fromEntries(Object.entries(columnOptionSpecs).filter(([, spec]) => appUI && spec.query).map(([column, spec]) => [column, spec.query!])),
+  }), [catalogQuery, catalogRelationField, columnOptionSpecs, appUI?.query]);
+  const absorbOptions = useCallback((column: string, rows: LookupOption[]) => {
+    if (column === catalogRelationField) {
+      setCatalog(previous => [...previous.filter(item => !rows.some(row => row.id === item.id)), ...rows] as CatalogItem[]);
+    } else {
+      const choices = toColumnChoices(rows, columnOptionSpecs[column]?.labelFields || []);
+      setColumnOptions(previous => ({...previous, [column]: [...(previous[column] || []).filter(item => !choices.some(choice => choice.id === item.id)), ...choices]}));
+    }
+  }, [catalogRelationField, columnOptionSpecs]);
+  const readOptions = useCallback(async (column: string, input: Record<string, unknown>, signal: AbortSignal): Promise<LookupPage> => {
+    if (!appUI || !querySources[column]) throw new Error('This declared lookup is unavailable.');
+    const response = await appUI.query(querySources[column], input, signal);
+    const page = (response.output || response) as unknown as LookupPage;
+    if (!Array.isArray(page.items)) throw new Error('The lookup did not return options.');
+    return page;
+  }, [appUI?.query, querySources]);
+  useEffect(() => Object.keys(querySources).length ? appUI?.subscribe?.(() => retryLookup(value => value + 1)) : undefined, [appUI?.subscribe, querySources]);
+  const selectedOptions = JSON.stringify(Object.fromEntries(Object.keys(querySources).map(column => [column,
+    [...new Set(lines.map(line => String(line.fields[column] || '')).filter(Boolean))].sort()])));
+  useEffect(() => {
+    if (!appUI) return;
+    const abort = new AbortController();
+    setLookupError('');
+    (async () => {
+      const selected = JSON.parse(selectedOptions) as Record<string, string[]>;
+      for (const [column, ids] of Object.entries(selected)) {
+        for (let offset = 0; offset < ids.length; offset += 50) {
+          const batch = ids.slice(offset, offset + 50);
+          const page = await readOptions(column, {ids: batch, limit: 50}, abort.signal);
+          if (abort.signal.aborted) return;
+          if (batch.some(id => !page.items.some(item => item.id === id))) throw new Error('A selected line option is no longer readable.');
+          absorbOptions(column, page.items);
+        }
+      }
+    })().catch(cause => {if (!abort.signal.aborted) setLookupError(cause instanceof Error ? cause.message : 'Line choices could not be resolved.');});
+    return () => abort.abort();
+  }, [selectedOptions, readOptions, absorbOptions, lookupRevision]);
+
   const taxInclusive = (() => {
     const raw = entryValues[taxInclusiveField];
     if (raw === false || raw === 0 || raw === 'false' || raw === '0') return false;
@@ -293,6 +345,7 @@ export function EditableRelatedLinesWidget({ view }: ViewWidgetProps) {
     return true;
   })();
 
+  const lastParentPatch = useRef<string>();
   const patchParentTotals = useCallback(
     (next: DraftLine[]) => {
       if (!lifecycle?.onDraftPatch || (!parentTotalField && !parentTaxField)) return;
@@ -331,7 +384,12 @@ export function EditableRelatedLinesWidget({ view }: ViewWidgetProps) {
           previousBalance: Number(entryValues[parentBalanceField]),
         });
       }
-      lifecycle.onDraftPatch({
+      // A missing selected tax rate must never replace saved tax with zero.
+      if (querySources[taxColumn] && next.some(line => {
+        const id = String(line.fields[taxColumn] || '');
+        return id && ratePercentByCodeId[id] == null;
+      })) for (const key of Object.keys(custom_fields)) delete custom_fields[key];
+      const patch = {
         custom_fields,
         related: {
           relation,
@@ -351,7 +409,14 @@ export function EditableRelatedLinesWidget({ view }: ViewWidgetProps) {
             entry_id: line.entry_id,
           })),
         },
-      });
+      };
+      const signature = JSON.stringify([lifecycle.appId, lifecycle.trackId, lifecycle.entryId, lifecycle.mode, patch]);
+      const totalsMatch = Object.entries(custom_fields).every(([key, value]) => Object.is(entryValues[key], value));
+      // Tax metadata and draft echoes can recreate the callback. Do not emit
+      // identical totals/rows back into the parent and trigger another render.
+      if (lastParentPatch.current === signature && totalsMatch) return;
+      lastParentPatch.current = signature;
+      lifecycle.onDraftPatch(patch);
     },
     [
       lifecycle,
@@ -368,6 +433,7 @@ export function EditableRelatedLinesWidget({ view }: ViewWidgetProps) {
       discountPercentField,
       discountAmountField,
       taxColumn,
+      querySources,
       ratePercentByCodeId,
       taxInclusive,
     ]
@@ -375,11 +441,13 @@ export function EditableRelatedLinesWidget({ view }: ViewWidgetProps) {
 
   const setLinesAndPatch = useCallback(
     (updater: (prev: DraftLine[]) => DraftLine[]) => {
-      setLines(prev => {
-        const next = updater(prev);
-        patchParentTotals(next);
-        return next;
-      });
+      // Run at the interaction boundary. React may evaluate a state updater
+      // during render, where notifying the parent would update another tree.
+      // Advance the ref first so consecutive edits also see pending rows.
+      const next = updater(linesRef.current);
+      linesRef.current = next;
+      setLines(next);
+      patchParentTotals(next);
     },
     [patchParentTotals]
   );
@@ -432,7 +500,7 @@ export function EditableRelatedLinesWidget({ view }: ViewWidgetProps) {
   }, [hostEntryId, relation, childEntryType, readOnly]);
 
   useEffect(() => {
-    const entries = Object.entries(columnOptionSpecs);
+    const entries = Object.entries(columnOptionSpecs).filter(([, spec]) => !(appUI && spec.query));
     if (!entries.length) return;
     let cancelled = false;
     (async () => {
@@ -454,11 +522,11 @@ export function EditableRelatedLinesWidget({ view }: ViewWidgetProps) {
     return () => {
       cancelled = true;
     };
-  }, [columnOptionSpecs, appId]);
+  }, [columnOptionSpecs, appId, appUI?.query]);
 
   // Catalog for product/service picker.
   useEffect(() => {
-    if (!listCatalogTool && !catalogRelationField) return;
+    if (catalogQuery || (!listCatalogTool && !catalogRelationField)) return;
     let cancelled = false;
     (async () => {
       try {
@@ -497,13 +565,18 @@ export function EditableRelatedLinesWidget({ view }: ViewWidgetProps) {
     return () => {
       cancelled = true;
     };
-  }, [listCatalogTool, catalogRelationField, appId]);
+  }, [listCatalogTool, catalogRelationField, appId, catalogQuery]);
 
   useEffect(() => {
     if (!lifecycle) return;
     return lifecycle.register({
       requestValidate: async () => {
         const current = linesRef.current;
+        if (lookupError) return {ok: false, error: lookupError};
+        if (querySources[taxColumn] && current.some(line => {
+          const id = String(line.fields[taxColumn] || '');
+          return id && ratePercentByCodeId[id] == null;
+        })) return {ok: false, error: 'Wait for the selected tax rates to load.'};
         if (requireAtLeastOne && current.length === 0) {
           return { ok: false, error: 'Add at least one line' };
         }
@@ -554,6 +627,7 @@ export function EditableRelatedLinesWidget({ view }: ViewWidgetProps) {
           }
           const raw: Record<string, unknown> = {
             ...fields,
+            ...(persistLineIdField && line.entry_id ? {[persistLineIdField]: line.entry_id} : {}),
             quantity: quantityField ? Number(fields[quantityField]) || 0 : undefined,
             unit_price: rateField ? Number(fields[rateField]) || 0 : undefined,
             line_amount: amount,
@@ -625,13 +699,22 @@ export function EditableRelatedLinesWidget({ view }: ViewWidgetProps) {
                 error: String(output.message || output.error_code || 'Persist failed'),
               };
             }
+            const savedIds = output?.line_ids;
+            if (Array.isArray(savedIds) && savedIds.length === current.length &&
+                savedIds.every(id => typeof id === 'string' && id.length > 0)) {
+              const idsByLocalRow = new Map(current.map((line, index) => [line.local_id, savedIds[index] as string]));
+              setLines(latest => latest.map(line => {
+                const savedId = idsByLocalRow.get(line.local_id);
+                return savedId ? { ...line, entry_id: savedId } : line;
+              }));
+            }
             return { ok: true, value: output };
           }
 
           // entries_api mode: create children with parent FK on relation field.
           let childTrackId: string | undefined;
           if (childTrackType) {
-            const tracks = await tracksApi.list();
+            const tracks = await tracksApi.list({ skipEntryCounts: true });
             const match = tracks.find(
               t => slug(String(t.template_id || t.relation_type_key || t.title)) === slug(childTrackType)
             );
@@ -703,6 +786,8 @@ export function EditableRelatedLinesWidget({ view }: ViewWidgetProps) {
     childTrackType,
     persistMode,
     persistTool,
+    persistLineIdField,
+    lookupError, querySources, taxColumn, ratePercentByCodeId,
     configuredDocumentKind,
     hostEntryTypeKey,
     parentTotalField,
@@ -714,13 +799,13 @@ export function EditableRelatedLinesWidget({ view }: ViewWidgetProps) {
     discountAmountField,
   ]);
 
-  const updateLineField = (localId: string, key: string, value: unknown) => {
+  const updateLineField = (localId: string, key: string, value: unknown, selectedItem?: CatalogItem) => {
     setLinesAndPatch(prev =>
       prev.map(line => {
         if (line.local_id !== localId) return line;
         const fields = { ...line.fields, [key]: value };
         if (catalogRelationField && key === catalogRelationField) {
-          const item = catalog.find(c => c.id === value);
+          const item = selectedItem || catalog.find(c => c.id === value);
           fields.catalog_id = value;
           fields.catalog_label = item?.label || '';
           for (const rule of autofill) {
@@ -944,6 +1029,14 @@ export function EditableRelatedLinesWidget({ view }: ViewWidgetProps) {
                   const isDate = col === 'service_date' || col.endsWith('_date');
                   const value = line.fields[col];
                   const choices = columnOptionSpecs[col] ? columnOptions[col] || [] : null;
+                  if (querySources[col] && !readOnly) return <td key={col} className="px-2 py-1">
+                    <DeclaredLineLookup label={columnLabel(col)} value={String(value || '')}
+                      selectedLabel={isCatalog ? catalog.find(item => item.id === value)?.label : choices?.find(item => item.id === value)?.label}
+                      column={col} readOptions={readOptions} onChange={option => {
+                        absorbOptions(col, [option]);
+                        updateLineField(line.local_id, col, option.id, isCatalog ? option as CatalogItem : undefined);
+                      }} />
+                  </td>;
                   if (choices && readOnly) {
                     const choice = choices.find(c => c.id === String(value || ''));
                     return (
@@ -1068,6 +1161,7 @@ export function EditableRelatedLinesWidget({ view }: ViewWidgetProps) {
           </tbody>
         </table>
       </div>
+      {lookupError ? <div role="alert">{lookupError}<Button type="button" onClick={() => retryLookup(value => value + 1)}>Retry line choices</Button></div> : null}
       {!readOnly && catalogLoaded && !catalog.length && catalogEmptyHint ? (
         <Text variant="body" tone="muted" as="p">
           {catalogEmptyHint}
@@ -1190,4 +1284,35 @@ export function EditableRelatedLinesWidget({ view }: ViewWidgetProps) {
       </div>
     </div>
   );
+}
+
+/** One cell keeps its loader stable across draft echoes and resolves full selected metadata. */
+function DeclaredLineLookup({column, label, value, selectedLabel, readOptions, onChange}: {
+  column: string; label: string; value: string; selectedLabel?: string;
+  readOptions: (column: string, input: Record<string, unknown>, signal: AbortSignal) => Promise<LookupPage>;
+  onChange: (option: LookupOption) => void;
+}) {
+  const lifecycle = useContributionLifecycle();
+  const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
+  const pendingSelection = useRef(false);
+  useLayoutEffect(() => lifecycle?.register({requestValidate: async () => pendingSelection.current ? {ok: false, error: 'Wait for the selected line option.'} : {ok: true}, requestSubmit: async () => ({ok: true})}), [lifecycle?.register]);
+  const generation = useRef(0);
+  const pending = useRef<AbortController>();
+  useEffect(() => () => {pending.current?.abort(); generation.current++;}, []);
+  const loadPage = useCallback((q: string, cursor: string | null, signal: AbortSignal) => readOptions(column, {q, cursor, limit: 20}, signal), [column, readOptions]);
+  const select = async (option: LookupOption) => {
+    const request = ++generation.current;
+    pending.current?.abort(); const abort = new AbortController(); pending.current = abort;
+    pendingSelection.current = true; setBusy(true); setError('');
+    try {
+      const resolved = await readOptions(column, {ids: [option.id], limit: 1}, abort.signal);
+      if (abort.signal.aborted || generation.current !== request) return;
+      const item = resolved.items.find(item => item.id === option.id);
+      if (!item || item.disabled) throw new Error('This option is no longer available.');
+      onChange(item);
+    } catch (cause) {if (!abort.signal.aborted) setError(cause instanceof Error ? cause.message : 'The option could not be loaded.');}
+    finally {if (generation.current === request) {pendingSelection.current = false; setBusy(false);}}
+  };
+  return <><AsyncCombobox label={label} value={value} selectedLabel={selectedLabel} loadPage={loadPage} onChange={option => void select(option)} />{busy ? <span role="status">Loading selection…</span> : null}{error ? <span role="alert">{error}</span> : null}</>;
 }

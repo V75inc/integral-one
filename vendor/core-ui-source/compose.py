@@ -10,6 +10,36 @@ import shutil
 import subprocess
 from pathlib import Path
 
+# Build-time inputs live inside each composed output, never in its parent. This
+# keeps multiple distributions independent while retaining the SDK guide gate.
+GUIDE_INPUTS = (
+    "sdk/react/bin/app-ui-guides.mjs",
+    "sdk/react/bin/app-ui-guides.test.mjs",
+    "sdk/react/APP_UI_GUIDE.md",
+    "sdk/react/package.json",
+    "APP_UI_GUIDE.md",
+    "AGENTS.md",
+    "CLAUDE.md",
+    ".cursor/rules/app-ui.mdc",
+)
+GUIDE_CHECK = (
+    "node ../sdk/react/bin/app-ui-guides.mjs --check --target .."
+    " && node --test ../sdk/react/bin/app-ui-guides.test.mjs"
+)
+SUPPORT = ".core-build-support"
+# These source imports are relative to the monorepo frontend. Preserve the flat
+# distribution output contract while relocating the exact SDK into that output.
+SDK_REFERENCES = {
+    "tsconfig.json": ("../sdk/react/", f"./{SUPPORT}/sdk/react/"),
+    "vite.config.ts": ("../sdk/react", f"./{SUPPORT}/sdk/react"),
+    "vitest.config.ts": ("../sdk/react/", f"./{SUPPORT}/sdk/react/"),
+    "scripts/verify-ui-runtime.mjs": ("../../sdk/react/", f"../{SUPPORT}/sdk/react/"),
+    "src/components/extensions/sdkRuntime.ts": (
+        "../../../../sdk/react/",
+        f"../../../{SUPPORT}/sdk/react/",
+    ),
+}
+
 
 def digest(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
@@ -48,6 +78,25 @@ def snapshot(output: Path) -> None:
         if not source.is_file() or source.is_symlink():
             raise ValueError(f"Unsupported source file: {name}")
         target = output / "frontend" / rel
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source, target)
+    sdk_sources = subprocess.check_output(
+        [
+            "git",
+            "ls-files",
+            "--cached",
+            "--others",
+            "--exclude-standard",
+            "sdk/react/src",
+        ],
+        cwd=root,
+        text=True,
+    ).splitlines()
+    for name in sorted(set(GUIDE_INPUTS) | set(sdk_sources)):
+        source = root / name
+        if not source.is_file() or source.is_symlink():
+            raise ValueError(f"Unsupported build input: {name}")
+        target = output / "build-support" / name
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(source, target)
     for name in ("LICENSE", "NOTICE"):
@@ -104,14 +153,52 @@ def compose(core: Path, output: Path, overlay: Path | None, product: str) -> Non
     if overlay:
         for p in safe_files(overlay):
             rel = p.relative_to(overlay)
-            if rel.parts[0] in {"registry.ts", "registry.tsx", "session-contract.ts"} or any(
-                part.startswith(".env") for part in rel.parts
-            ):
+            if rel.parts[0] in {
+                "registry.ts",
+                "registry.tsx",
+                "session-contract.ts",
+            } or any(part.startswith(".env") for part in rel.parts):
                 raise ValueError(
                     "Overlay cannot replace the host registry/session contract or include environment secrets"
                 )
             extra[rel.as_posix()] = digest(p)
+    package_path = core / "frontend/package.json"
+    package = json.loads(package_path.read_text()) if package_path.exists() else {}
+    guide_check = package.get("scripts", {}).get("check:app-ui-guides")
+    if guide_check:
+        if guide_check != GUIDE_CHECK:
+            raise ValueError("Unsupported frontend App UI guide command")
+        if any(f"build-support/{name}" not in inventory for name in GUIDE_INPUTS):
+            raise ValueError("Core snapshot is missing App UI guide build inputs")
+        if (core / "frontend" / SUPPORT).exists():
+            raise ValueError("Frontend collides with reserved build-support directory")
+    replacements = {}
+    if guide_check:
+        if "build-support/sdk/react/src/index.tsx" not in inventory:
+            raise ValueError("Core snapshot is missing React SDK source")
+        for name, (old, new) in SDK_REFERENCES.items():
+            source = (core / "frontend" / name).read_text()
+            if source.count(old) != 1:
+                raise ValueError(f"Unsupported SDK reference in {name}")
+            replacements[name] = source.replace(old, new)
+        # SDK guide tests are node:test programs, run by the explicit build gate,
+        # not frontend Vitest suites. Preserve every existing app exclusion.
+        vitest = replacements["vitest.config.ts"]
+        if vitest.count("exclude: [") != 1:
+            raise ValueError("Unsupported Vitest exclusion configuration")
+        replacements["vitest.config.ts"] = vitest.replace(
+            "exclude: [", f"exclude: ['{SUPPORT}/**', "
+        )
     shutil.copytree(core / "frontend", output)
+    if guide_check:
+        shutil.copytree(core / "build-support", output / SUPPORT)
+        package["scripts"]["check:app-ui-guides"] = (
+            f"node {SUPPORT}/sdk/react/bin/app-ui-guides.mjs --check --target {SUPPORT}"
+            f" && node --test {SUPPORT}/sdk/react/bin/app-ui-guides.test.mjs"
+        )
+        write_json(output / "package.json", package)
+        for name, content in replacements.items():
+            (output / name).write_text(content)
     if overlay:
         shutil.copytree(overlay, output / "src/host", dirs_exist_ok=True)
     write_json(

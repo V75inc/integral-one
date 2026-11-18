@@ -14,7 +14,7 @@ vi.mock('../../../../components/entries/relations/RelationValue', () => ({
 
 const approveWrite = vi.fn(async () => undefined);
 
-function renderPendingWrite(failed = false, extra: Partial<PromptStagedWriteItem> = {}, busy = false) {
+function renderPendingWrite(failed = false, extra: Partial<PromptStagedWriteItem> = {}, busy = false, error: string | null = null) {
   vi.mocked(usePromptQueue).mockReturnValue({
     open: true,
     current: {
@@ -36,7 +36,7 @@ function renderPendingWrite(failed = false, extra: Partial<PromptStagedWriteItem
       next: vi.fn(),
     },
     busy,
-    error: null,
+    error,
     approveWrite,
     rejectWrite: vi.fn(async () => undefined),
     cancelAll: vi.fn(async () => undefined),
@@ -136,4 +136,34 @@ it.each([
   expect(screen.getByRole('button', { name: message })).toBeVisible();
   expect(screen.queryByRole('button', { name: 'Retry application' })).toBeNull();
   expect(screen.getByRole('button', { name: 'Reject' })).toBeEnabled();
+});
+
+
+it.each([
+  ['consumed', 'This change was applied'],
+  ['expired', 'This proposal expired'],
+  ['revoked', 'This change was cancelled'],
+])('shows authoritative terminal state %s without allowing another write', (staged_state, heading) => {
+  renderPendingWrite(false, { staged_state });
+  expect(screen.getByText(heading)).toBeVisible();
+  expect(screen.queryByRole('button', { name: 'Approve' })).toBeNull();
+  expect(screen.queryByRole('button', { name: 'Reject' })).toBeNull();
+  expect(screen.queryByText('Allow this change?')).toBeNull();
+});
+
+
+it('shows one failure surface when the refreshed card and local execution both fail', () => {
+  renderPendingWrite(true, {}, false, 'The change was approved but the write was refused.');
+  expect(screen.getAllByRole('alert')).toHaveLength(1);
+  expect(screen.queryByText('This change needs attention')).toBeNull();
+  expect(screen.queryByText('The change was approved but the write was refused.')).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: "Your approval was saved, but this change couldn't be finished." }));
+  expect(screen.getByRole('alert')).toHaveTextContent('Validation failed');
+});
+
+it('keeps a local failure visible before a durable failure arrives', () => {
+  renderPendingWrite(false, {}, false, 'Approval failed.');
+  expect(screen.getAllByRole('alert')).toHaveLength(1);
+  expect(screen.getByRole('alert')).toHaveTextContent('Approval failed.');
+  expect(screen.queryByText('Allow this change?')).toBeNull();
 });

@@ -27,4 +27,9 @@ const uv = process.env.INTEGRAL_UV_BINARY || (process.env.PATH || '').split(path
 if (!uv) throw new Error('Install uv, or set INTEGRAL_UV_BINARY to the reviewed platform binary.');
 if (!/^uv 0\.13\.4(?:\s|$)/.test(execFileSync(uv, ['--version'], {encoding:'utf8'}))) throw new Error('Use the reviewed uv 0.13.4 runtime; its license notice is shipped with this distribution.');
 require('@integral/desktop-host/bundle-runtime').bundleRuntime({...process.env,INTEGRAL_CORE_WHEEL:output,INTEGRAL_UV_BINARY:uv},{base:path.join(root,'resources/core')});
+// Keep the host manifest contract unchanged; bind migration capability to the
+// composed wheel in a separate packaging-owned receipt.
+const managedStorage = execFileSync(process.env.PYTHON || 'python3', ['-c',
+  'import sys,zipfile; print("yes" if "app/services/storage_indexes/native_upgrade.py" in zipfile.ZipFile(sys.argv[1]).namelist() else "no")', output], {encoding:'utf8'}).trim() === 'yes';
+fs.writeFileSync(path.join(root, 'resources/core/storage-upgrade.json'), JSON.stringify({schemaVersion:1, managedStorage, wheelSha256:hash(output)}) + '\n');
 require('./collect-notices');

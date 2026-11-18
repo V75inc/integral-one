@@ -1644,6 +1644,7 @@ export function SharedTrackPage({ memberFormMode = false }: { memberFormMode?: b
         {activeView ? (
           <ViewRenderer
             view={activeView}
+            viewContext="track-list"
             entries={entries}
             isLoading={entriesLoading}
             onEntryOpen={e => {

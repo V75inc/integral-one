@@ -62,7 +62,7 @@ test('remote host starts no local runtime and exposes no local preload or sessio
   assert.equal(event.blocked,true);
 });
 
-async function localFixture({owned = true, stop = async () => ({state:'stopped'}), platform = 'darwin', windowsTitleBar = false, loadingScreen, startupMessage, beforeWorkspace} = {}) {
+async function localFixture({owned = true, stop = async () => ({state:'stopped'}), platform = 'darwin', windowsTitleBar = false, loadingScreen, startupMessage, beforeWorkspace, updates, workspacePreload} = {}) {
   const app = new EventEmitter(), stops = [], menus = [], windows = [], handlers = {};
   let boot, quit = 0, ready = 0, builtMenu = null;
   Object.assign(app, {setName(){}, commandLine:{hasSwitch:()=>true}, getPath:()=>'/task/one',
@@ -115,7 +115,7 @@ async function localFixture({owned = true, stop = async () => ({state:'stopped'}
       return require(id.startsWith('./')?path.join(__dirname,'../lib',id):id);
     },
   });
-  const control = module.exports.runDesktop({mode:'local',windowsTitleBar,loadingScreen,helpMenuItems:[{label:'Check for Updates…'}],onReady:()=>{ready++;},beforeWorkspace:async context=>{await beforeWorkspace?.({...context,windows});}});
+  const control = module.exports.runDesktop({mode:'local',windowsTitleBar,loadingScreen,updates,workspacePreload,helpMenuItems:[{label:'Check for Updates…'}],onReady:()=>{ready++;},beforeWorkspace:async context=>{await beforeWorkspace?.({...context,windows});}});
   await boot();
   return {control,app,runtime,stops,menus,windows,handlers,ready,quit:()=>quit};
 }
@@ -231,4 +231,32 @@ test('Mac and a framed Windows window keep the system title bar', async () => {
   assert.equal(framed.windows.at(-1).options.titleBarStyle, undefined);
   assert.equal(framed.windows.at(-1).options.autoHideMenuBar, undefined);
   assert.equal(framed.handlers['integral:window-chrome-theme'], undefined);
+});
+
+test('a second launch focuses the existing window without changing its runtime home', async () => {
+ const f=await localFixture();const window=f.windows.at(-1);let shown=0,focused=0;
+ window.show=()=>shown++;window.focus=()=>focused++;
+ f.app.emit('second-instance',{},['--home=/different-home']);
+ assert.equal(shown,1);assert.equal(focused,1);assert.equal(f.runtime.home,'/task/home');
+});
+
+test('update state and checks are restricted to the owned main frame', async () => {
+ let checks=0,unsubscribed=false,publish;
+ const f=await localFixture({updates:{state:()=>({status:'ready',version:'fixture'}),check:()=>{checks++;},subscribe:fn=>{publish=fn;return()=>{unsubscribed=true;};}}});
+ const window=f.windows.at(-1);window.webContents.mainFrame={url:f.runtime.web_url+'/apps'};
+ const event={sender:window.webContents,senderFrame:window.webContents.mainFrame};
+ assert.equal((await f.handlers['integral:updates-state'](event)).status,'ready');
+ await assert.rejects(()=>f.handlers['integral:updates-check']({...event,senderFrame:{url:event.senderFrame.url}}),/Untrusted/);
+ assert.equal(checks,0);await f.handlers['integral:updates-check'](event);assert.equal(checks,1);
+ let sent;window.webContents.send=(channel,state)=>{sent={channel,state};};publish({status:'available'});assert.equal(sent.channel,'integral:updates-state');
+ f.app.emit('will-quit');assert.equal(unsubscribed,true);
+});
+
+test('trusted local distribution preload retains the sandbox and context isolation', async () => {
+  const f = await localFixture({workspacePreload:'/owned/distribution/workspace-preload.js'});
+  const preferences=f.windows.at(-1).options.webPreferences;
+  assert.equal(preferences.preload,'/owned/distribution/workspace-preload.js');
+  assert.equal(preferences.sandbox,true);
+  assert.equal(preferences.contextIsolation,true);
+  assert.equal(preferences.nodeIntegration,false);
 });

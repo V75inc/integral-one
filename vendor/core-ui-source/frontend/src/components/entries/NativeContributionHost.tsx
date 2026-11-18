@@ -83,6 +83,7 @@ export function NativeContributionHost({
     if (!view) return null;
     return {
       ...view,
+      default_entry_type_key: view.default_entry_type_key || lifecycle.entryTypeKey,
       config: {
         ...(view.config || {}),
         __bindings: {

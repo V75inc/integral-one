@@ -1021,17 +1021,19 @@ function entityRefsFromMetadata(
 
 /** assistant-ui's default `File` part component renders nothing — show the
  *  filename so a sent file attachment isn't invisible in the transcript. */
-function SentFileChip({ filename }: { filename?: string }) {
+export function SentFileChip({ filename }: { filename?: string }) {
   return (
     <span
       className="
-        mb-1 inline-flex items-center gap-1.5 rounded-[var(--radius-input)]
+        mb-1 inline-flex min-w-0 max-w-full items-center gap-1.5 rounded-[var(--radius-input)]
         border border-[var(--border-subtle)] bg-[var(--panel-2)]
         px-2 py-1 text-xs text-[var(--text)]
       "
     >
-      <PaperclipIcon size={12} />
-      <span className="truncate">{filename || "Attached file"}</span>
+      <PaperclipIcon size={12} className="shrink-0" aria-hidden />
+      <span className="min-w-0 truncate" title={filename || "Attached file"}>
+        {filename || "Attached file"}
+      </span>
     </span>
   );
 }
@@ -1122,9 +1124,9 @@ function UserMessageParts() {
   }
 
   return (
-    <div className="flex flex-col gap-1.5">
+    <div className="flex min-w-0 max-w-full flex-col gap-1.5">
       {fileParts.length > 0 && (
-        <div className="flex flex-wrap gap-1.5">
+        <div className="flex min-w-0 max-w-full flex-wrap gap-1.5">
           {fileParts.map((f, i) => (
             <SentFileChip key={`file-${i}`} filename={f.filename} />
           ))}

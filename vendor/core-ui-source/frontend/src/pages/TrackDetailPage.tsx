@@ -1,4 +1,7 @@
+import { useRecordNavigation } from '../hooks/useRecordNavigation';
 import { useDeployment } from '../hooks/useDeployment';
+import { MAX_FIELD_FILTERS, toRequestFilters, type FieldFilter } from '../components/tracks/fieldFilters';
+import { PAGE_SIZES } from '../components/ui/ListPager';
 import type { EntryCreateInput } from '../views/types';
 import { entriesMatchingTags } from '../components/tracks/TrackTagFilters';
 /* patch:kanban-hire-intercept */
@@ -19,6 +22,7 @@ import { sharingApi } from '../api/sharing';
 import { DeriveLibraryPackageModal } from '../components/library/DeriveLibraryPackageModal';
 import {
   useInfiniteQuery,
+  keepPreviousData,
   useQuery,
   useQueryClient,
   type InfiniteData
@@ -51,6 +55,7 @@ import {
   Button,
   CardSkeleton,
   EmptyState,
+  PageHeading,
   PageShell,
   PageSection,
   Skeleton,
@@ -59,7 +64,7 @@ import {
   filterBar,
 } from '../components/ui';
 import type { ViewTabOption } from '../components/ui';
-import { savedViewTabs } from '../utils/savedViewTabs';
+import { savedViewTabs, tabOrderChanges } from '../utils/savedViewTabs';
 import {
   mergeDedupedTrackEntryPages,
   useTrackDetailRightRail,
@@ -77,6 +82,7 @@ import { useRecents } from '../hooks/useRecents';
 import { getWidget } from '../views';
 import {
   entryTypeMatchesSlug,
+  findRequestedEntryType,
   resolveKanbanCreateCustomFieldFallback,
   resolveKanbanGroupBy,
   resolveKanbanWorkflowEnumLabelsForTrack,
@@ -163,6 +169,15 @@ export function TrackDetailPage() {
   const [deriveModalOpen, setDeriveModalOpen] = useState(false);
   const [filterType, setFilterType] = useState('');
   const [filterTags, setFilterTags] = useState<string[]>([]);
+  // Filters on the Track's fields. The server applies them before it pages, so totals and every page follow.
+  const [fieldFilters, setFieldFilters] = useState<FieldFilter[]>([]);
+  // Table lists are paged: a page number, a page size and the server's order for the whole list.
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState<number>(() => {
+    try { const n = Number(window.localStorage.getItem('track-page-size')); return PAGE_SIZES.includes(n as (typeof PAGE_SIZES)[number]) ? n : 25; } catch { return 25; }
+  });
+  const [sort, setSort] = useState<{ field: string; path?: string; dir: 'asc' | 'desc' } | null>(null);
+  useEffect(() => { setFieldFilters([]); setSort(null); setPage(1); }, [id]);
   useEffect(() => setFilterTags([]), [id]);
   const [trackSearch, setTrackSearch] = useState('');
   // Right rail collapsed by default. Two mutually exclusive modes:
@@ -254,7 +269,7 @@ export function TrackDetailPage() {
   const openEntryModal = useCallback(
     (
       entry: Entry,
-      opts?: { focusComments?: boolean; initialEditMode?: boolean }
+      opts?: { focusComments?: boolean; initialEditMode?: boolean; replace?: boolean }
     ) => {
       setEntryModal({
         entry,
@@ -271,7 +286,7 @@ export function TrackDetailPage() {
           n.delete('from_title');
           return n;
         },
-        { replace: false }
+        { replace: opts?.replace ?? false }
       );
     },
     [setSearchParams]
@@ -296,7 +311,12 @@ export function TrackDetailPage() {
     enabled: Boolean(id),
     queryFn: async () => {
       if (!id) throw new Error('Missing track id');
-      return tracksApi.getDetail(id);
+      const detail = await tracksApi.getDetail(id);
+      // Seed before publishing detail: dependent observers must never start
+      // with an empty cache while a later hydration effect is still pending.
+      queryClient.setQueryData(entryTypesForTrackQueryKey(id), detail.entry_types);
+      queryClient.setQueryData(viewsForTrackQueryKey(id), detail.views as SavedView[]);
+      return detail;
     }
   });
 
@@ -335,8 +355,6 @@ export function TrackDetailPage() {
     };
     setTrack(trackWithCollab);
     queryClient.setQueryData(['track', id, 'meta'], { track: trackWithCollab });
-    queryClient.setQueryData(entryTypesForTrackQueryKey(id), d.entry_types);
-    queryClient.setQueryData(viewsForTrackQueryKey(id), d.views as SavedView[]);
   }, [id, queryClient, trackDetailQuery.data]);
 
   const documentTemplatesRedirect = useMemo(
@@ -421,18 +439,19 @@ export function TrackDetailPage() {
   // Stable wrappers so memoized entry cards/rows don't re-render on every parent
   // state change (search typing, modal open, infinite-scroll appends).
   const handleEntryOpen = useCallback(
-    (entry: Entry, opts?: { focusComments?: boolean }) => {
+    (entry: Entry, opts?: { focusComments?: boolean; forceModal?: boolean; replace?: boolean }) => {
       // Opt-in per entry type (form_schema.open_as_page) to navigate to the
-      // dedicated full page instead of the default modal overlay.
+      // dedicated full page instead of the default modal overlay. A caller that
+      // lives on this page (the Settings hub) can ask for the dialog anyway.
       const entryTypes = (entryTypesQuery.data ?? []) as EntryTypeNode[];
       const matchingType = entryTypes.find(et =>
         entryTypeMatchesSlug(et.name || '', entry.type || '')
       );
-      if (matchingType?.form_schema?.open_as_page) {
-        navigate(entryPagePath(entry.id));
+      if (matchingType?.form_schema?.open_as_page && !opts?.forceModal) {
+        navigate(entryPagePath(entry.id), { replace: opts?.replace ?? false });
         return;
       }
-      openEntryModal(entry, { focusComments: opts?.focusComments });
+      openEntryModal(entry, { focusComments: opts?.focusComments, replace: opts?.replace });
     },
     [openEntryModal, entryTypesQuery.data, navigate]
   );
@@ -446,7 +465,7 @@ export function TrackDetailPage() {
   const viewsQuery = useQuery({
     queryKey: viewsForTrackQueryKey(id ?? ''),
     enabled: Boolean(id && trackDetailQuery.data),
-    queryFn: () => trackViewsApi.list(id!).catch(() => [] as SavedView[]),
+    queryFn: () => trackViewsApi.list(id!),
     // Avoid a second views query immediately after the detail bundle.
     staleTime: 30_000,
   });
@@ -536,15 +555,38 @@ export function TrackDetailPage() {
     feedFallbackView,
   ]);
 
-  const entryFilters = dashboardFilters
-    ? { dashboard_filters: JSON.stringify(dashboardFilters) }
-    : activeView?.id ? { view_id: activeView.id } : {};
-  const entryFilterKey = dashboardFiltersParam ?? activeView?.id;
+  // Dashboard drill-down filters and the user's field filters go to the server together. The view is sent too, so
+  // its entry types and its own filters keep applying.
+  const requestFilters = useMemo(
+    () => [...(dashboardFilters ?? []), ...toRequestFilters(fieldFilters)].slice(0, MAX_FIELD_FILTERS),
+    [dashboardFilters, fieldFilters],
+  );
+  const pagedMode = activeView?.type === 'table';
+  // What the list holds, remembered while paging so each page does not count it again.
+  const [totalMemo, setTotalMemo] = useState<{ key: string; total: number } | null>(null);
+  const sortParam = sort ? `${sort.dir === 'desc' ? '-' : ''}${sort.path || sort.field}` : '';
+  const entryFilters = {
+    ...(requestFilters.length ? { dashboard_filters: JSON.stringify(requestFilters) } : {}),
+    ...(activeView?.id ? { view_id: activeView.id } : {}),
+    ...(pagedMode && sortParam ? { sort: sortParam } : {}),
+  };
+  const baseFilterKey = requestFilters.length
+    ? `${JSON.stringify(requestFilters)}|${activeView?.id ?? ''}`
+    : activeView?.id;
+  // A page, its size and the order are part of the key: each page is its own cached read.
+  const entryFilterKey = pagedMode ? `${baseFilterKey ?? ''}|${sortParam}|p${page}x${pageSize}` : baseFilterKey;
+  const totalKey = `${id}|${baseFilterKey ?? ''}`;
+  const knownTotal = totalMemo?.key === totalKey ? totalMemo.total : undefined;
+  // Back to the first page whenever what the list shows changes.
+  const listShapeKey = `${id}|${baseFilterKey ?? ''}|${sortParam}|${pageSize}`;
+  const [seenShape, setSeenShape] = useState(listShapeKey);
+  if (seenShape !== listShapeKey) { setSeenShape(listShapeKey); if (page !== 1) setPage(1); }
 
   const {
     data: entriesData,
     error: entriesError,
     isPending: entriesPending,
+    isFetching: entriesFetching,
     isFetchingNextPage,
     isFetchNextPageError,
     hasNextPage,
@@ -555,11 +597,23 @@ export function TrackDetailPage() {
     enabled: Boolean(
       id &&
       trackDetailQuery.data &&
-      (!detailTrackWorkspaceId || scope?.workspaceId === detailTrackWorkspaceId)
+      (!detailTrackWorkspaceId || scope?.workspaceId === detailTrackWorkspaceId) &&
+      // Wait until the initial view is chosen (or dashboard filters drive the
+      // list). The view id is part of the key, so starting earlier fetched the
+      // first page twice on every track open: once unscoped, then for the view.
+      (dashboardFilters !== undefined || activeView !== null)
     ),
     initialPageParam: undefined as string | undefined,
+    // The rows stay on screen while the next page loads.
+    placeholderData: pagedMode ? keepPreviousData : undefined,
     queryFn: async ({ pageParam }) => {
       if (!id) throw new Error('Missing track id');
+      if (pagedMode) {
+        // The total is counted on the first page and whenever the filters change; moving between pages reuses it.
+        return tracksApi.getEntriesPage(id, {
+          ...entryFilters, include_total: page === 1 || knownTotal === undefined, limit: pageSize, offset: (page - 1) * pageSize,
+        });
+      }
       return tracksApi.getEntriesPage(id, {
         ...entryFilters,
         include_total: false,
@@ -569,13 +623,18 @@ export function TrackDetailPage() {
     retry: (attempt, error) =>
       (error as { response?: { status?: number } }).response?.status !== 429 && attempt < 1,
     getNextPageParam: last =>
-      last.hasMore && last.nextCursor ? last.nextCursor : undefined
+      !pagedMode && last.hasMore && last.nextCursor ? last.nextCursor : undefined
   });
 
   const firstEntryPage = entriesData?.pages[0];
+  const countedTotal = pagedMode ? firstEntryPage?.total : undefined;
+  useEffect(() => {
+    if (countedTotal !== undefined && (totalMemo?.key !== totalKey || totalMemo.total !== countedTotal)) setTotalMemo({ key: totalKey, total: countedTotal });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [countedTotal, totalKey]);
   const { data: exactEntriesTotal } = useQuery({
     queryKey: ['track', id, 'entries-total', entryFilterKey],
-    enabled: Boolean(id && firstEntryPage?.hasMore && firstEntryPage.nextCursor
+    enabled: Boolean(id && !pagedMode && firstEntryPage?.hasMore && firstEntryPage.nextCursor
       && (!detailTrackWorkspaceId || scope?.workspaceId === detailTrackWorkspaceId)),
     queryFn: () => tracksApi.getEntriesTotal(id!, entryFilters),
     retry: false,
@@ -634,8 +693,20 @@ export function TrackDetailPage() {
 
   // Different names/configurations represent different user-defined views,
   // including extensions sharing one renderer and entry-type slice.
+  // How the App wants this track's tabs (defaults.tabs in its manifest): their order, and whether a lone tab shows a strip.
+  const appTabsConfig = trackMetaQuery.data?.track?.operational_model_defaults?.tabs;
+  // The App can hide the search box and Filters (defaults.toolbar). A hidden control must not keep
+  // filtering: clear anything typed on a previous track that stays mounted while the route changes.
+  const showSearchAndFilters =
+    trackMetaQuery.data?.track?.operational_model_defaults?.toolbar?.show_search_and_filters !== false;
+  useEffect(() => {
+    if (showSearchAndFilters) return;
+    setTrackSearch('');
+    setFilterType('');
+    setFilterTags([]);
+  }, [showSearchAndFilters, id]);
   const dedupedTabViews = useMemo(
-    () => savedViewTabs(savedViews), [savedViews],
+    () => savedViewTabs(savedViews, appTabsConfig?.order), [savedViews, appTabsConfig?.order],
   );
 
   const viewTabOptions = useMemo<ViewTabOption[]>(
@@ -675,9 +746,7 @@ export function TrackDetailPage() {
     principalId: user?.id,
     trackId: id,
     enabled: semanticMode && Boolean(id && trackDetailQuery.data && (!detailTrackWorkspaceId || scope?.workspaceId === detailTrackWorkspaceId)),
-    params: dashboardFilters
-      ? { dashboard_filters: JSON.stringify(dashboardFilters) }
-      : activeView?.id ? { view_id: activeView.id } : {},
+    params: entryFilters,
   });
 
   const allEntries = useMemo(
@@ -708,12 +777,19 @@ export function TrackDetailPage() {
 
   useOpenEntryModalRefetch(openModalEntryId, handleOpenEntryRefetched);
 
+  // Latest entry types for the deep-link effect (read when it runs, not a trigger).
+  const entryTypesRef = useRef<unknown[] | undefined>(undefined);
+  entryTypesRef.current = entryTypesQuery.data as unknown[] | undefined;
+  const entryTypesReady = entryTypesQuery.data !== undefined;
+
   useEffect(() => {
     if (!id) return;
     if (!entryIdFromQuery) {
       setEntryModal(null);
       return;
     }
+    // Wait for the entry types so a page-type entry is not opened as a dialog first.
+    if (!entryTypesReady) return;
     // openEntryModal (card click) already set the modal — avoid a refetch
     // that may navigate away when list cache track_id differs from URL id.
     if (openModalEntryIdRef.current === entryIdFromQuery) {
@@ -732,6 +808,17 @@ export function TrackDetailPage() {
             `/tracks/${entry.track_id}?entry=${encodeURIComponent(entryIdFromQuery)}`,
             { replace: true }
           );
+          return;
+        }
+        // A link to an entry whose type opens as a page (a document, a file)
+        // goes to that page, the same as clicking it, instead of the generic
+        // record dialog without its file.
+        const types = (entryTypesRef.current ?? []) as EntryTypeNode[];
+        const type = types.find(
+          et => et.id === (entry as Entry & { type_id?: string }).type_id || entryTypeMatchesSlug(et.name || '', entry.type || '')
+        );
+        if (type?.form_schema?.open_as_page) {
+          navigate(entryPagePath(entry.id), { replace: true });
           return;
         }
         setEntryModal({ entry });
@@ -755,13 +842,14 @@ export function TrackDetailPage() {
   }, [
     id,
     entryIdFromQuery,
+    entryTypesReady,
     navigate,
     setSearchParams,
     showToast,
   ]);
 
   const entriesTotal =
-    exactEntriesTotal ?? firstEntryPage?.total ??
+    (pagedMode ? firstEntryPage?.total ?? knownTotal : undefined) ?? exactEntriesTotal ?? firstEntryPage?.total ??
     (firstEntryPage && !firstEntryPage.hasMore ? firstEntryPage.entries.length : undefined);
   const loadedEntries = entriesData?.pages.reduce((sum, page) => sum + page.entries.length, 0);
 
@@ -887,6 +975,40 @@ export function TrackDetailPage() {
     dashboardFilters,
   ]);
 
+  const recordNavigation = useRecordNavigation({
+    enabled: pagedMode && !(semanticMode && retrievalQuery) && Boolean(entryModal) && !searchParams.get('from_entry'),
+    contextKey: `${scope?.workspaceId}|${user?.id}|${listShapeKey}|page:${page}|${filterType}|${filterTags.join(',')}|${trackSearch}`,
+    entryId: entryModal?.entry.id,
+    entries: filteredEntries,
+    page,
+    pageCount: Math.max(page, Math.ceil((entriesTotal ?? 0) / pageSize)),
+    loading: entriesFetching,
+    loadPage: async targetPage => {
+      if (!id) return [];
+      const result = await tracksApi.getEntriesPage(id, {
+        ...entryFilters, include_total: false, limit: pageSize, offset: (targetPage - 1) * pageSize,
+      });
+      if (result.appQueryRequired) throw new Error('Governed App query required');
+      let candidates = result.entries;
+      if (filterType) candidates = candidates.filter(entry => entry.type === filterType);
+      const keys = dashboardFilters ? undefined : activeView?.entry_type_keys;
+      if (keys?.length) {
+        const allowed = new Set(keys.map(key => key.toLowerCase().trim()));
+        candidates = candidates.filter(entry => allowed.has((entry.type || '').toLowerCase().trim()));
+      }
+      return entriesMatchingTags(candidates, filterTags);
+    },
+    readEntry: async targetId => {
+      const fresh = await entriesApi.get(targetId);
+      if (fresh.track_id !== id) throw new Error('Record moved outside this list');
+      return fresh;
+    },
+    // Adjacent records are one browsing session: Back closes the sheet instead
+    // of restoring an entry whose page no longer matches the visible table.
+    openEntry: (entry, targetPage) => { setPage(targetPage); handleEntryOpen(entry, { replace: true }); },
+    onError: message => showToast(message, 'error'),
+  });
+
   useEffect(() => {
     if (!id) {
       clearPageContext();
@@ -991,8 +1113,8 @@ export function TrackDetailPage() {
 
   /** Must match ``useInfiniteQuery`` key (includes active saved view). */
   const trackEntriesInfiniteQueryKey = useMemo(
-    () => ['track', id, 'entries', activeView?.id] as const,
-    [id, activeView?.id]
+    () => ['track', id, 'entries', entryFilterKey] as const,
+    [id, entryFilterKey]
   );
 
   const patchEntriesCache = useCallback(
@@ -1320,19 +1442,30 @@ export function TrackDetailPage() {
       ]
         .map(s => slugifyKanbanColumnKey(String(s || '')))
         .filter(Boolean);
+      const entryTypes = (entryTypesQuery.data ?? []) as EntryTypeNode[];
+      // A caller that names its type (a settings hub section, a widget's own
+      // Add) gets exactly that type, matched by id or manifest key as well as
+      // display name. Matching only by a slug of the display name sent a
+      // section whose name differs from its key ("Who can do what" vs
+      // payroll_permissions) to the track's default type.
+      const explicitType = findRequestedEntryType(entryTypes, input.type);
+
       let slug = 'post';
-      for (const c of candidates) {
-        if (c === 'item' && !slugMatchesAllowedEntryTypes('item', allowed)) continue;
-        if (slugMatchesAllowedEntryTypes(c, allowed)) {
-          slug = c;
-          break;
+      if (explicitType) {
+        slug = slugifyKanbanColumnKey(explicitType.name || '');
+      } else {
+        for (const c of candidates) {
+          if (c === 'item' && !slugMatchesAllowedEntryTypes('item', allowed)) continue;
+          if (slugMatchesAllowedEntryTypes(c, allowed)) {
+            slug = c;
+            break;
+          }
         }
       }
 
-      const entryTypes = (entryTypesQuery.data ?? []) as EntryTypeNode[];
-      let matchingType = entryTypes.find(et =>
-        entryTypeMatchesSlug(et.name || '', slug)
-      );
+      let matchingType =
+        explicitType ??
+        entryTypes.find(et => entryTypeMatchesSlug(et.name || '', slug));
       if (!matchingType && input.custom_fields) {
         const seededKeys = Object.keys(input.custom_fields).filter(
           k => !k.startsWith('_')
@@ -1457,6 +1590,29 @@ export function TrackDetailPage() {
   const canManageCollabRows = canManageCollaborators;
 
   // A singleton entry type (e.g. Company Profile — "one record per
+
+  // Dragging a tab saves the new order as each tab's own position. The App's declared order
+  // (default_tab_order) is left alone, so an App update never undoes what people chose.
+  const reorderViews = useCallback(async (orderedIds: string[]) => {
+    if (!id) return;
+    const changes = tabOrderChanges(dedupedTabViews, orderedIds);
+    if (changes.length === 0) return;
+    const key = viewsForTrackQueryKey(id);
+    const previous = queryClient.getQueryData<SavedView[]>(key);
+    const positions = new Map(changes.map(c => [c.view.id, c.tabOrder]));
+    queryClient.setQueryData<SavedView[]>(key, old => (old ?? []).map(v =>
+      positions.has(v.id) ? { ...v, config: { ...v.config, tab_order: positions.get(v.id) } } : v));
+    try {
+      for (const { view, tabOrder } of changes) {
+        await trackViewsApi.update(view.id, { config: { ...view.config, tab_order: tabOrder } });
+      }
+    } catch {
+      if (previous) queryClient.setQueryData(key, previous);
+      showToast('Could not save the tab order. It has been put back.', 'error');
+    } finally {
+      await queryClient.invalidateQueries({ queryKey: key });
+    }
+  }, [id, dedupedTabViews, queryClient, showToast]);
   // workspace, always") is enforced server-side at create time, but the
   // "+ New" affordance has no way to know that on its own — without this,
   // it stays live and clickable even once the one allowed record already
@@ -1792,8 +1948,26 @@ export function TrackDetailPage() {
     return <Navigate to={documentTemplatesRedirect} replace />;
   }
 
+  // A track an App keeps out of its track list and opens from its Settings: shown as that App's settings screen,
+  // with a way back to the App and none of the track controls (share, watch, pin, counts).
+  const settingsMode = searchParams.get('as') === 'settings';
+  const settingsApp = track.app;
+
   return (
     <PageShell>
+      {settingsMode ? (
+        <PageSection>
+          <header className="mb-8 space-y-2">
+            <Link
+              to={settingsApp?.id ? `/apps/${settingsApp.id}` : '/apps'}
+              className="text-[var(--link)] hover:text-[var(--link-hover)] text-sm hover:underline inline-block"
+            >
+              ← Back to {settingsApp?.name || 'the App'}
+            </Link>
+            <PageHeading>{settingsApp?.name ? `${settingsApp.name} settings` : 'Settings'}</PageHeading>
+          </header>
+        </PageSection>
+      ) : (
       <TrackDetailHeader
         track={track}
         workspaceAccentColor={trackWorkspaceAccentColor}
@@ -1815,6 +1989,7 @@ export function TrackDetailPage() {
         onOpenDerive={() => setDeriveModalOpen(true)}
         onDeleteTrack={handleDeleteTrack}
       />
+      )}
 
       {dashboardFilters ? (
         <div className="flex items-center justify-between gap-3 px-4 py-2">
@@ -1833,6 +2008,7 @@ export function TrackDetailPage() {
         </div>
       ) : null}
 
+      {settingsMode ? null : (
       <TrackDetailViewChrome
         trackId={id}
         viewTabOptions={viewTabOptions}
@@ -1848,6 +2024,8 @@ export function TrackDetailPage() {
             return params;
           }, { replace: true });
         }}
+        onReorderViews={canAdminTrack && dedupedTabViews.length > 1 ? reorderViews : undefined}
+        showSingleTab={appTabsConfig?.show_single_tab !== false}
         onEditLayout={canEditViewLayout && id && activeView
           ? () => setLayoutTarget({ trackId: id, viewId: activeView.id })
           : undefined}
@@ -1857,6 +2035,7 @@ export function TrackDetailPage() {
         onToggleConfig={() => setTrackConfigOpen(o => !o)}
         onToggleActivity={() => setTrackActivityOpen(o => !o)}
       />
+      )}
 
       <PageSection
         innerClassName={`
@@ -1874,6 +2053,7 @@ export function TrackDetailPage() {
         <TrackDetailMainColumn
           isPagesView={isPagesView}
           rightRailOpen={rightRailOpen}
+          showSearchAndFilters={showSearchAndFilters}
           filterType={filterType}
           setFilterType={setFilterType}
           entryTypeSlugs={entryTypeSlugs}
@@ -1917,6 +2097,12 @@ export function TrackDetailPage() {
           onEntryCreate={handleEntryCreate}
           entryTypes={(entryTypesQuery.data ?? []) as EntryTypeNode[]}
           trackEntryTypeFields={trackEntryTypeFields}
+          fieldFilters={fieldFilters}
+          setFieldFilters={setFieldFilters}
+          sort={sort}
+          onSortChange={pagedMode ? setSort : undefined}
+          entriesTotal={entriesTotal}
+          pager={pagedMode && entriesTotal !== undefined ? { page, pageSize, total: entriesTotal, busy: entriesPending || entriesFetching, onPage: setPage, onPageSize: (n: number) => { setPageSize(n); try { window.localStorage.setItem('track-page-size', String(n)); } catch { /* optional */ } } } : undefined}
           hasNextPage={hasNextPage && !(semanticMode && Boolean(retrievalQuery))}
           isFetchingNextPage={isFetchingNextPage}
           fetchNextPage={() => {
@@ -1932,6 +2118,7 @@ export function TrackDetailPage() {
         {id && rightRailOpen ? (
           <TrackDetailRightRail
             trackId={id}
+            appTabOrder={appTabsConfig?.order}
             trackActivityOpen={trackActivityOpen}
             trackConfigOpen={trackConfigOpen}
             canAdminTrack={canAdminTrack}
@@ -1961,6 +2148,7 @@ export function TrackDetailPage() {
         <EntryDetail
           key={entryModal.entry.id}
           entry={entryModal.entry}
+          recordNavigation={recordNavigation}
           initialFocusComments={entryModal.focusComments}
           initialEditMode={entryModal.initialEditMode}
           track={track}

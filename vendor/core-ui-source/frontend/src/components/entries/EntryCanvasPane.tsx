@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Download, FileText } from 'lucide-react';
 
 import { attachmentsApi } from '../../api/attachments';
@@ -10,6 +10,33 @@ import { Button } from '../ui/Button';
 import { Surface, Text } from '../../ui';
 import { AttachmentPane } from './attachments/AttachmentPane';
 import { EntryDocumentEditor } from './EntryDocumentEditor';
+import { SpreadsheetEditor } from './SpreadsheetEditor';
+import { isSpreadsheetName } from '../../utils/spreadsheetFile';
+
+/**
+ * Should an entry with a file open on the file preview instead of the text editor?
+ * Yes when a file exists and either the file is the master copy (``edit_source`` is ``file``)
+ * or the entry has no text body to edit (a generated payslip, an uploaded PDF).
+ */
+export function prefersFilePreview(entry: Entry, hasFile: boolean): boolean {
+  if (!hasFile) return false;
+  const fields = (entry.custom_fields || {}) as Record<string, unknown>;
+  if (String(fields.edit_source || '').toLowerCase() === 'file') return true;
+  return !String(entry.body || '').trim();
+}
+
+/** "6 Nov 2026, 16:15": one readable date and time, the same in every locale. */
+export function formatVersionDate(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  return new Intl.DateTimeFormat('en-GB', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(d);
+}
 
 /** The attachment id(s) a file field holds, whatever shape the value has. */
 function fileFieldIds(value: unknown): string[] {
@@ -37,6 +64,7 @@ export function EntryCanvasPane({
   editable = false,
   canEdit = false,
   onBodySaved,
+  onFileSaved,
 }: {
   entry: Entry;
   attachments: Attachment[];
@@ -45,10 +73,19 @@ export function EntryCanvasPane({
   editable?: boolean;
   canEdit?: boolean;
   onBodySaved?(entry: Entry): void;
+  /** A file was edited in the app and saved as a new version. */
+  onFileSaved?(entry: Entry, file: Attachment): void;
 }) {
   const { showToast } = useToast();
   const [pickedId, setPickedId] = useState<string | null>(null);
   const [tab, setTab] = useState<'document' | 'file'>(editable ? 'document' : 'file');
+  // Until the person picks a tab themselves, open on what they came for: the file when the
+  // file is the master copy or there is no text to edit, the text editor otherwise.
+  const pickedTab = useRef(false);
+  const choose = (next: 'document' | 'file') => {
+    pickedTab.current = true;
+    setTab(next);
+  };
 
   const files = useMemo(
     () =>
@@ -58,6 +95,11 @@ export function EntryCanvasPane({
         .sort((a, b) => (b.created_at || '').localeCompare(a.created_at || '')),
     [attachments]
   );
+
+  const preferFile = prefersFilePreview(entry, files.length > 0);
+  useEffect(() => {
+    if (editable && !pickedTab.current) setTab(preferFile ? 'file' : 'document');
+  }, [editable, preferFile]);
 
   const current = useMemo(() => {
     const picked = pickedId ? files.find(a => a.id === pickedId) : undefined;
@@ -133,7 +175,7 @@ export function EntryCanvasPane({
                 <option key={a.id} value={a.id}>
                   {i === 0 ? 'Latest: ' : ''}
                   {a.filename || 'file'}
-                  {a.created_at ? ` (${new Date(a.created_at).toLocaleString()})` : ''}
+                  {a.created_at ? ` (${formatVersionDate(a.created_at)})` : ''}
                 </option>
               ))}
             </select>
@@ -174,9 +216,29 @@ export function EntryCanvasPane({
 
   if (!editable) return fileView;
 
-  // The file is out of date when the entry changed after it was made (a render
-  // updates the entry a moment after attaching, so allow for that).
+  // A file document (the file is the master, or there is no text) has nothing to
+  // write: no text tab, except a spreadsheet, whose tab is its grid editor.
+  const hasText = !!String(entry.body || '').trim();
+  const spreadsheet =
+    !!current && isSpreadsheetName(current.filename || '', current.mime_type || '');
+  const fileDocument = preferFile && !hasText;
+  const tabs: ReadonlyArray<'file' | 'document'> = fileDocument
+    ? spreadsheet
+      ? ['file', 'document']
+      : ['file']
+    : preferFile
+      ? ['file', 'document']
+      : ['document', 'file'];
+  const activeTab = tabs.includes(tab) ? tab : tabs[0];
+  const tabLabel = (key: 'file' | 'document') =>
+    key === 'file' ? 'Preview' : fileDocument ? 'Edit' : 'Edit text';
+  // Only a document built from its text can fall behind its file. The file is out
+  // of date when the text changed after the file was made (a render updates the
+  // entry a moment after attaching, so allow for that). Metadata updates on a file
+  // document (filing details, status) never make its file stale.
   const stale =
+    !preferFile &&
+    hasText &&
     !!current?.created_at &&
     !!entry.updated_at &&
     Date.parse(entry.updated_at) - Date.parse(current.created_at) > 10000;
@@ -184,25 +246,22 @@ export function EntryCanvasPane({
   return (
     <Surface className="flex h-full min-h-[420px] flex-col overflow-hidden">
       <div role="tablist" className="flex items-center border-b border-[var(--panel-border)] px-1">
-        <button
-          type="button"
-          role="tab"
-          aria-selected={tab === 'document'}
-          className={`border-b-2 px-3 py-1.5 ${tab === 'document' ? 'border-[var(--brand-accent)]' : 'border-transparent'}`}
-          onClick={() => setTab('document')}
-        >
-          <Text as="span" variant="body-sm" tone={tab === 'document' ? 'default' : 'muted'} weight="medium">Document</Text>
-        </button>
-        <button
-          type="button"
-          role="tab"
-          aria-selected={tab === 'file'}
-          className={`border-b-2 px-3 py-1.5 ${tab === 'file' ? 'border-[var(--brand-accent)]' : 'border-transparent'}`}
-          onClick={() => setTab('file')}
-        >
-          <Text as="span" variant="body-sm" tone={tab === 'file' ? 'default' : 'muted'} weight="medium">File{files.length ? ` (${files.length})` : ''}</Text>
-        </button>
-        {tab === 'file' && stale ? (
+        {tabs.map(key => (
+          <button
+            key={key}
+            type="button"
+            role="tab"
+            aria-selected={activeTab === key}
+            className={`border-b-2 px-3 py-1.5 ${activeTab === key ? 'border-[var(--brand-accent)]' : 'border-transparent'}`}
+            onClick={() => choose(key)}
+          >
+            <Text as="span" variant="body-sm" tone={activeTab === key ? 'default' : 'muted'} weight="medium">
+              {tabLabel(key)}
+              {key === 'file' && files.length > 1 ? ` (${files.length})` : ''}
+            </Text>
+          </button>
+        ))}
+        {activeTab === 'file' && stale ? (
           <span
             data-testid="entry-canvas-stale"
             className="ml-auto pr-3"
@@ -212,7 +271,22 @@ export function EntryCanvasPane({
         ) : null}
       </div>
       <div className="min-h-0 flex-1">
-        {tab === 'document' ? (
+        {activeTab === 'document' && preferFile && !String(entry.body || '').trim() && current && isSpreadsheetName(current.filename || '', current.mime_type || '') ? (
+          <SpreadsheetEditor key={current.id} entry={entry} attachment={current} canEdit={canEdit} onSaved={(e, f) => onFileSaved?.(e, f)} />
+        ) : activeTab === 'document' && preferFile && !String(entry.body || '').trim() ? (
+          <div data-testid="entry-canvas-no-text" className="flex h-full flex-col items-center justify-center gap-2 px-6 py-12 text-center">
+            <Text as="div" variant="body" weight="medium">There is no text to edit</Text>
+            <Text as="div" variant="body-sm" tone="muted" className="max-w-md">
+              This document is a file ({current?.filename || 'attached file'}), not written text.
+              Download it to change it, or switch "Edited in" to Text to write it here instead.
+            </Text>
+            {current ? (
+              <Button type="button" variant="ghost" size="xs" onClick={() => void download(current)}>
+                <Download size={12} strokeWidth={LINE_ICON_STROKE} /> Download file
+              </Button>
+            ) : null}
+          </div>
+        ) : activeTab === 'document' ? (
           <EntryDocumentEditor
             entry={entry}
             canEdit={canEdit}

@@ -25,7 +25,7 @@ function titleCase(key: string): string {
   return key.replace(/_/g, ' ').replace(/\b\w/g, char => char.toUpperCase());
 }
 
-export function CommandCenterWidget({ view, entries, isLoading }: ViewWidgetProps) {
+export function CommandCenterWidget({ view, entries, isLoading, viewContext }: ViewWidgetProps) {
   const config = (view.config || {}) as Record<string, unknown>;
   const metrics = (Array.isArray(config.metrics) ? config.metrics : []) as Metric[];
   const childViews = (Array.isArray(config.child_views) ? config.child_views : []).map(normalizeChildView).filter((v): v is ChildView => v !== null);
@@ -41,6 +41,6 @@ export function CommandCenterWidget({ view, entries, isLoading }: ViewWidgetProp
   return <div className="space-y-5">
     <div className="flex items-center justify-between"><div><Text as="h2" variant="heading-lg">{title}</Text><Text variant="body-sm" tone="muted">{typeof config.subtitle === 'string' ? config.subtitle : 'Review current records and take the next action.'}</Text></div><Badge variant="info">{entries.length} {recordLabel}</Badge></div>
     {values.length > 0 && <div className="grid grid-cols-2 gap-3 md:grid-cols-4">{values.map(metric => <Surface key={metric.field} tone="panel" border="default" radius="card" padding="md"><Text as="div" variant="label" tone="muted" className="uppercase tracking-wide">{metric.label}</Text><Text as="div" variant="heading-sm" className="mt-1">{formatMetric(metric.value, metric.format)}</Text></Surface>)}</div>}
-    {childViews.map(({ key, label }) => <div key={key} className="space-y-2"><Text as="h3" variant="heading-sm">{label || titleCase(key)}</Text><ComposableViewSlot trackId={view.track_id} viewKey={key} allowedScopes={['track', 'both']} /></div>)}
+    {childViews.map(({ key, label }) => <div key={key} className="space-y-2"><Text as="h3" variant="heading-sm">{label || titleCase(key)}</Text><ComposableViewSlot trackId={view.track_id} viewKey={key} viewContext={viewContext} allowedScopes={['track', 'both']} /></div>)}
   </div>;
 }

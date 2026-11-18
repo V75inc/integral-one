@@ -10,6 +10,8 @@ const TrackConfigPanel = lazy(() =>
 
 export interface TrackDetailRightRailProps {
   trackId: string;
+  /** The App's ``defaults.tabs.order`` so the views list in the panel matches the tab strip. */
+  appTabOrder?: string[];
   trackActivityOpen: boolean;
   trackConfigOpen: boolean;
   canAdminTrack: boolean;
@@ -22,6 +24,7 @@ export interface TrackDetailRightRailProps {
 
 export function TrackDetailRightRail({
   trackId,
+  appTabOrder,
   trackActivityOpen,
   trackConfigOpen,
   canAdminTrack,
@@ -87,6 +90,7 @@ export function TrackDetailRightRail({
                 >
                   <TrackConfigPanel
                     trackId={trackId}
+                    appTabOrder={appTabOrder}
                     canEdit={canAdminTrack}
                   />
                 </Suspense>

@@ -1,8 +1,8 @@
 import type { CSSProperties } from 'react';
 import { Link } from 'react-router-dom';
 import type { Track } from '../../types';
-import { useQuery } from '@tanstack/react-query';
-import { dashboardsApi, isHomeComponentWidget, type AppHomeResponse } from '../../api/dashboards';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { isHomeAccessDenied, isHomeComponentWidget, type AppHomeResponse } from '../../api/dashboards';
 import { useScope } from '../../context/ScopeContext';
 import { requestOpenCompanionChat } from '../ai-chat/chatHandoff';
 import { Button, Skeleton } from '../../components/ui';
@@ -10,36 +10,40 @@ import { Surface, Text } from '../../ui';
 import { DashboardWidgetRenderer } from './DashboardWidgetRegistry';
 import './dashboardWidgets.css';
 import { NativeHome } from './NativeHome';
+import { readHomeQuery } from './homeQuery';
 
 /** Package-owned content on the active definition; no manual dashboard setup. */
 type HomeDestinations = {
   tracks?: Pick<Track, 'id' | 'title' | 'entry_count'>[];
   hasDashboards?: boolean;
+  defaultTrack?: Pick<Track, 'id' | 'title' | 'purpose'>;
 };
 
-export function AppHomePanel({ appId, workspaceId, tracks, hasDashboards }: { appId: string; workspaceId: string } & HomeDestinations) {
+export function AppHomePanel({ appId, workspaceId, tracks, hasDashboards, defaultTrack }: { appId: string; workspaceId: string } & HomeDestinations) {
   const { scope } = useScope();
+  const queryClient = useQueryClient();
   const query = useQuery({
     queryKey: ['app-home-data', appId, scope?.workspaceId],
-    queryFn: () => dashboardsApi.home(appId),
+    queryFn: () => readHomeQuery(queryClient, appId, scope?.workspaceId),
     enabled: Boolean(workspaceId && workspaceId === scope?.workspaceId),
     refetchInterval: 15000,
   });
+  if (isHomeAccessDenied(query.error) || query.data?.error === 'home_access_denied') return <Text as="p" tone="muted">This home is no longer available.</Text>;
   if (query.isError && !query.data) return <div className="space-y-3"><Text as="p" tone="muted">This home could not be loaded.</Text><Button variant="secondary" onClick={() => void query.refetch()}>Try again</Button></div>;
   if (!query.data) return <Skeleton className="h-48" />;
   return <>
     <div role="status" aria-live="polite" className="sr-only">{query.isFetching ? 'Refreshing App home.' : query.isError ? 'App home could not refresh. Showing the last loaded information.' : ''}</div>
-    <AppHomeContent appId={appId} workspaceId={workspaceId} tracks={tracks} hasDashboards={hasDashboards} result={query.data} refreshVersion={query.dataUpdatedAt} onRefresh={() => void query.refetch()} />
+    <AppHomeContent appId={appId} workspaceId={workspaceId} tracks={tracks} hasDashboards={hasDashboards} defaultTrack={defaultTrack} result={query.data} refreshVersion={query.dataUpdatedAt} onRefresh={() => void query.refetch()} />
   </>;
 }
 
-export function AppHomeContent({ appId, workspaceId, result, onRefresh, tracks, hasDashboards, refreshVersion = 0 }: { appId: string; workspaceId: string; result: AppHomeResponse; onRefresh: () => void; refreshVersion?: number } & HomeDestinations) {
+export function AppHomeContent({ appId, workspaceId, result, onRefresh, tracks, hasDashboards, defaultTrack, refreshVersion = 0 }: { appId: string; workspaceId: string; result: AppHomeResponse; onRefresh: () => void; refreshVersion?: number } & HomeDestinations) {
   const home = result.home;
   if (!home) return <Text as="p" tone="muted">No home is available for this App.</Text>;
   const operationsOverview = home.layout === 'operations_overview';
   const resourceHub = home.layout === 'resource_hub';
   const showTitle = home.title.trim().toLowerCase() !== 'home';
-  const shortcuts = (home.track_shortcuts ?? []).flatMap(name => {
+  const shortcuts = result.source === 'default' ? (tracks ?? []).filter(track => track.id !== defaultTrack?.id).slice(0, 5).map(track => ({ ...track, description: undefined })) : (home.track_shortcuts ?? []).flatMap(name => {
     const track = tracks?.find(item => item.title.toLowerCase() === name.toLowerCase());
     return track ? [{ ...track, description: home.shortcut_descriptions?.[name] }] : [];
   });
@@ -99,6 +103,13 @@ export function AppHomeContent({ appId, workspaceId, result, onRefresh, tracks, 
         {showTitle ? <Text as="h2" variant="heading-md">{home.title}</Text> : null}
         {home.description ? <Text as="p" tone="muted" variant="body-sm">{home.description.trim().replace(/\s+/g, ' ')}</Text> : null}
       </div> : null}
+      {!result.preview && defaultTrack && !shortcuts.some(track => track.id === defaultTrack.id) ? (
+        <Surface tone="panel" className="space-y-2 p-4">
+          <Text as="h3" variant="heading-sm">{defaultTrack.title}</Text>
+          {defaultTrack.purpose?.trim() ? <Text as="p" tone="muted">{defaultTrack.purpose}</Text> : null}
+          <Link to={`/tracks/${encodeURIComponent(defaultTrack.id)}`} className="inline-block underline underline-offset-4">Open {defaultTrack.title}</Link>
+        </Surface>
+      ) : null}
       {home.layout && actionButtons}
       {operationsOverview && navigation ? (
         <div className="grid items-start gap-5 lg:grid-cols-2">

@@ -28,6 +28,9 @@ test('session IPC excludes frames and other windows even at the same origin', ()
   assert.equal(trustedSender({ sender: webContents, senderFrame: mainFrame }, window, runtime.web_url), true);
   assert.equal(trustedSender({ sender: webContents, senderFrame: { url: runtime.web_url } }, window, runtime.web_url), false);
   assert.equal(trustedSender({ sender: {}, senderFrame: mainFrame }, window, runtime.web_url), false);
+  mainFrame.url = '';
+  assert.equal(trustedSender({ sender: webContents, senderFrame: mainFrame }, window, runtime.web_url), false);
+  assert.equal(trustedSender({ sender: webContents, senderFrame: null }, window, runtime.web_url), false);
   mainFrame.url = 'https://attacker.test';
   assert.equal(trustedSender({ sender: webContents, senderFrame: mainFrame }, window, runtime.web_url), false);
 });

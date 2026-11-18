@@ -32,6 +32,11 @@ esbuild.buildSync({
   target: "node22",
   legalComments: "linked",
 });
+esbuild.buildSync({
+  entryPoints: [path.join(root, "desktop/workspace-preload-entry.js")],
+  outfile: path.join(root, "desktop/workspace-preload.js"), bundle: true,
+  platform: "node", format: "cjs", external: ["electron"], target: "node22",
+});
 for (const name of ["index.html", "account.css"])
   fs.copyFileSync(path.join(root, "accounts", name), path.join(output, name));
 fs.copyFileSync(

@@ -43,7 +43,7 @@ async function createWindow() {
     ...mainWindowChrome(windowChrome),
     webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true,
       ...(windowChrome ? { additionalArguments: [chromeArgument(windowChromeMenus)] } : {}),
-      ...(runtime ? { preload: path.join(__dirname, 'preload.js') } : {}) },
+      ...(runtime ? { preload: options.workspacePreload || path.join(__dirname, 'preload.js') } : {}) },
   });
   window.once('ready-to-show', () => window?.show());
   window.on('page-title-updated', event => {
@@ -200,6 +200,19 @@ async function boot() {
       return callback();
     });
   }
+  if (runtime && options.updates) {
+    const { trustedSender } = require('./local-session');
+    for (const [name, callback] of Object.entries({ state: options.updates.state, check: options.updates.check })) {
+      ipcMain.handle(`integral:updates-${name}`, async event => {
+        if (!trustedSender(event, window, workspace)) throw new Error('Untrusted desktop update caller.');
+        return callback?.();
+      });
+    }
+    const unsubscribe = options.updates.subscribe?.(state => {
+      if (window && !window.isDestroyed()) window.webContents.send('integral:updates-state', state);
+    });
+    app.once('will-quit', () => unsubscribe?.());
+  }
   // Trusted product composition may initialize local preferences before the UI
   // reads them. Remote hosts never receive local runtime authority.
   if (runtime) await options.beforeWorkspace?.({ runtime });
@@ -229,7 +242,10 @@ async function stopRuntime({ requireExclusive = false } = {}) {
   return stopping;
 }
 
-if (!app.requestSingleInstanceLock()) app.quit();
+const singletonName = options.singleInstanceDataName;
+if (singletonName && !/^[A-Za-z0-9][A-Za-z0-9 ._-]{0,63}$/.test(singletonName)) throw new Error('Invalid product singleton name.');
+const singletonPath = singletonName ? path.join(app.getPath('appData'), singletonName) : null;
+if (!require('./singleton').requestDesktopLock(app, singletonPath)) app.quit();
 else {
   app.on('second-instance', () => { window?.show(); window?.focus(); });
   app.whenReady().then(boot).catch(error => {

@@ -1,3 +1,4 @@
+import { AppReactComponentHost } from '../../components/extensions/AppReactComponentHost';
 import { useEffect, useLayoutEffect, useRef, useState, type FormEvent } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
@@ -35,7 +36,9 @@ export function NativeHome(props: Props) {
   });
   const child = (item: HomeElement) => <NativeHome key={item.id} {...props} node={item} />;
   const children = (node.children || []).map(child);
+  if (node.type === 'react_component') return <AppReactComponentHost appId={appId} componentKey={node.component_key!} placement="home" props={node.props} preview={preview} liveData={liveData} />;
   if (node.type === 'stack') return <div className={`flex min-w-0 flex-col ${GAP[node.id === 'scaffold-start' ? 'sm' : node.gap || 'md']}`}>{children}</div>;
+
   if (node.type === 'grid') return <div className={`grid min-w-0 ${COLUMNS[node.columns || 2]} ${GAP[node.gap || 'md']}`}>{children}</div>;
   if (node.type === 'card') return <Surface tone="panel" className={`flex min-w-0 flex-col p-5 ${GAP[node.gap || 'md']}`}>{node.title ? <Text as="h3" variant="heading-sm">{node.title}</Text> : null}{children}</Surface>;
   if (node.type === 'heading') return <Text as="h3" variant="heading-md">{node.text || node.title}</Text>;

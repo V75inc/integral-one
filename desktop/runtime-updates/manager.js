@@ -3,9 +3,10 @@ const fs = require("node:fs");
 const path = require("node:path");
 const crypto = require("node:crypto");
 const { execFile } = require("node:child_process");
-const { promisify } = require("node:util");
+const { promisify, isDeepStrictEqual } = require("node:util");
 const { invocation, runCli, startCore } = require("@integral/desktop-host/core-runtime");
 const releases = require("./releases");
+const { matchesMigrationHome, needsAssistedMigration } = require("./migration-readiness");
 const { compareCore, compareApp } = require("../release-contract");
 const execute = promisify(execFile);
 const ID = /^\d+\.\d+\.\d+(?:(?:a|b|rc)\d+)?-[a-f0-9]{16}$/;
@@ -27,10 +28,11 @@ function copyHome(source, target) {
   fs.cpSync(source, target, { recursive: true, errorOnExist: true, force: false, dereference: false, verbatimSymlinks: true, filter: file => {
     const stat = fs.lstatSync(file);
     if (stat.isSymbolicLink()) {
-      // Core's disposable pgserver venv contains these three interpreter links.
+      // The pgserver venv contains interpreter links and a Unix lib64 alias.
       // Preserve only their literal targets; never follow a link into a backup.
       const relative = path.relative(source, file).split(path.sep).join("/"), link = fs.readlinkSync(file);
-      if ((/^database-runtime\/bin\/python(?:3|3\.12)$/.test(relative) && link === "python") ||
+      if ((relative === "database-runtime/lib64" && link === "lib") ||
+          (/^database-runtime\/bin\/python(?:3|3\.12)$/.test(relative) && link === "python") ||
           (relative === "database-runtime/bin/python" && path.isAbsolute(link) && path.basename(link) === "python3.12")) return true;
     }
     if (stat.isSymbolicLink() || (!stat.isDirectory() && !stat.isFile())) throw new Error("Workspace backup refuses links or special files.");
@@ -55,7 +57,7 @@ function identity(home) {
 
 function createRuntimeManager({ app, resources, channel, bundledCore, request = fetch, getRuntime, prepareForInstall,
   cliRunner = runCli, start = startCore, python = execute, discover = releases.discover, download = releases.download,
-  environment = process.env, argv = process.argv }) {
+  environment = process.env, argv = process.argv, migrateStorage }) {
   let root, home, userData, state = { schemaVersion: 1 }, operation = null, lastRecovery = null;
   const options = () => ({ oneVersion: app.getVersion(), channel, platform: process.platform, arch: process.arch });
   const base = () => invocation({ resources, command: "", prefix: "" });
@@ -107,6 +109,8 @@ function createRuntimeManager({ app, resources, channel, bundledCore, request = 
   async function stopped(cli) {
     const status = await cliRunner(cli, ["status", "--home", home, "--json"]);
     if (status.state !== "stopped") throw new Error("A workspace process is running. Close it before runtime recovery.");
+    if (fs.existsSync(path.join(home, "postgres/postmaster.pid")) || fs.existsSync(path.join(home, "database.json")))
+      throw new Error("A database process or stale readiness needs review before recovery.");
   }
   async function restore(pending) {
     if (pending.phase !== "restoring") {
@@ -148,13 +152,51 @@ function createRuntimeManager({ app, resources, channel, bundledCore, request = 
     if (pending.phase !== "ready") { await restore(pending); return; }
     await stopped(command(pending.oldId));
     const selected = release(pending.id);
-    let trial;
+    let trial, expectedIdentity = pending.identity, runtimeUser;
     pending.phase = "trial"; persist();
     try {
+      if (pending.storageMigration) {
+        const approval = pending.storageMigration;
+        if (!/^[a-f0-9]{64}$/.test(approval.approvedHash)) throw new Error("Invalid migration approval.");
+        const planPath = path.join(root, `migration-${approval.approvedHash}.json`);
+        if (regular(planPath).size > 16 * 1024 ** 2) throw new Error("Migration plan exceeds size limit.");
+        if (hash(planPath) !== approval.approvedHash) throw new Error("Reviewed migration changed.");
+        const envelope = JSON.parse(fs.readFileSync(planPath, "utf8"));
+        if (envelope.version !== 1 || !matchesMigrationHome(envelope.home, home) ||
+            envelope.installation_id !== pending.installationId || envelope.wheel_sha256 !== selected.manifest.wheel.sha256)
+          throw new Error("Migration does not match the selected home and runtime.");
+        let receipt;
+        if (migrateStorage) receipt = await migrateStorage({ home, planPath, approvedHash: approval.approvedHash, selected });
+        else {
+          const cli = command(pending.id);
+          if (cli.args.at(-1) !== "integral") throw new Error("Unsupported maintenance command.");
+          const script = fs.readFileSync(path.join(__dirname, "storage-migration.py"), "utf8");
+          const env = { ...environment }; delete env.PYTHONPATH;
+          const output = await python(cli.file, [...cli.args.slice(0, -1), "python", "-c", script,
+            "apply", "--home", home, "--wheel", selected.wheel, "--plan", planPath, "--approved-hash", approval.approvedHash],
+            { timeout: 30 * 60_000, maxBuffer: 1024 * 1024, windowsHide: true, env });
+          receipt = JSON.parse(output.stdout);
+        }
+        const after = identity(home), before = pending.identity;
+        const installation = JSON.parse(fs.readFileSync(path.join(home, "installation.json"), "utf8"));
+        if (before.keys.runtime_database_password !== undefined ||
+            receipt?.plan_hash !== envelope.plan.hash || receipt.runtime_user !== envelope.plan.runtime_role ||
+            installation.runtime_database_user !== receipt.runtime_user || installation.installation_id !== pending.installationId ||
+            !/^[a-f0-9]{64}$/.test(installation.runtime_database_password || "") ||
+            !/^[a-f0-9]{64}$/.test(receipt.password_sha256 || "") ||
+            !isDeepStrictEqual(after.accounts, before.accounts) ||
+            !isDeepStrictEqual(after.keys, { ...before.keys, runtime_database_password: receipt.password_sha256 }))
+          throw new Error("Migration did not preserve the reviewed installation identity.");
+        expectedIdentity = after; runtimeUser = receipt.runtime_user;
+        await stopped(command(pending.oldId));
+      }
       trial = await start({ home, resources, command: command(pending.id) });
-      if (!trial.owned || trial.version !== selected.manifest.core.version || trial.installation_id !== pending.installationId)
+      if (!trial.owned || trial.version !== selected.manifest.core.version || trial.installation_id !== pending.installationId ||
+          JSON.parse(fs.readFileSync(path.join(home, "installation.json"), "utf8")).installation_id !== pending.installationId)
         throw new Error("Trial runtime did not preserve the owned installation.");
-      if (JSON.stringify(identity(home)) !== JSON.stringify(pending.identity)) throw new Error("Trial runtime changed the account or installation keys.");
+      if (!isDeepStrictEqual(identity(home), expectedIdentity) || (runtimeUser &&
+          JSON.parse(fs.readFileSync(path.join(home, "installation.json"), "utf8")).runtime_database_user !== runtimeUser))
+        throw new Error("Trial runtime changed the account or installation keys.");
       const result = await cliRunner(trial.cli, ["stop", "--home", home, "--json", "--if-pid", String(trial.pid), "--if-created", String(trial.process_created)]);
       if (result.state !== "stopped") throw new Error("Trial runtime did not stop.");
       state.active = pending.id;
@@ -179,10 +221,14 @@ function createRuntimeManager({ app, resources, channel, bundledCore, request = 
     directory(userData); directory(root); directory(path.join(root, "releases"));
     state = readState();
     if (state.pending) await activate();
-    if (state.active) {
-      const selected = stored(state.active);
-      if (compareCore(selected.manifest.core.version, bundledCore.version) <= 0) { state.active = null; persist(); }
-    }
+    const useBundle = !state.active || compareCore(stored(state.active).manifest.core.version, bundledCore.version) <= 0;
+    if (useBundle) await require("./installer-storage").beforeBundledBoot({
+      root, home, resources, cli: command(null), version: bundledCore.version, argv,
+      cliRunner, start, copyHome, identity,
+    });
+    // Keep the previous external selection until replacement qualification has
+    // succeeded, so reinstalling the old host also restores its runtime choice.
+    if (useBundle && state.active) { state.active = null; persist(); }
     select(state.active);
   }
   function currentCore() { return state.active ? release(state.active).manifest.core.version : bundledCore.version; }
@@ -224,12 +270,17 @@ function createRuntimeManager({ app, resources, channel, bundledCore, request = 
     })().finally(() => { operation = null; });
     return operation;
   }
-  async function install() {
+  async function install({ storageMigration } = {}) {
+    if (!storageMigration) {
+      const planPath = argv.find(value => value.startsWith("--storage-plan="))?.slice(15);
+      const approvedHash = argv.find(value => value.startsWith("--storage-approved-hash="))?.slice(24);
+      if (planPath || approvedHash) storageMigration = { planPath, approvedHash };
+    }
     if (operation) throw new Error("Wait for the runtime download to finish.");
-    operation = installOnce().finally(() => { operation = null; });
+    operation = installOnce(storageMigration).finally(() => { operation = null; });
     return operation;
   }
-  async function installOnce() {
+  async function installOnce(storageMigration) {
     const selected = staged(), runtime = getRuntime();
     // Core reports a canonical path (for example, /private/tmp on macOS).
     // Resolve parent aliases without accepting a symlink as the home itself.
@@ -237,16 +288,38 @@ function createRuntimeManager({ app, resources, channel, bundledCore, request = 
     if (!selected || !runtime?.owned || !runtime.home || canonicalHome(runtime.home) !== canonicalHome(home)) {
       throw new Error("This app must own the workspace before updating.");
     }
+    if (!storageMigration && migrationRequirement())
+      throw new Error("This workspace needs an assisted update with a reviewed storage plan before installation.");
+    let approval;
+    if (storageMigration) {
+      const { planPath, approvedHash } = storageMigration;
+      if (regular(planPath).size > 16 * 1024 ** 2) throw new Error("Migration plan exceeds size limit.");
+      if (!/^[a-f0-9]{64}$/.test(approvedHash) || hash(planPath) !== approvedHash)
+        throw new Error("Approval must name the exact reviewed migration file.");
+      const envelope = JSON.parse(fs.readFileSync(planPath, "utf8"));
+      if (envelope.version !== 1 || !matchesMigrationHome(envelope.home, home) ||
+          envelope.installation_id !== runtime.installation_id || envelope.wheel_sha256 !== selected.manifest.wheel.sha256)
+        throw new Error("Migration does not match the selected home and runtime.");
+      const saved = path.join(root, `migration-${approvedHash}.json`);
+      if (fs.existsSync(saved)) { regular(saved); if (hash(saved) !== approvedHash) throw new Error("Saved migration changed."); }
+      else fs.writeFileSync(saved, fs.readFileSync(planPath), { flag: "wx", mode: 0o600 });
+      approval = { approvedHash };
+    }
     const before = identity(home), backupDirectory = await prepareForInstall();
     if (!runtime.stopped) throw new Error("Workspace stop did not complete.");
+    await stopped(command(state.active));
     const snapshot = path.join(path.dirname(home), ".one-runtime-snapshot-" + crypto.randomUUID());
     copyHome(home, snapshot);
     if (JSON.stringify(identity(snapshot)) !== JSON.stringify(before)) throw new Error("Workspace backup integrity failed.");
     state.pending = { id: selected.id, oldId: state.active || null, home, snapshot, identity: before,
-      installationId: runtime.installation_id, backupDirectory, phase: "ready" };
+      installationId: runtime.installation_id, backupDirectory, phase: "ready", ...(approval ? { storageMigration: approval } : {}) };
     persist();
     const args = argv.slice(1).filter(value => value.startsWith("--home=") || value.startsWith("--user-data-dir="));
     app.relaunch({ args }); app.quit();
+  }
+  function migrationRequirement(kind = "runtime") {
+    return needsAssistedMigration(home, argv, kind)
+      ? { code: "reviewed-storage-plan-required" } : null;
   }
   function canInstallHost(manifest) {
     if (!state.active) return true;
@@ -254,7 +327,7 @@ function createRuntimeManager({ app, resources, channel, bundledCore, request = 
     return compareCore(manifest.core.version, selected.core.version) >= 0 ||
       (compareApp(manifest.version, selected.minimumOneVersion) >= 0 && compareApp(manifest.version, selected.maximumOneVersionExclusive) < 0);
   }
-  return { beforeBoot, check, stage, install, staged, currentCore, canInstallHost, recovery: () => lastRecovery,
+  return { beforeBoot, check, stage, install, staged, currentCore, canInstallHost, migrationRequirement, recovery: () => lastRecovery,
     failed: () => state.failed, state: () => structuredClone(state) };
 }
 // Keep metadata fetching separate from staged code and local account authority.

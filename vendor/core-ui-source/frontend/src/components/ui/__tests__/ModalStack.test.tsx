@@ -33,3 +33,19 @@ describe('stacked modal keyboard ownership', () => {
     } finally { visible.mockRestore(); }
   });
 });
+
+it('keeps an owned lookup footer in the dialog keyboard cycle', () => {
+  const visible = vi.spyOn(HTMLElement.prototype, 'offsetParent', 'get').mockReturnValue(document.body);
+  const popup = document.createElement('div');
+  popup.setAttribute('data-integral-popover-owner', 'lookup-results');
+  popup.innerHTML = '<ul id="lookup-results" role="listbox"></ul><button>Next page</button>';
+  document.body.appendChild(popup);
+  try {
+    render(<Modal open title="Entry" onClose={() => {}}><input aria-label="Lookup" aria-expanded="true" aria-controls="lookup-results" /><button>Following field</button></Modal>);
+    screen.getByLabelText('Lookup').focus();
+    fireEvent.keyDown(document.activeElement!, {key: 'Tab'});
+    expect(document.activeElement).toBe(screen.getByText('Next page'));
+    fireEvent.keyDown(document.activeElement!, {key: 'Tab'});
+    expect(document.activeElement).toBe(screen.getByText('Following field'));
+  } finally {visible.mockRestore(); popup.remove();}
+});

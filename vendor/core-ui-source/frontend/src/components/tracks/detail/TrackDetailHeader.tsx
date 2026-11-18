@@ -15,6 +15,7 @@ import {
   PageHeading,
   PageMeta,
   PageSection,
+  TrackDot,
 } from '../../ui';
 import { formatRelativeTime, resolveIdentityColor } from '../../../utils';
 import type { Track, User } from '../../../types';
@@ -69,6 +70,7 @@ export function TrackDetailHeader({
           <PageHeading
             accentColor={resolveIdentityColor(track.accent_color, workspaceAccentColor)}
             accentLabel={track.title}
+            icon={<TrackDot icon={track.icon} size="lg" color={resolveIdentityColor(track.accent_color, workspaceAccentColor)} />}
           >
             {track.title}
           </PageHeading>

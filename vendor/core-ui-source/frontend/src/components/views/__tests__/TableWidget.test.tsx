@@ -27,9 +27,10 @@ describe('TableWidget column labels', () => {
     render(<TableWidget entries={[]} onEntryOpen={noop} isLoading={false}
       fields={[{ key: 'payment_date', name: 'Payment Date', type: 'date' }, { key: 'amount', name: 'Amount', type: 'number' }]}
       view={view({ columns: [{ field: 'custom_fields.payment_date' }, { field: 'amount', label: 'Paid total' }, { field: 'created_at' }, { field: 'custom_fields.reference_code' }] })} />);
+    fireEvent.click(screen.getByRole('button', { name: /Columns/ }));
     for (const label of ['Payment Date', 'Paid total', 'Date', 'Reference code']) {
       expect(screen.getByRole('columnheader', { name: label })).toBeInTheDocument();
-      expect(screen.getByRole('button', { name: label, pressed: true })).toBeInTheDocument();
+      expect(screen.getByRole('checkbox', { name: label })).toBeChecked();
     }
   });
 
@@ -142,13 +143,15 @@ describe('TableWidget column choices', () => {
     const second = { ...view({ columns: [{ field: 'title', label: 'Item' }, { field: 'custom_fields.status', label: 'Readiness' }] }), id: 'v-2' };
     const props = { entries: [], fields: [], isLoading: false, onEntryOpen: noop };
     const { rerender } = render(<TableWidget {...props} view={first} />);
-    fireEvent.click(screen.getByRole('button', { name: 'Customer', pressed: true }));
+    fireEvent.click(screen.getByRole('button', { name: /Columns/ }));
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Customer' }));
     expect(screen.queryByRole('columnheader', { name: 'Customer' })).not.toBeInTheDocument();
     rerender(<TableWidget {...props} view={second} />);
     expect(screen.getByRole('columnheader', { name: 'Readiness' })).toBeInTheDocument();
     rerender(<TableWidget {...props} view={first} />);
-    expect(screen.getByRole('button', { name: 'Customer' })).toHaveAttribute('aria-pressed', 'false');
     expect(screen.queryByRole('columnheader', { name: 'Customer' })).not.toBeInTheDocument();
+    if (!screen.queryByRole('checkbox', { name: 'Customer' })) fireEvent.click(screen.getByRole('button', { name: /Columns/ }));
+    expect(screen.getByRole('checkbox', { name: 'Customer' })).not.toBeChecked();
   });
 
   it('shows newly prescribed columns after the same view schema changes', () => {
@@ -158,6 +161,22 @@ describe('TableWidget column choices', () => {
     const revised = view({ columns: [{ field: 'title', label: 'Title' }, { field: 'custom_fields.owner', label: 'Owner' }] });
     rerender(<TableWidget {...props} view={revised} />);
     expect(screen.getByRole('columnheader', { name: 'Owner' })).toBeInTheDocument();
+  });
+});
+
+describe('TableWidget date-field rendering', () => {
+  it('shows a stored ISO date in the compact form', () => {
+    render(<TableWidget entries={[{ id: 'e1', custom_fields: { pay_date: '2027-11-01' } } as unknown as Entry]} onEntryOpen={noop} isLoading={false}
+      fields={[{ key: 'pay_date', name: 'Pay date', type: 'date' }]}
+      view={view({ columns: [{ field: 'custom_fields.pay_date' }] })} />);
+    expect(screen.getByRole('cell', { name: '01 Nov 2027' })).toBeInTheDocument();
+  });
+
+  it('keeps an unparseable date value as stored instead of blanking it', () => {
+    render(<TableWidget entries={[{ id: 'e1', custom_fields: { pay_date: 'soon' } } as unknown as Entry]} onEntryOpen={noop} isLoading={false}
+      fields={[{ key: 'pay_date', name: 'Pay date', type: 'date' }]}
+      view={view({ columns: [{ field: 'custom_fields.pay_date' }] })} />);
+    expect(screen.getByRole('cell', { name: 'soon' })).toBeInTheDocument();
   });
 });
 

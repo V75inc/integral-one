@@ -24,8 +24,8 @@ vi.mock('../../../context/ToastContext', () => ({
 // kind:'view' child) rather than re-testing ComposableViewSlot's own fetch
 // logic, which has no dedicated coverage of its own to lean on here.
 vi.mock('../ComposableViewSlot', () => ({
-  ComposableViewSlot: ({ trackId, viewKey }: { trackId: string; viewKey: string }) => (
-    <div data-testid="stub-view-slot">{`${trackId}:${viewKey}`}</div>
+  ComposableViewSlot: ({ trackId, viewKey, viewContext }: { trackId: string; viewKey: string; viewContext?: string }) => (
+    <div data-testid="stub-view-slot" data-view-context={viewContext}>{`${trackId}:${viewKey}`}</div>
   ),
 }));
 
@@ -66,12 +66,14 @@ describe('LayoutContainerWidget', () => {
           regions: [{ key: 'lines', kind: 'view', title: 'Lines', view: 'lines_table' }],
         })}
         entries={[]}
+        viewContext="track-list"
         isLoading={false}
         onEntryOpen={() => {}}
       />
     );
     const slot = screen.getByTestId('stub-view-slot');
     expect(slot).toHaveTextContent('track-1:lines_table');
+    expect(slot).toHaveAttribute('data-view-context', 'track-list');
   });
 
   it('stack mode: renders a kind:form child via FormRegionWidget', async () => {

@@ -13,6 +13,9 @@
  */
 
 import api from './client';
+import { createSingleFlight } from './singleFlight';
+
+const approvalListFlight = createSingleFlight<ApprovalListResponse>(2000);
 
 // ── Wire types (mirror backend/app/schemas/approvals.py) ───────────────
 
@@ -62,8 +65,10 @@ export interface ListApprovalsParams {
 export async function listApprovals(
   params: ListApprovalsParams = {},
 ): Promise<ApprovalListResponse> {
-  const res = await api.get('/approvals', { params });
-  return res.data as ApprovalListResponse;
+  return approvalListFlight.run(JSON.stringify(params), async () => {
+    const res = await api.get('/approvals', { params });
+    return res.data as ApprovalListResponse;
+  });
 }
 
 export async function approveApproval(

@@ -329,6 +329,7 @@ export function TracksPage() {
                         "
                       >
                         <TrackDot
+                          icon={t.icon}
                           color={resolveIdentityColor(t.accent_color, activeWorkspace?.accent_color)}
                           size="md"
                           className="shrink-0"

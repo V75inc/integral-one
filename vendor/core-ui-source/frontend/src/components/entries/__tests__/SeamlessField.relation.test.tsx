@@ -58,6 +58,14 @@ const choices = [
 ];
 
 describe('single relation display and editing', () => {
+  it('closes the remote lifecycle when selection replaces the editor', () => {
+    const onOpen = vi.fn();
+    const view = render(<SeamlessField field={field} value="" onChange={vi.fn()} relationChoices={choices} onRelationOpen={onOpen} searchable />);
+    fireEvent.focus(screen.getByRole('combobox'));
+    expect(onOpen).toHaveBeenLastCalledWith(true);
+    view.rerender(<SeamlessField field={field} value="current" onChange={vi.fn()} relationChoices={choices} onRelationOpen={onOpen} searchable />);
+    expect(onOpen).toHaveBeenLastCalledWith(false);
+  });
   it('uses a configured default label when clearing an optional relation', () => {
     const change = vi.fn();
     const optional = { ...field, required: false, placeholder: 'Use default' };
@@ -148,4 +156,13 @@ describe('select fields are searchable by default', () => {
     render(<SeamlessField field={selectField} value="new" onChange={vi.fn()} />);
     expect(screen.getByText('Pipeline status')).toBeTruthy();
   });
+});
+
+it('stretches the relation editor wrapper alongside its cancel control', () => {
+  render(<SeamlessField field={field} value="current" onChange={vi.fn()} relationChoices={choices} searchable />);
+  fireEvent.click(screen.getByRole('button', { name: 'Change Opportunity' }));
+  const combo = screen.getByRole('combobox', { name: 'Opportunity (required)' });
+  const wrapper = combo.parentElement!.parentElement!;
+  expect(wrapper).toHaveClass('w-full', 'flex-1', 'min-w-0');
+  expect(wrapper.parentElement).toContainElement(screen.getByRole('button', { name: 'Cancel editing Opportunity' }));
 });

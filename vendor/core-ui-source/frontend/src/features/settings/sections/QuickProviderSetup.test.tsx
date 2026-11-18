@@ -32,8 +32,8 @@ beforeEach(() => {
   vi.mocked(aiConfigurationApi.saveRouting).mockResolvedValue({});
 });
 it.each([
-  ["openai", "gpt-5.4-mini"], ["anthropic", "claude-sonnet-4-6"],
-  ["openrouter", "openai/gpt-5.4-mini"], ["ollama", "deepseek-v4.1-flash"],
+  ["openai", "gpt-6.1-sol"], ["anthropic", "claude-opus-5-5"],
+  ["openrouter", "openai/gpt-6.1-sol"], ["ollama", "deepseek-v4.1-flash"],
 ])("connects %s with its default model using only provider and key", async (provider, model) => {
   const {busy} = show();
   fireEvent.change(screen.getByRole("combobox", {name:"AI provider"}), {target:{value:provider}});
@@ -44,7 +44,7 @@ it.each([
   await waitFor(() => expect(aiConfigurationApi.saveRouting).toHaveBeenCalledWith({mode:"single", heavy_profile_id:"recommended", light_profile_id:"", revision:"rev"}));
   expect(aiConfigurationApi.saveProfile).toHaveBeenCalledWith(expect.objectContaining({model,generation_settings:{}}));
   expect(aiConfigurationApi.saveConnection).toHaveBeenCalledWith(expect.objectContaining({provider,api_key:"synthetic-test-key"}));
-  await waitFor(() => expect(toast).toHaveBeenCalledWith("Your AI provider is ready.","success"));
+  await waitFor(() => expect(toast).toHaveBeenCalledWith("Provider saved. Model availability depends on your provider account.","success"));
   expect(screen.getByLabelText("API key")).toHaveValue("");
   await waitFor(() => expect(busy).toHaveBeenLastCalledWith(false));
 });
@@ -77,7 +77,7 @@ it("keeps tuned profiles and dual routing when updating the current provider key
   fireEvent.click(screen.getByRole("button", {name:"Change provider"}));
   fireEvent.change(screen.getByLabelText("API key"), {target:{value:"synthetic-replacement"}});
   fireEvent.click(screen.getByRole("button", {name:"Save provider"}));
-  await waitFor(() => expect(toast).toHaveBeenCalledWith("Your AI provider is ready.","success"));
+  await waitFor(() => expect(toast).toHaveBeenCalledWith("Provider saved. Model availability depends on your provider account.","success"));
   expect(aiConfigurationApi.saveConnection).toHaveBeenCalledWith(expect.objectContaining({id:"existing",api_key:"synthetic-replacement"}));
   expect(aiConfigurationApi.saveProfile).not.toHaveBeenCalled();
   expect(aiConfigurationApi.saveRouting).not.toHaveBeenCalled();
@@ -96,15 +96,15 @@ it("reuses partial saves on retry without reporting a failed activation as ready
   fireEvent.change(screen.getByLabelText("API key"), {target:{value:"synthetic-test-key"}});
   fireEvent.click(screen.getByRole("button", {name:"Connect provider"}));
   await waitFor(() => expect(toast).toHaveBeenCalledWith(expect.any(String),"error"));
-  expect(toast).not.toHaveBeenCalledWith("Your AI provider is ready.","success");
+  expect(toast).not.toHaveBeenCalledWith("Provider saved. Model availability depends on your provider account.","success");
   data.connections = [{id:"saved",provider:"openai",name:"OpenAI",base_url:"",key_fingerprint:"masked",validated_at:"",updated_at:""}];
-  data.profiles = [{id:"recommended",connection_id:"saved",name:"GPT-5.4 mini",model:"gpt-5.4-mini",generation_settings:{},updated_at:""}];
+  data.profiles = [{id:"recommended",connection_id:"saved",name:"GPT-5.4 mini",model:"gpt-6.1-sol",generation_settings:{},updated_at:""}];
   vi.mocked(aiConfigurationApi.get).mockResolvedValue(data);
   // The parent query refreshes partial saves even after a failed activation.
   fireEvent.change(screen.getByLabelText("API key"), {target:{value:"synthetic-test-key"}});
   await waitFor(() => expect(screen.getByRole("button",{name:"Connect provider"})).toBeEnabled());
   fireEvent.click(screen.getByRole("button",{name:"Connect provider"}));
-  await waitFor(() => expect(toast).toHaveBeenCalledWith("Your AI provider is ready.","success"));
+  await waitFor(() => expect(toast).toHaveBeenCalledWith("Provider saved. Model availability depends on your provider account.","success"));
   expect(aiConfigurationApi.saveConnection).toHaveBeenLastCalledWith(expect.objectContaining({id:"saved"}));
   expect(aiConfigurationApi.saveProfile).toHaveBeenCalledTimes(1);
 });
@@ -116,6 +116,20 @@ it("offers a personal provider override when the installation already supplies A
   expect(screen.queryByLabelText("API key")).not.toBeInTheDocument();
   fireEvent.click(screen.getByRole("button",{name:"Use my own provider"}));
   expect(screen.getByLabelText("API key")).toBeVisible();
-  expect(screen.getByText(/GPT-5\.4 mini will be selected automatically\./)).toBeVisible();
+  expect(screen.getByText(/GPT-6\.1 Sol.*will be selected automatically\./)).toBeVisible();
   expect(aiConfigurationApi.saveRouting).not.toHaveBeenCalled();
+});
+
+it("does not warn about an absent model during fresh provider setup", () => {
+  const data = blank();
+  data.effective.harness_policy = {tier:"unverified",recommended:false,evidence:"",message:"Advanced model choice: harness suitability is unverified."};
+  show(data);
+  expect(screen.getByText(/GPT-6\.1 Sol.*will be selected automatically\./)).toBeVisible();
+  expect(screen.queryByText(/harness suitability is unverified/)).not.toBeInTheDocument();
+});
+it("retains suitability warnings for a connected unverified model", () => {
+  const data = blank();
+  data.effective = {...data.effective,source:"workspace_owner",provider:"openai",model:"custom-model",harness_policy:{tier:"unverified",recommended:false,evidence:"",message:"Advanced model choice: harness suitability is unverified."}};
+  show(data);
+  expect(screen.getByText(/harness suitability is unverified/)).toBeVisible();
 });

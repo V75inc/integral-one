@@ -14,6 +14,26 @@ import { enableSessionRecovery, requestSessionRecovery } from './sessionRecovery
 
 afterEach(() => { vi.useRealTimers(); vi.clearAllMocks(); enableSessionRecovery(null); });
 
+describe('relation option invalidation after operation responses', () => {
+  it.each([
+    ['/extensions/app/operations/preview', { operation_class: 'read' }, 0],
+    ['/extensions/app/operations/preview', { data: { operation_class: 'read' } }, 0],
+    ['/extensions/app/operations/create', { operation_class: 'execute' }, 1],
+    ['/extensions/app/operations/legacy', {}, 1],
+    ['/entries', { operation_class: 'read' }, 1],
+  ])('uses the server operation class for %s', async (url, data, notifications) => {
+    const changed = vi.fn();
+    window.addEventListener('integral:records-changed', changed);
+    try {
+      const adapter: AxiosAdapter = async config => ({ data, config, status: 200, statusText: 'OK', headers: {} });
+      await apiClient.post(url as string, {}, { adapter });
+      expect(changed).toHaveBeenCalledTimes(notifications as number);
+    } finally {
+      window.removeEventListener('integral:records-changed', changed);
+    }
+  });
+});
+
 it('does not send or replay mutations while the session is locked', async () => {
   enableSessionRecovery('owner');
   requestSessionRecovery('renew');

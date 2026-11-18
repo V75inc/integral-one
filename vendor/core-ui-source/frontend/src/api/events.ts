@@ -52,7 +52,11 @@ function resolveWebSocketUrl(scope: string, ticket: string): string {
     env?: { VITE_BACKEND_URL?: string };
   }).env?.VITE_BACKEND_URL;
   const params = `ticket=${encodeURIComponent(ticket)}&scope=${encodeURIComponent(scope)}`;
-  if (backendBase) {
+  // ``VITE_BACKEND_URL`` is the Vite dev server's proxy target (often a Docker-internal
+  // host such as ``http://api:4000`` that a browser cannot resolve). Under ``vite dev``
+  // the same-origin proxy is the right path; only production builds use the explicit base.
+  const devProxy = Boolean((import.meta as ImportMeta & { env?: { DEV?: boolean } }).env?.DEV);
+  if (backendBase && !devProxy) {
     // Convert http(s) → ws(s) — preserves :port, /path, etc.
     const wsBase = backendBase.replace(/^http/i, m => (m.toLowerCase() === 'https' ? 'wss' : 'ws'));
     // backend base may or may not have trailing slash; normalize.
@@ -94,13 +98,12 @@ export async function openEventStream(scope: string): Promise<WebSocket> {
  */
 export async function fetchEventsPage(params: {
   since?: string | null;
-  scope: string;
+  scope?: string;
   actor_kind?: string;
   limit?: number;
 }): Promise<EventsPage> {
-  const query: Record<string, string | number> = {
-    scope: params.scope,
-  };
+  const query: Record<string, string | number> = {};
+  if (params.scope) query.scope = params.scope;
   if (params.since) query.since = params.since;
   if (params.actor_kind) query.actor_kind = params.actor_kind;
   if (params.limit !== undefined) query.limit = params.limit;

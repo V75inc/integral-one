@@ -52,6 +52,8 @@ function runCli(command, args, { timeout = 300_000, spawnProcess = spawn, onProg
   return new Promise((resolve, reject) => {
     const env = { ...process.env };
     delete env.PYTHONPATH;
+    // Core reads UTF-8 source and writes JSON on every supported host.
+    env.PYTHONUTF8 = '1';
     if (args[0] === 'up' && onProgress) env.INTEGRAL_SETUP_PROGRESS = '1';
     const child = spawnProcess(command.file, [...command.args, ...args], {
       env, shell: false, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'],

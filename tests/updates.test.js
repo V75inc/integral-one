@@ -159,3 +159,14 @@ test('a failed runtime payload is quiet automatically and can be retried manuall
  await f.control.start();assert.equal(f.messages.length,0);assert.equal(runtime.counts().installs,0);
  await f.control.check(true);assert.match(f.messages[0].message,/Core 0.1.1rc36 is available/);
 });
+
+test('assisted legacy update retains staged bytes without requesting restart or invoking install',async t=>{
+ const f=fixture(t,{control:{runtimeUpdates:{staged:()=>({manifest:{core:{version:'0.1.1rc63'}}}),migrationRequirement:()=>({code:'reviewed-storage-plan-required'}),install:async()=>{throw Error('must not install');}}}});
+ await f.control.check(true);assert.match(f.messages.at(-1).message,/assisted update/);
+ assert.deepEqual(f.messages.at(-1).buttons,['Keep Current Version']);assert.equal(f.calls.includes('backup-stop'),false);assert.equal(f.calls.includes('install'),false);
+});
+
+test('deferred availability remains in the sidebar state and a broken observer cannot interrupt checking',async t=>{
+ const f=fixture(t);f.control.subscribe(()=>{throw Error('closed renderer');});await f.control.check(false);
+ assert.equal(f.control.snapshot().status,'available');assert.ok(Object.isFrozen(f.control.snapshot()));
+});

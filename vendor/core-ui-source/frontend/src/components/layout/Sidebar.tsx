@@ -48,6 +48,7 @@ import { useScope } from '../../context/ScopeContext';
 import { Avatar, LINE_ICON_STROKE, Logo } from '../ui';
 import { tracksApi, appsApi } from '../../api';
 import { tracksListQueryKey } from '../../queryKeys';
+import { knownManifestIcon } from '../../lib/manifestLucideIcon';
 import type { App, Track, User } from '../../types';
 import { WorkspaceSwitcher } from './WorkspaceSwitcher';
 import { resolveIdentityColor } from '../../utils';
@@ -261,10 +262,20 @@ function SecondaryNavItem({
 function TrackAccentDot({
   title,
   accentColor,
+  icon,
 }: {
   title?: string;
   accentColor?: string;
+  icon?: string;
 }) {
+  const Glyph = knownManifestIcon(icon);
+  if (Glyph) {
+    return (
+      <span aria-hidden title={title} className="shrink-0" style={{ color: accentColor?.trim() || 'var(--text-muted)' }}>
+        <Glyph size={14} strokeWidth={1.75} />
+      </span>
+    );
+  }
   return (
     <span
       aria-hidden
@@ -306,7 +317,7 @@ function PinnedNestedTracks({
           collapsed={collapsed}
           tooltip={trackTitle(t)}
           leading={
-            <TrackAccentDot title={t.title} accentColor={t.accent_color} />
+            <TrackAccentDot title={t.title} accentColor={t.accent_color} icon={t.icon} />
           }
           trailing={
             <PinButton
@@ -539,7 +550,7 @@ function renderPinnedEntry(
       onClick={closeMobile}
       collapsed={railCollapsed}
       leading={
-        <TrackAccentDot title={t.title} accentColor={t.accent_color} />
+        <TrackAccentDot title={t.title} accentColor={t.accent_color} icon={t.icon} />
       }
       trailing={
         <PinButton
@@ -868,7 +879,7 @@ export function Sidebar({
   const workspaceId = scope?.workspaceId ?? '__none__';
   const tracksQuery = useQuery({
     queryKey: [...tracksListQueryKey(''), workspaceId] as const,
-    queryFn: () => tracksApi.list({ limit: 100 }),
+    queryFn: () => tracksApi.list({ limit: 100, skipEntryCounts: true }),
     enabled: pinned.tracks.length > 0,
   });
   const appsQuery = useQuery({
@@ -1161,7 +1172,7 @@ export function Sidebar({
                           : trackTitle(t)
                       }
                       leading={
-            <TrackAccentDot title={t.title} accentColor={resolveIdentityColor(t.accent_color, activeWorkspace?.accent_color)} />
+            <TrackAccentDot title={t.title} accentColor={resolveIdentityColor(t.accent_color, activeWorkspace?.accent_color)} icon={t.icon} />
                       }
                       trailing={
                         <PinButton

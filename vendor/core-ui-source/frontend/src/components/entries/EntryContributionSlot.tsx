@@ -23,6 +23,7 @@ import type {
   ContributionLifecycleApi,
   ContributionLifecycleHandle,
 } from './contributionLifecycle';
+import { AppReactComponentHost } from '../extensions/AppReactComponentHost';
 import { NativeContributionHost } from './NativeContributionHost';
 
 export type EntryContributionPlacement = 'entry_compose' | 'entry_detail';
@@ -31,6 +32,10 @@ export type EntryContributionUiContribution = {
   placement: string;
   /** ADR-011 iframe extension view key (exclusive with view/view_type). */
   extension_view_key?: string;
+  component_key?: string;
+  owns_field_data?: boolean;
+  fallback_view?: string;
+  props?: Record<string, unknown>;
   /** Saved view key on the host track (Core region). */
   view?: string;
   /** Inline Core view_type when no saved view key is used. */
@@ -55,6 +60,8 @@ export type EntryContributionSlotProps = {
   entryTypeKey?: string;
   mode?: 'create' | 'edit' | 'detail';
   customFields?: Record<string, unknown>;
+  fieldErrors?: Record<string, string>;
+  onFieldDataOwnerChange?: (owner: 'app' | 'host') => void;
   onDraftPatch?: (patch: {
     custom_fields?: Record<string, unknown>;
     related?: unknown;
@@ -94,7 +101,7 @@ export function resolveEntryContribution(
   if (!Array.isArray(list) || list.length === 0) return null;
   const match = list.find(c => c.placement === placement);
   if (!match) return null;
-  if (!isExtensionContribution(match) && !isNativeContribution(match)) return null;
+  if (!match.component_key && !isExtensionContribution(match) && !isNativeContribution(match)) return null;
   return match;
 }
 
@@ -143,6 +150,8 @@ export const EntryContributionSlot = forwardRef<
     entryTypeKey,
     mode = 'detail',
     customFields,
+    fieldErrors,
+    onFieldDataOwnerChange,
     onDraftPatch,
     className,
   } = props;
@@ -151,7 +160,8 @@ export const EntryContributionSlot = forwardRef<
     () => resolveEntryContribution(formSchema, placement),
     [formSchema, placement],
   );
-  const native = contribution ? isNativeContribution(contribution) : false;
+  const reactComponent = contribution?.component_key;
+  const native = Boolean(reactComponent) || (contribution ? isNativeContribution(contribution) : false);
   const extensionKey = contribution?.extension_view_key || '';
   const { scope } = useScope();
   const workspaceId = scope?.workspaceId ?? '';
@@ -177,6 +187,12 @@ export const EntryContributionSlot = forwardRef<
       entryTypeKey,
       appId,
       customFields: customFields ?? {},
+      fields: ((formSchema as OperationalModelFormSchema | undefined)?.fields || []).map(field => ({
+        key: field.key, name: field.name, type: field.type, required: field.required,
+        readonly: field.readonly, enum: field.enum as string[] | undefined,
+        placeholder: field.placeholder, help: field.help, hide_on_create: field.hide_on_create,
+      })),
+      fieldErrors,
       onDraftPatch,
       register: registerNative,
     }),
@@ -188,6 +204,8 @@ export const EntryContributionSlot = forwardRef<
       entryTypeKey,
       appId,
       customFields,
+      formSchema,
+      fieldErrors,
       onDraftPatch,
       registerNative,
     ],
@@ -220,7 +238,7 @@ export const EntryContributionSlot = forwardRef<
       requestValidate: async () => {
         if (!contribution) return { ok: true };
         if (native) {
-          if (!nativeHandleRef.current) return { ok: true };
+          if (!nativeHandleRef.current) return reactComponent ? {ok: false, error: 'The App form is not ready.'} : { ok: true };
           return nativeHandleRef.current.requestValidate();
         }
         if (!hostRef.current) return { ok: true };
@@ -229,7 +247,7 @@ export const EntryContributionSlot = forwardRef<
       requestSubmit: async committedEntryId => {
         if (!contribution) return { ok: true };
         if (native) {
-          if (!nativeHandleRef.current) return { ok: true };
+          if (!nativeHandleRef.current) return reactComponent ? {ok: false, error: 'The App form is not ready.'} : { ok: true };
           return nativeHandleRef.current.requestSubmit(committedEntryId);
         }
         if (!hostRef.current) return { ok: true };
@@ -241,12 +259,19 @@ export const EntryContributionSlot = forwardRef<
         }
       },
     }),
-    [contribution, native, appId, extensionKey, trackId],
+    [contribution, native, reactComponent, appId, extensionKey, trackId],
   );
 
   if (!contribution) {
     return null;
   }
+
+  if (reactComponent && appId) return <AppReactComponentHost
+    appId={appId} componentKey={reactComponent} placement={placement} props={contribution.props}
+    context={{entryId, trackId}} lifecycle={nativeLifecycle}
+    onFieldDataOwnerChange={contribution.owns_field_data ? onFieldDataOwnerChange : undefined}
+    fallback={contribution.fallback_view && trackId ? <NativeContributionHost trackId={trackId}
+      contribution={{view: contribution.fallback_view}} lifecycle={nativeLifecycle} minHeight={0} /> : undefined} />;
 
   if (native) {
     if (!trackId) return null;

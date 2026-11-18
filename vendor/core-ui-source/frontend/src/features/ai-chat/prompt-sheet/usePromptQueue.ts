@@ -75,10 +75,10 @@ export function usePromptQueue() {
   const [error, setError] = useState<string | null>(null);
 
   const [refreshError, setRefreshError] = useState<string | null>(null);
-  const live = useRef({ activeThreadId, appendAssistantNote, isThreadStreaming, threadRuntime, queueScope });
+  const live = useRef({ activeThreadId, appendAssistantNote, isThreadStreaming, threadRuntime, queueScope, queue });
   useLayoutEffect(() => {
-    live.current = { activeThreadId, appendAssistantNote, isThreadStreaming, threadRuntime, queueScope };
-  }, [activeThreadId, appendAssistantNote, isThreadStreaming, threadRuntime, queueScope]);
+    live.current = { activeThreadId, appendAssistantNote, isThreadStreaming, threadRuntime, queueScope, queue };
+  }, [activeThreadId, appendAssistantNote, isThreadStreaming, threadRuntime, queueScope, queue]);
   const generation = useRef(0);
   const fetching = useRef<string | null>(null);
   const retryAt = useRef(0);
@@ -148,12 +148,16 @@ export function usePromptQueue() {
       }
       const q = res.queue as unknown as PromptQueue;
       reviewEpisode.current = { threadId, queue: q };
+      const previousItems = live.current.queueScope === threadId ? live.current.queue?.items ?? [] : [];
       setQueue(q);
       setOpen(true);
       setIndex((i) => {
         const items = q.items || [];
-        const currentItem = items[i];
-        if (currentItem && currentItem.status === 'pending') return i;
+        // Polling observes status; it must not undo explicit navigation to a
+        // resolved card. Preserve identity, not position, across queue updates.
+        const selectedId = previousItems[i]?.id;
+        const selectedIndex = items.findIndex((item) => item.id === selectedId);
+        if (selectedIndex >= 0) return selectedIndex;
         const pendingIdx = items.findIndex((it) => it.status === 'pending');
         return pendingIdx >= 0 ? pendingIdx : Math.min(i, Math.max(0, items.length - 1));
       });

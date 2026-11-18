@@ -43,6 +43,7 @@ export type ComposableViewSlotProps = {
   trackId: string;
   viewKey: string;
   bindings?: Record<string, unknown>;
+  viewContext?: ViewWidgetProps['viewContext'];
   /** Optional field specs forwarded to the embedded widget so relation-
    *  typed columns / template tokens can be resolved. Hosts (e.g. a
    *  RelationValue cell) inject these when the embedded view should see
@@ -61,6 +62,7 @@ export function ComposableViewSlot({
   trackId,
   viewKey,
   bindings,
+  viewContext,
   fields,
   entryTypes,
   onEntryOpen,
@@ -238,6 +240,7 @@ export function ComposableViewSlot({
     <div data-testid="composable-view-slot">
       <ViewRenderer
         view={viewWithBindings}
+        viewContext={viewContext}
         entries={entries}
         isLoading={entriesLoading}
         onEntryOpen={handleEntryOpen}

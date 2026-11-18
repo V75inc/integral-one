@@ -1,5 +1,9 @@
 import type { Entry } from '../../types';
 import { TrackTagFilters } from './TrackTagFilters';
+import { humanizeEnumValue } from '../../utils/humanizeFieldKey';
+import { ColumnFilterMenu } from '../views/ColumnFilterMenu';
+import { onField, type ColumnFilterSpec } from '../views/columnFilterModel';
+import type { FieldFilter } from './fieldFilters';
 import {
   type CSSProperties,
   useEffect,
@@ -31,6 +35,11 @@ interface TrackFilterStripProps {
   filterType: string;
   setFilterType: (slug: string) => void;
   entryTypeSlugs: string[];
+  /** Filters typed into the table's column headings (applied by the server): how many, and how to clear them. */
+  /** Every field of the Track that can be filtered, the filters on them, and how to change them (the server applies them). */
+  filterSpecs?: ColumnFilterSpec[];
+  fieldFilters?: FieldFilter[];
+  onFieldFiltersChange?: (next: FieldFilter[]) => void;
   tagEntries?: Entry[];
   selectedTags?: string[];
   onTagsChange?: (value: string[]) => void;
@@ -64,6 +73,9 @@ export function TrackFilterStrip({
   filterType,
   setFilterType,
   entryTypeSlugs,
+  filterSpecs = [],
+  fieldFilters = [],
+  onFieldFiltersChange,
   tagEntries = [],
   selectedTags = [],
   onTagsChange,
@@ -78,13 +90,14 @@ export function TrackFilterStrip({
 }: TrackFilterStripProps) {
   const submitSearch = useLiveKeywordSearch(search, retrievalActive && liveKeywordSearch, onRetrievalSearch);
   const [popoverOpen, setPopoverOpen] = useState(false);
+  const [editingField, setEditingField] = useState<string | null>(null);
   const popoverRef = useRef<HTMLDivElement | null>(null);
   const filterButtonRef = useRef<HTMLButtonElement | null>(null);
   const [popoverPosition, setPopoverPosition] = useState<CSSProperties>({});
 
   // Outside click + Escape close the granular-filters popover.
   useEffect(() => {
-    if (!popoverOpen) return;
+    if (!popoverOpen) { setEditingField(null); return; }
     const onClick = (e: MouseEvent) => {
       if (!popoverRef.current) return;
       if (e.target instanceof Node && popoverRef.current.contains(e.target))
@@ -105,7 +118,7 @@ export function TrackFilterStrip({
     };
   }, [popoverOpen]);
 
-  const granularActiveCount = (filterType ? 1 : 0) + selectedTags.length;
+  const granularActiveCount = (filterType ? 1 : 0) + selectedTags.length + new Set(fieldFilters.map(f => f.field)).size;
   const anyActive = Boolean(search.trim() || granularActiveCount);
 
   // Count badges and Clear can move the trigger on narrow screens. Keep the
@@ -143,6 +156,7 @@ export function TrackFilterStrip({
     setSearch('');
     setFilterType('');
     onTagsChange?.([]);
+    onFieldFiltersChange?.([]);
   };
 
   const handleSearchKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -254,6 +268,7 @@ export function TrackFilterStrip({
                 animate-fade-in
               "
               >
+                {entryTypeSlugs.length > 1 && (
                 <div className="space-y-2.5">
                   <p className="text-[11px] font-medium text-[var(--text-subtle)] uppercase tracking-[0.08em]">
                     Entry type
@@ -281,11 +296,12 @@ export function TrackFilterStrip({
                         className={`capitalize px-3 py-2 sm:px-2.5 sm:py-1 ${filterTypeChipClass(filterType === slug)}`}
                         aria-pressed={filterType === slug}
                       >
-                        {slug.charAt(0).toUpperCase() + slug.slice(1)}
+                        {humanizeEnumValue(slug)}
                       </button>
                     ))}
                   </div>
                 </div>
+                )}
                 {onTagsChange && (
                   <TrackTagFilters
                     entries={tagEntries}
@@ -293,7 +309,37 @@ export function TrackFilterStrip({
                     onChange={onTagsChange}
                   />
                 )}
-                {filterType && (
+                {onFieldFiltersChange && filterSpecs.length > 0 && (
+                  <div className="space-y-2" role="group" aria-label="Filter by field">
+                    {editingField ? (
+                      <>
+                        <button type="button" className="text-xs text-[var(--link)] hover:underline" onClick={() => setEditingField(null)}>‹ All fields</button>
+                        <ColumnFilterMenu
+                          spec={filterSpecs.find(f => f.field === editingField)!}
+                          filters={fieldFilters}
+                          onChange={onFieldFiltersChange}
+                          onClose={() => setEditingField(null)}
+                        />
+                      </>
+                    ) : (
+                      <>
+                        <p className="text-[11px] font-medium text-[var(--text-subtle)] uppercase tracking-[0.08em]">Fields</p>
+                        <ul className="max-h-52 space-y-0.5 overflow-auto">
+                          {filterSpecs.map(spec => (
+                            <li key={spec.field}>
+                              <button type="button" onClick={() => setEditingField(spec.field)}
+                                className="flex w-full items-center justify-between rounded-[var(--radius-input)] px-2 py-1.5 text-left text-sm text-[var(--text)] hover:bg-[var(--panel-2)]">
+                                <span>{spec.label}</span>
+                                {onField(fieldFilters, spec.field).length > 0 ? <span className="text-xs text-[var(--link)]">on</span> : null}
+                              </button>
+                            </li>
+                          ))}
+                        </ul>
+                      </>
+                    )}
+                  </div>
+                )}
+                {entryTypeSlugs.length > 1 && filterType && (
                   <button
                     type="button"
                     onClick={() => setFilterType('')}

@@ -9,6 +9,7 @@ import {
   unwrapApiDataEnvelope,
 } from './helpers';
 import { FEED_PAGE_LIMIT } from './feed';
+import { createSingleFlight } from './singleFlight';
 import { requiresAppQuery } from './readBoundary';
 import { getTypeNameMapForTrack } from './entryTypes';
 import type { OperationalModelNode, Entry, Track, User } from '../types';
@@ -101,20 +102,31 @@ async function withTrackEntryCounts(tracks: Track[]): Promise<Track[]> {
   );
 }
 
+async function listTracksUncached(params?: Record<string, unknown>): Promise<Track[]> {
+  const skipEntryCounts = Boolean(params?.skipEntryCounts);
+  const rest: Record<string, unknown> = { ...(params || {}) };
+  delete rest.skipEntryCounts;
+  // Lookup-only callers do not display counts: tell the server not to compute them.
+  // They also do not read the per-track operational-model defaults / anchor source.
+  if (skipEntryCounts) {
+    rest.include_entry_counts = false;
+    rest.include_details = false;
+  }
+  if (hasExplicitPaging(rest)) {
+    const pageTracks = await apiClient
+      .get('/tracks', { params: rest })
+      .then(r => toArr(r.data) as Track[]);
+    return skipEntryCounts ? pageTracks : withTrackEntryCounts(pageTracks);
+  }
+  const tracks = (await fetchAllByCursor('/tracks', rest)) as Track[];
+  return skipEntryCounts ? tracks : withTrackEntryCounts(tracks);
+}
+
+const trackListFlight = createSingleFlight<Track[]>(2000);
+
 export const tracksApi = {
-  list: async (params?: Record<string, unknown>) => {
-    const skipEntryCounts = Boolean(params?.skipEntryCounts);
-    const rest = { ...(params || {}) };
-    delete rest.skipEntryCounts;
-    if (hasExplicitPaging(rest)) {
-      const pageTracks = await apiClient
-        .get('/tracks', { params: rest })
-        .then(r => toArr(r.data) as Track[]);
-      return skipEntryCounts ? pageTracks : withTrackEntryCounts(pageTracks);
-    }
-    const tracks = (await fetchAllByCursor('/tracks', rest)) as Track[];
-    return skipEntryCounts ? tracks : withTrackEntryCounts(tracks);
-  },
+  list: (params?: Record<string, unknown>): Promise<Track[]> =>
+    trackListFlight.run(JSON.stringify(params || {}), () => listTracksUncached(params)),
   get: async (id: string) => {
     const track = await apiClient
       .get(`/tracks/${id}`)
@@ -179,6 +191,29 @@ export const tracksApi = {
       : {};
     const entries = mapEntriesForTrack(raw as any[], typeNameById) as Entry[];
     return { entries, nextCursor, hasMore, total, ...(requiresAppQuery(inner) ? { appQueryRequired: true } : {}) };
+  },
+
+  /** The values one field holds across the entries the caller can read, with counts (what a filter menu lists). */
+  getFacets: async (
+    id: string,
+    field: string,
+    opts?: { q?: string; limit?: number; filters?: unknown[]; viewId?: string },
+  ): Promise<{ values: { value: string | number | boolean; count: number }[]; truncated: boolean; distinct: number }> => {
+    const { data } = await apiClient.get(`/tracks/${id}/facets`, {
+      params: {
+        field,
+        q: opts?.q || undefined,
+        limit: opts?.limit ?? 50,
+        view_id: opts?.viewId || undefined,
+        dashboard_filters: opts?.filters?.length ? JSON.stringify(opts.filters) : undefined,
+      },
+    });
+    const inner = unwrapApiDataEnvelope(data);
+    return {
+      values: Array.isArray(inner.values) ? (inner.values as { value: string | number | boolean; count: number }[]) : [],
+      truncated: Boolean(inner.truncated),
+      distinct: typeof inner.distinct === 'number' ? inner.distinct : 0,
+    };
   },
 
   getEntriesTotal: async (id: string, params: Record<string, unknown>) => {

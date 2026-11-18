@@ -1,4 +1,5 @@
 import type { CSSProperties } from 'react';
+import { knownManifestIcon } from '../../lib/manifestLucideIcon';
 
 /**
  * TrackDot — small filled circle representing a Track / App / Workspace
@@ -28,6 +29,8 @@ interface TrackDotProps {
   /** When true, applies a subtle ring for contrast on busy backgrounds. */
   ring?: boolean;
   title?: string;
+  /** A name from the manifest icon list; drawn in place of the dot when the track has one. */
+  icon?: string | null;
 }
 
 const SIZE_PX: Record<TrackDotSize, number> = {
@@ -43,9 +46,18 @@ export function TrackDot({
   className = '',
   ring = false,
   title,
+  icon,
 }: TrackDotProps) {
   const px = SIZE_PX[size];
   const resolved = (color || '').trim() || 'var(--brand-accent)';
+  const Glyph = knownManifestIcon(icon);
+  if (Glyph) {
+    return (
+      <span aria-hidden={!title} title={title} className={`inline-flex flex-shrink-0 ${className}`} style={{ color: resolved }}>
+        <Glyph size={Math.max(px + 4, 14)} strokeWidth={1.75} />
+      </span>
+    );
+  }
   const style: CSSProperties = {
     width: px,
     height: px,

@@ -17,6 +17,7 @@ interface Props {
 export function AppearanceSection({ settings, update }: Props) {
   const { theme, setTheme } = useTheme();
   const entryDialogExpanded = Boolean(settings.appearance.entryDialogExpanded);
+  const appMenu = settings.appearance.appMenu !== false;
 
   return (
     <div className="flex flex-col gap-5">
@@ -51,6 +52,29 @@ export function AppearanceSection({ settings, update }: Props) {
               </button>
             ))}
           </div>
+        </SettingsField>
+      </SettingsSection>
+
+      <SettingsSection
+        title="Menu"
+        description="Choose how an App's pages and Tracks are listed."
+      >
+        <SettingsField label="App menu" inline>
+          <label className="inline-flex items-center gap-2 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={appMenu}
+              onChange={e => {
+                const next = e.target.checked;
+                update(prev => ({ ...prev, appearance: { ...prev.appearance, appMenu: next } }));
+              }}
+              data-testid="appearance-app-menu"
+              className="rounded border-[var(--panel-border)]"
+            />
+            <Text as="span" variant="body-sm" tone="muted">
+              Inside an App, narrow the main menu to icons and list the App's Tracks beside it
+            </Text>
+          </label>
         </SettingsField>
       </SettingsSection>
 

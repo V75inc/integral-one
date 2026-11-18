@@ -5,6 +5,7 @@ import {
   Bar,
   BarChart,
   Cell,
+  Legend,
   Line,
   LineChart,
   Pie,
@@ -277,12 +278,13 @@ function renderChart(chartType: string, data: DataPoint[], gaugeMax: number) {
     return (
       <PieChart>
         <Tooltip />
+        <Legend verticalAlign="bottom" iconType="circle" wrapperStyle={{ fontSize: 12 }} />
         <Pie
           data={data}
           dataKey="value"
           nameKey="name"
           innerRadius={chartType === 'donut' ? 50 : 0}
-          outerRadius={90}
+          outerRadius={80}
         >
           {data.map((_, i) => (
             <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />

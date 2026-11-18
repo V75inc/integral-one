@@ -47,7 +47,7 @@ export function TreeRegionWidget({ view, entries, isLoading, onEntryOpen }: View
     setLoadingSource(true);
     (async () => {
       try {
-        const allTracks = await tracksApi.list();
+        const allTracks = await tracksApi.list({ skipEntryCounts: true });
         const track =
           allTracks.find(t => t.id === sourceTrack) ||
           allTracks.find(t => slug(String(t.template_id || t.relation_type_key || t.title)) === slug(sourceTrack));

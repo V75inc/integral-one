@@ -331,3 +331,21 @@ describe('useEntryExpandedForm create default type', () => {
     });
   });
 });
+
+it('defers opt-in field preloads during admission and resumes them for an explicit fallback without clearing the draft', async () => {
+  vi.clearAllMocks();
+  const api = await import('../../../api');
+  const client = new QueryClient({defaultOptions: {queries: {retry: false}}});
+  const metadata = [{id: 'et_owned', name: 'owned', track_id: trackId, form_schema: {fields: [{key: 'manager', name: 'Party', type: 'relation', relation: {target_track_types: ['parties'], target_entry_types: ['party'], allow_cross_track: true}}], ui_contributions: [{placement: 'entry_compose', component_key: 'editor', owns_field_data: true, owns_form: true}]}}] as unknown as EntryTypeNode[];
+  client.setQueryData(entryTypesForTrackQueryKey(trackId), metadata); client.setQueryData(tagsForTrackQueryKey(trackId), []);
+  const {result} = renderHook(() => useEntryExpandedForm({mode: 'create', enabled: true, track: stubTrack, tracksList: [], needsTrackPicker: false, showToast: vi.fn()}), {wrapper: wrapper(client)});
+  await waitFor(() => expect(result.current.type).toBe('owned'));
+  act(() => result.current.applyContributionPatch({custom_fields: {manager: 'unsaved-party'}}));
+  expect(api.tracksApi.list).not.toHaveBeenCalled(); expect(api.entriesApi.list).not.toHaveBeenCalled();
+  act(() => result.current.setFieldDataOwner?.('host'));
+  await waitFor(() => expect(api.tracksApi.list).toHaveBeenCalled());
+  expect(result.current.fieldValues.manager).toBe('unsaved-party');
+  act(() => result.current.setFieldDataOwner?.('app'));
+  expect(result.current.fieldValues.manager).toBe('unsaved-party');
+  client.clear();
+});

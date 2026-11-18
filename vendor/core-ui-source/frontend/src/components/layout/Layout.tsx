@@ -4,6 +4,8 @@ import { Loader2 } from 'lucide-react';
 import { Text } from '../../ui';
 import { LINE_ICON_STROKE } from '../ui';
 import { Sidebar } from './Sidebar';
+import { AppMenuPanel, useCurrentAppId } from './AppMenuPanel';
+import { useSettings } from '../../features/settings/store';
 import { TopBar } from './TopBar';
 import { AssistantDock, AssistantDockToggle } from '../../features/ai-chat';
 import { SidebarDockSync } from '../../features/ai-chat/dock/SidebarDockSync';
@@ -136,8 +138,24 @@ export function Layout() {
     return undefined;
   }, [isMdUp, mobileNavOpen]);
 
-  const mainMarginClass =
-    isMdUp && sidebarCollapsed
+  // Inside an App the main menu narrows to icons and the App's own menu sits beside it (desktop only).
+  const [settings] = useSettings();
+  const { appId: currentAppId, trackId: currentTrackId } = useCurrentAppId();
+  const [hiddenAppMenuFor, setHiddenAppMenuFor] = useState<string | null>(null);
+  // Hiding the App menu lasts only while you stay in that App: leaving it (to the Apps list, another
+  // App or any other page) brings the menu back the next time an App opens.
+  useEffect(() => {
+    if (hiddenAppMenuFor && currentAppId !== hiddenAppMenuFor) setHiddenAppMenuFor(null);
+  }, [currentAppId, hiddenAppMenuFor]);
+  const appMenuAppId =
+    isMdUp && settings.appearance.appMenu !== false && currentAppId && hiddenAppMenuFor !== currentAppId
+      ? currentAppId
+      : null;
+  const railCollapsed = sidebarCollapsed || Boolean(appMenuAppId);
+
+  const mainMarginClass = appMenuAppId
+    ? 'md:ml-[292px]' // 60 px rail + the App menu (APP_MENU_WIDTH)
+    : isMdUp && sidebarCollapsed
       ? 'md:ml-[60px]'
       : isMdUp
         ? 'md:ml-[264px]'
@@ -205,12 +223,33 @@ export function Layout() {
       ) : null}
 
       <Sidebar
-        collapsed={sidebarCollapsed}
-        onToggleCollapsed={() => setSidebarCollapsed(v => !v)}
+        collapsed={railCollapsed}
+        onToggleCollapsed={() => {
+          // Expanding the main menu inside an App hides the App menu for that App.
+          if (appMenuAppId) {
+            setHiddenAppMenuFor(appMenuAppId);
+            setSidebarCollapsed(false);
+            return;
+          }
+          // Narrowing the main menu again inside that App brings its menu back.
+          if (currentAppId && hiddenAppMenuFor === currentAppId && !sidebarCollapsed) {
+            setHiddenAppMenuFor(null);
+            return;
+          }
+          setSidebarCollapsed(v => !v);
+        }}
         mobileOpen={mobileNavOpen}
         onMobileOpenChange={setMobileNavOpen}
         isDesktop={isMdUp}
       />
+
+      {appMenuAppId ? (
+        <AppMenuPanel
+          appId={appMenuAppId}
+          activeTrackId={currentTrackId}
+          onClose={() => setHiddenAppMenuFor(appMenuAppId)}
+        />
+      ) : null}
 
       <main
         id="main-content"

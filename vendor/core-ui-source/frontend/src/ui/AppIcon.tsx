@@ -1,16 +1,13 @@
 import { useState } from 'react';
-import { BookOpen, Briefcase, Calendar, BarChart3, Globe, Layers, Leaf, Sparkles } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
+import { knownManifestIcon } from '../lib/manifestLucideIcon';
 
-export const APP_ICONS = {
-  layers: Layers,
-  briefcase: Briefcase,
-  book: BookOpen,
-  chart: BarChart3,
-  calendar: Calendar,
-  globe: Globe,
-  sparkles: Sparkles,
-  leaf: Leaf,
-};
+/** Icons offered in the App icon picker; any name in the manifest list is also drawn when an App's package names it. */
+export const APP_ICONS: Record<string, LucideIcon> = Object.fromEntries(
+  ['layers', 'briefcase', 'book', 'chart', 'calendar', 'globe', 'sparkles', 'leaf', 'banknote', 'receipt', 'calculator', 'landmark', 'wallet', 'users', 'building', 'shield', 'rocket', 'truck', 'graduation-cap', 'gavel']
+    .map(key => [key, knownManifestIcon(key)] as const)
+    .filter((entry): entry is readonly [string, LucideIcon] => Boolean(entry[1])),
+);
 
 const SIZE_CLASSES = { xs: 'app-icon--xs', sm: 'app-icon--sm', md: 'app-icon--md', lg: 'app-icon--lg' };
 
@@ -22,8 +19,7 @@ export function AppIcon({ name, icon, color, size = 'md' }: {
   size?: 'xs' | 'sm' | 'md' | 'lg';
 }) {
   const [failedIcon, setFailedIcon] = useState<string>();
-  const Glyph = icon && Object.prototype.hasOwnProperty.call(APP_ICONS, icon)
-    ? APP_ICONS[icon as keyof typeof APP_ICONS] : undefined;
+  const Glyph = knownManifestIcon(icon);
   const raster = /^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/.test(icon || '') && (icon?.length || 0) < 175000;
   const initials = name.trim().split(/\s+/).slice(0, 2).map(word => Array.from(word)[0]).join('').toLocaleUpperCase() || 'A';
   return (

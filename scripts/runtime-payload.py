@@ -36,7 +36,7 @@ def package(root, output, platforms, one_source=None):
         "product": "integral-one-runtime",
         "channel": product["integralOneUpdates"]["channel"],
         "core": {"version": core["version"], "registry": "testpypi" if product["integralOneUpdates"]["channel"] == "development" else "pypi", "wheelSha256": core["wheel_sha256"]},
-        "minimumOneVersion": "0.1.9",
+        "minimumOneVersion": product["version"],
         "maximumOneVersionExclusive": "0.2.0",
         "hostContractVersion": 1,
         "platforms": sorted(set(platforms)),

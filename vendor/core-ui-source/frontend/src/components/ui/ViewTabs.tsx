@@ -1,4 +1,11 @@
 import { useEffect, useRef, type KeyboardEvent, type ReactNode } from 'react';
+import {
+  DndContext, PointerSensor, closestCenter, useSensor, useSensors, type DragEndEvent,
+} from '@dnd-kit/core';
+import {
+  SortableContext, arrayMove, horizontalListSortingStrategy, useSortable,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 
 /**
  * ViewTabs — horizontal tab strip for switching between Track views
@@ -38,6 +45,28 @@ interface ViewTabsProps<V extends string = string> {
    * underline idiom, less width.
    */
   size?: 'md' | 'sm';
+  /**
+   * When given, tabs can be dragged into a new order and this is called with the values in
+   * their new order. Leave it out for a fixed strip. A click still selects; a drag needs a
+   * few pixels of movement first, so ordinary use is unchanged.
+   */
+  onReorder?: (orderedValues: V[]) => void;
+}
+
+function SortableTabShell({ id, enabled, children }: { id: string; enabled: boolean; children: ReactNode }) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id, disabled: !enabled });
+  return (
+    <div
+      ref={setNodeRef}
+      style={{ transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.6 : 1, zIndex: isDragging ? 1 : undefined }}
+      {...(enabled ? { ...attributes, ...listeners } : {})}
+      // The tab button inside stays the ARIA tab; the shell only carries the drag handlers.
+      role="presentation"
+      tabIndex={-1}
+    >
+      {children}
+    </div>
+  );
 }
 
 export function ViewTabs<V extends string = string>({
@@ -49,10 +78,21 @@ export function ViewTabs<V extends string = string>({
   actions,
   noBorder = false,
   size = 'md',
+  onReorder,
 }: ViewTabsProps<V>) {
   const compact = size === 'sm';
   const tabRefs = useRef<Record<string, HTMLButtonElement | null>>({});
   const scrollerRef = useRef<HTMLDivElement | null>(null);
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }));
+  const onDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!onReorder || !over || active.id === over.id) return;
+    const values = options.map(o => o.value);
+    const from = values.indexOf(String(active.id) as V);
+    const to = values.indexOf(String(over.id) as V);
+    if (from < 0 || to < 0) return;
+    onReorder(arrayMove(values, from, to));
+  };
 
   /* When the strip is narrow enough to scroll (a dialog's companion column
      fits ~3 labelled tabs), the selected tab must still be visible — an
@@ -111,11 +151,13 @@ export function ViewTabs<V extends string = string>({
         ref={scrollerRef}
         className={`flex items-end overflow-x-auto -mb-px ${compact ? 'gap-1' : 'gap-2'}`}
       >
+        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
+        <SortableContext items={options.map(o => o.value)} strategy={horizontalListSortingStrategy}>
         {options.map((o) => {
           const active = o.value === value;
           return (
+            <SortableTabShell key={o.value} id={o.value} enabled={Boolean(onReorder) && !o.disabled}>
             <button
-              key={o.value}
               ref={el => {
                 tabRefs.current[o.value] = el;
               }}
@@ -156,8 +198,11 @@ export function ViewTabs<V extends string = string>({
                 </span>
               )}
             </button>
+            </SortableTabShell>
           );
         })}
+        </SortableContext>
+        </DndContext>
       </div>
       {actions && <div className="pb-2 flex items-center gap-2">{actions}</div>}
     </div>

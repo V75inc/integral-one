@@ -4,12 +4,13 @@ import { entriesApi } from '../../api';
 import { Button } from '../ui/Button';
 import { EmptyState } from '../ui';
 import { Badge } from '../ui/Badge';
+import { ListPager } from '../ui/ListPager';
 import { Surface, Text } from '../../ui';
 import type { Entry } from '../../types';
 import type { ViewWidgetProps } from './types';
 
 type Column = { field: string; label: string; format?: 'text' | 'number' | 'currency' | 'date' | 'status'; emphasis?: 'primary' | 'muted' };
-const PAGE_SIZE = 25;
+const DEFAULT_PAGE_SIZE = 25;
 
 function valueFor(entry: Entry, field: string): unknown {
   if (field === 'title') return entry.title;
@@ -48,29 +49,57 @@ export function RecordCollectionWidget({ view, onEntryOpen }: ViewWidgetProps) {
   const [error, setError] = useState<string | null>(null);
   const [cursor, setCursor] = useState<string | null>(null);
   const [hasMore, setHasMore] = useState(false);
+  // Page by position when the server reports a total; an older server without one keeps "Load more".
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
+  const [total, setTotal] = useState<number | undefined>(undefined);
+  const [pageBusy, setPageBusy] = useState(false);
+
+  // A different record, relation or refresh starts again from the first page.
+  const resetKey = `${hostEntryId}|${relation}|${entryType}|${String(bindings.__refreshKey)}`;
+  const [seenKey, setSeenKey] = useState(resetKey);
+  if (seenKey !== resetKey) { setSeenKey(resetKey); setPage(1); }
 
   useEffect(() => {
     if (!hostEntryId || !relation) { setRows([]); setLoading(false); return; }
     let cancelled = false;
-    setLoading(true); setError(null);
-    entriesApi.listRelated(hostEntryId, relation, { limit: PAGE_SIZE, entryType })
-      .then(result => { if (!cancelled) { setRows(result.entries); setCursor(result.nextCursor); setHasMore(result.hasMore); } })
+    const firstLoad = rows.length === 0;
+    if (firstLoad) setLoading(true); else setPageBusy(true);
+    setError(null);
+    entriesApi.listRelated(hostEntryId, relation, { limit: pageSize, offset: (page - 1) * pageSize, entryType })
+      .then(result => {
+        if (cancelled) return;
+        setRows(result.entries); setCursor(result.nextCursor); setHasMore(result.hasMore); setTotal(result.total);
+      })
       .catch(err => { if (!cancelled) setError(String(err?.message || 'Failed to load records')); })
-      .finally(() => { if (!cancelled) setLoading(false); });
+      .finally(() => { if (!cancelled) { setLoading(false); setPageBusy(false); } });
     return () => { cancelled = true; };
-  }, [hostEntryId, relation, entryType, bindings.__refreshKey]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hostEntryId, relation, entryType, bindings.__refreshKey, page, pageSize]);
 
   if (loading) return <Surface tone="panel-2" radius="input" className="h-28 animate-pulse">{null}</Surface>;
   if (error) return <Text as="p" variant="body-sm" tone="danger">{error}</Text>;
   return (
     <Surface tone="panel" border="default" radius="card" padding="md">
-      {title && <div className="mb-3 flex items-center gap-2"><Link2 size={16} aria-hidden="true" /><Text as="h3" variant="heading-sm">{title} <Text as="span" variant="body" tone="muted">({rows.length}{hasMore ? '+' : ''})</Text></Text></div>}
+      {title && <div className="mb-3 flex items-center gap-2"><Link2 size={16} aria-hidden="true" /><Text as="h3" variant="heading-sm">{title} <Text as="span" variant="body" tone="muted">({total !== undefined ? total.toLocaleString() : `${rows.length}${hasMore ? '+' : ''}`})</Text></Text></div>}
       {!rows.length ? <EmptyState title="No records yet" /> : presentation === 'table' ? (
         <div className="overflow-x-auto"><table className="w-full text-left"><thead><tr className="border-b border-[var(--panel-border)]">{columns.map(column => <th key={column.field} className="px-3 py-2"><Text as="span" variant="label" tone="muted" className="uppercase tracking-wide">{column.label}</Text></th>)}<th className="px-3 py-2" /></tr></thead><tbody>{rows.map(row => <tr key={row.id} className="border-b border-[var(--panel-border)] last:border-0"><>{columns.map(column => { const value = valueFor(row, column.field); return <td key={column.field} className="px-3 py-3"><Text as="span" variant="body-sm" weight={column.emphasis === 'primary' ? 'semibold' : undefined} tone={column.emphasis === 'muted' ? 'muted' : undefined}>{column.format === 'status' ? <Badge variant={statusVariant(value)}>{display(value)}</Badge> : display(value, column.format)}</Text></td>; })}</><td className="px-3 py-2 text-right"><Button variant="ghost" size="xs" icon={rowActions.includes('download') ? <Download size={14} /> : <ExternalLink size={14} />} onClick={() => onEntryOpen(row)}>{rowActions.includes('download') ? 'Open' : 'View'}</Button></td></tr>)}</tbody></table></div>
       ) : (
         <div className="grid gap-3 sm:grid-cols-2">{rows.map(row => <button key={row.id} type="button" className="text-left" onClick={() => onEntryOpen(row)}><Surface tone="panel-2" border="default" radius="input" padding="md" className="hover:border-[var(--link)]"><Text as="div" variant="body" weight="medium">{display(valueFor(row, columns[0]?.field || 'title'), columns[0]?.format)}</Text>{columns.slice(1).map(column => <div key={column.field} className="mt-2 flex justify-between gap-3"><Text variant="body-sm" tone="muted">{column.label}</Text><Text variant="body-sm" weight={column.emphasis === 'primary' ? 'medium' : undefined}>{display(valueFor(row, column.field), column.format)}</Text></div>)}</Surface></button>)}</div>
       )}
-      {hasMore && <div className="mt-3"><Button variant="outline" size="sm" onClick={() => { if (!hostEntryId || !relation || !cursor) return; entriesApi.listRelated(hostEntryId, relation, { limit: PAGE_SIZE, cursor, entryType }).then(result => { setRows(prev => [...prev, ...result.entries]); setCursor(result.nextCursor); setHasMore(result.hasMore); }); }}>Load more</Button></div>}
+      {total !== undefined ? (
+        <ListPager
+          page={page}
+          pageSize={pageSize}
+          total={total}
+          busy={pageBusy}
+          onPageChange={setPage}
+          onPageSizeChange={size => { setPageSize(size); setPage(1); }}
+        />
+      ) : (
+        // An older server that reports no total: append the next rows, as before.
+              hasMore ? <div className="mt-3"><Button variant="outline" size="sm" onClick={() => { if (!hostEntryId || !relation || !cursor) return; entriesApi.listRelated(hostEntryId, relation, { limit: pageSize, cursor, entryType }).then(result => { setRows(prev => [...prev, ...result.entries]); setCursor(result.nextCursor); setHasMore(result.hasMore); }); }}>Load more</Button></div> : null
+      )}
     </Surface>
   );
 }

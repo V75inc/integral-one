@@ -29,6 +29,7 @@ export interface ExtensionViewHandshakeResponse {
 export interface AppOperationAvailableResponse {
   app_id: string;
   operation_key: string;
+  operation_class?: 'read' | 'execute' | null;
   output: Record<string, unknown>;
   receipt?: Record<string, unknown> | null;
   object_refs?: Array<Record<string, unknown>>;
@@ -74,18 +75,38 @@ export class RecordedOperationOutputWithheld extends Error {
   }
 }
 
+/** The legacy broker retained no payload for this replay, and has no journal receipt. */
+export class LegacyOperationOutputUnavailable extends Error {
+  readonly retryable = false;
+  constructor() {
+    super('The earlier request was replayed, but its result is unavailable. Refresh current records before continuing.');
+    this.name = 'LegacyOperationOutputUnavailable';
+  }
+}
+
+function rejectLegacyUnavailable(result: AppOperationInvokeResponse): void {
+  if (result.output_disposition === 'withheld') return;
+  const output = result.output;
+  if (output && Object.keys(output).length === 2 && output.replayed === true && output.result_unavailable === true) {
+    throw new LegacyOperationOutputUnavailable();
+  }
+}
+
 export function requireOperationOutput(result: AppOperationInvokeResponse): AppOperationAvailableResponse {
   if (result.output_disposition === 'withheld') {
     throw new RecordedOperationOutputWithheld(result.operation_receipt);
   }
+  rejectLegacyUnavailable(result);
   return result;
 }
 
 export type ExtensionNavigationTarget = { kind: 'app' | 'track' | 'entry' | 'dashboard'; id: string };
 
 export const extensionsApi = {
-  async listOperations(appId: string): Promise<{ operations: Array<{ key: string; allowed?: boolean }> }> {
-    const { data } = await apiClient.get(`/extensions/${appId}/operations`);
+  async listOperations(appId: string, operationKey?: string): Promise<{ operations: Array<{ key: string; allowed?: boolean }> }> {
+    const { data } = await apiClient.get(`/extensions/${appId}/operations`, {
+      params: operationKey ? { operation_key: operationKey } : undefined,
+    });
     return data;
   },
   async resolveNavigation(appId: string, target: ExtensionNavigationTarget): Promise<{ path: string }> {
@@ -128,6 +149,7 @@ export const extensionsApi = {
       { input: payload },
       { headers },
     );
+    rejectLegacyUnavailable(data);
     return data;
   },
 

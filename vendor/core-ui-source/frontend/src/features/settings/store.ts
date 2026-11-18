@@ -60,6 +60,9 @@ function mergeWithDefaults(partial: Partial<SettingsSnapshot>): SettingsSnapshot
   };
 }
 
+
+const SETTINGS_CHANGED_EVENT = 'integral:settings-changed';
+
 /**
  * React hook for the settings snapshot. Returns the snapshot and a writer
  * that accepts either a full snapshot or a partial-merge updater.
@@ -74,9 +77,21 @@ export function useSettings(): [
     persist(snapshot);
   }, [snapshot]);
 
+  // Other parts of the page (the layout) read the same settings: a change made here reaches them at once.
+  useEffect(() => {
+    const reload = () => setSnapshot(load());
+    window.addEventListener(SETTINGS_CHANGED_EVENT, reload);
+    return () => window.removeEventListener(SETTINGS_CHANGED_EVENT, reload);
+  }, []);
+
   const update = useCallback(
     (next: SettingsSnapshot | ((prev: SettingsSnapshot) => SettingsSnapshot)) => {
-      setSnapshot(prev => (typeof next === 'function' ? next(prev) : next));
+      setSnapshot(prev => {
+        const value = typeof next === 'function' ? next(prev) : next;
+        persist(value);
+        window.setTimeout(() => window.dispatchEvent(new Event(SETTINGS_CHANGED_EVENT)), 0);
+        return value;
+      });
     },
     [],
   );

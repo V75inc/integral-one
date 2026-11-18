@@ -165,7 +165,7 @@ export function AiConfigurationSection({
   const changeProfileConnection = (id: string) => {
     const source = query.data?.connections.find((c) => c.id === id);
     const models = source ? RECOMMENDED_MODELS[source.provider] : [];
-    setCustomModel(!models.length);
+    setCustomModel(!models.length || !source || !defaultModel(source.provider));
     setProfile(
       (p) =>
         p && {
@@ -222,7 +222,7 @@ export function AiConfigurationSection({
   const addProfile = () => {
     const source = data.connections[0];
     const models = source ? RECOMMENDED_MODELS[source.provider] : [];
-    setCustomModel(!models.length);
+    setCustomModel(!models.length || !source || !defaultModel(source.provider));
     setProfile({
       ...freshProfile(),
       connection_id: source?.id ?? "",
@@ -399,6 +399,7 @@ export function AiConfigurationSection({
                               className="break-words"
                             >
                               {profileSummary(p.generation_settings)}
+                              {p.harness_policy && !p.harness_policy.recommended && (p.harness_policy.tier !== "light" || p.id === data.default_profile_id) && ` · ${p.harness_policy.message}`}
                             </Text>
                           </Stack>
                         </div>
@@ -408,7 +409,7 @@ export function AiConfigurationSection({
                               variant="secondary"
                               size="sm"
                               className="min-h-11 sm:min-h-9"
-                              disabled={disabled}
+                              disabled={disabled || p.harness_policy?.tier === "light"}
                               onClick={() =>
                                 run(async () => {
                                   await aiConfigurationApi.activateProfile(

@@ -1,0 +1,31 @@
+{
+  "name": "@integral/sdk-react",
+  "version": "1.2.0",
+  "type": "module",
+  "license": "Apache-2.0",
+  "exports": {
+    ".": {
+      "types": "./src/index.tsx",
+      "import": "./src/index.tsx"
+    },
+    "./build-config": "./bin/build-config.mjs"
+  },
+  "files": [
+    "src",
+    "bin",
+    "README.md",
+    "APP_UI_GUIDE.md"
+  ],
+  "peerDependencies": {
+    "react": ">=18.2.0 <19",
+    "vite": ">=8 <9"
+  },
+  "peerDependenciesMeta": {
+    "vite": {
+      "optional": true
+    }
+  },
+  "bin": {
+    "integral-app-ui-guides": "./bin/app-ui-guides.mjs"
+  }
+}

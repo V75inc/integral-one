@@ -394,3 +394,71 @@ it('shows actual App template counts and description instead of placeholder zero
   expect(within(card).getByText('1 record type · 2 views')).toBeInTheDocument();
   expect(within(card).getByText('Manage client cases.')).toBeInTheDocument();
 });
+
+
+it('chooses an icon before explicit Track creation and sends it with the confirmed save', async () => {
+  show();
+  fireEvent.click(screen.getByRole('button', { name: 'Create your own track' }));
+  fireEvent.change(screen.getByLabelText(/Track Name/), { target: { value: 'Work items' } });
+  fireEvent.change(screen.getByLabelText('Track icon'), { target: { value: 'briefcase' } });
+  expect(mocks.create).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole('button', { name: 'Create track' }));
+  await waitFor(() => expect(mocks.create).toHaveBeenCalledWith(expect.objectContaining({ icon: 'briefcase' })));
+});
+
+it('clears a saved icon explicitly to the default dot', async () => {
+  show({ editTrack: { id: 'track-edit', title: 'Work items', icon: 'briefcase', visibility: 'private' } as Track });
+  expect(screen.getByLabelText('Track icon')).toHaveValue('briefcase');
+  fireEvent.change(screen.getByLabelText('Track icon'), { target: { value: '' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }));
+  await waitFor(() => expect(mocks.update).toHaveBeenCalledWith('track-edit', expect.objectContaining({ icon: '' })));
+});
+
+it('preserves an unrecognized existing icon when editing other details', async () => {
+  show({ editTrack: { id: 'track-edit', title: 'Legacy', icon: 'legacy-symbol', visibility: 'private' } as Track });
+  expect(screen.getByLabelText('Track icon')).toHaveValue('legacy-symbol');
+  fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }));
+  await waitFor(() => expect(mocks.update).toHaveBeenCalled());
+  expect(mocks.update.mock.calls[0][1]).not.toHaveProperty('icon');
+});
+
+it('keeps an icon selection after a denied save without closing or reporting success', async () => {
+  const onClose = vi.fn();
+  const onCreated = vi.fn();
+  mocks.update.mockRejectedValueOnce({ response: { status: 403, data: { detail: 'Permission denied' } } });
+  show({ editTrack: { id: 'track-edit', title: 'Work items', icon: '', visibility: 'private' } as Track, onClose, onCreated });
+  fireEvent.change(screen.getByLabelText('Track icon'), { target: { value: 'briefcase' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }));
+  await waitFor(() => expect(mocks.toast).toHaveBeenCalledWith('Permission denied', 'error'));
+  expect(screen.getByLabelText('Track icon')).toHaveValue('briefcase');
+  expect(onClose).not.toHaveBeenCalled();
+  expect(onCreated).not.toHaveBeenCalled();
+});
+
+
+it('previews a template icon and allows an explicit default-dot override', async () => {
+  mocks.list.mockResolvedValue([{ ...model, manifest: {
+    ...model.manifest, track: { ...model.manifest.track, icon: 'briefcase' },
+  } }]);
+  show();
+  fireEvent.click(await screen.findByRole('button', { name: 'Add Reading List' }));
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Continue' })).toBeEnabled());
+  fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
+  expect(screen.getByLabelText('Track icon')).toHaveValue('briefcase');
+  fireEvent.change(screen.getByLabelText('Track icon'), { target: { value: '' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Create track' }));
+  await waitFor(() => expect(mocks.create).toHaveBeenCalledWith(expect.objectContaining({ icon: '', library_operational_model_id: 'model-one' })));
+});
+
+it('leaves an unchanged template icon managed by the server', async () => {
+  mocks.list.mockResolvedValue([{ ...model, manifest: {
+    ...model.manifest, track: { ...model.manifest.track, icon: 'briefcase' },
+  } }]);
+  show();
+  fireEvent.click(await screen.findByRole('button', { name: 'Add Reading List' }));
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Continue' })).toBeEnabled());
+  fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Create track' }));
+  await waitFor(() => expect(mocks.create).toHaveBeenCalled());
+  expect(mocks.create.mock.calls[0][0]).not.toHaveProperty('icon');
+});

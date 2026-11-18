@@ -1,3 +1,4 @@
+import { beginInteraction } from '../../../lib/performance';
 import { isHostManagedSession } from '../../../api/sessionRuntime';
 import { isModelSetupFailure } from "../components/assistantMessagePresentation";
 import { aiChatApi } from "../../../api/aiChat";
@@ -111,6 +112,7 @@ export function createServerChatProvider({
 
   async *streamTurn(ctx: TurnContext): AsyncIterable<NormalizedEvent> {
     const clientStarted = performance.now();
+    const interaction = beginInteraction();
     let clientFirstTextMs: number | undefined;
     let clientFirstToolMs: number | undefined;
     let lastTiming: import('./types').ChatLatency | undefined;
@@ -181,6 +183,7 @@ export function createServerChatProvider({
           headers: {
             "Content-Type": "application/json",
             Accept: "text/event-stream",
+            ...(interaction ? { traceparent: interaction.traceparent } : {}),
             ...(bearer ? { Authorization: `Bearer ${bearer}` } : {}),
             ...(scopeHeader ? { "X-Integral-Scope": scopeHeader } : {}),
           },
@@ -368,6 +371,7 @@ export function createServerChatProvider({
         `${getApiBaseURL()}/chat/threads/${encodeURIComponent(ctx.threadId!)}/work-items/${encodeURIComponent(workItemId)}/stream?after_sequence=${committedCursor}`,
         { method: "GET", headers: {
           Accept: "text/event-stream",
+          ...(interaction ? { traceparent: interaction.traceparent } : {}),
           ...(bearer ? { Authorization: `Bearer ${bearer}` } : {}),
           ...(scopeHeader ? { "X-Integral-Scope": scopeHeader } : {}),
         }, signal: ctx.abortSignal },

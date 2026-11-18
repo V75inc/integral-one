@@ -234,7 +234,7 @@ export function LayoutContainerWidget(props: ViewWidgetProps) {
     : <LayoutContainerContent {...props} />;
 }
 
-function LayoutContainerContent({ view, entries, isLoading, onEntryOpen }: ViewWidgetProps) {
+function LayoutContainerContent({ view, entries, isLoading, onEntryOpen, viewContext }: ViewWidgetProps) {
   const config = (view.config || {}) as Record<string, unknown>;
   const bindings = (config.__bindings || {}) as Record<string, unknown>;
   const allRegions = (Array.isArray(config.regions) ? config.regions : []) as RegionSpec[];
@@ -287,6 +287,7 @@ function LayoutContainerContent({ view, entries, isLoading, onEntryOpen }: ViewW
         <ComposableViewSlot
           trackId={view.track_id}
           viewKey={region.view}
+          viewContext={viewContext}
           bindings={{ ...bindings, ...(region.bind || {}) }}
         />
       );

@@ -238,11 +238,13 @@ export function Modal({
         const dock = document.querySelector<HTMLElement>('[data-assistant-dock]');
         if (dock) scopes.push(dock);
       }
-      return scopes.flatMap(scope =>
-        Array.from(scope.querySelectorAll<HTMLElement>(focusableSelector)).filter(
-          el => el.offsetParent !== null || el === document.activeElement,
-        ),
-      );
+      const visible = (el: HTMLElement) => el.getAttribute('tabindex') !== '-1' && (el.offsetParent !== null || el === document.activeElement);
+      return scopes.flatMap(scope => Array.from(scope.querySelectorAll<HTMLElement>(focusableSelector)).filter(visible).flatMap(el => {
+        // Portalled controls remain in their owning dialog's Tab order.
+        const list = el.getAttribute('aria-expanded') === 'true' && el.getAttribute('aria-controls');
+        const popup = list ? document.getElementById(list)?.closest<HTMLElement>('[data-integral-popover-owner]') : null;
+        return [el, ...(popup ? Array.from(popup.querySelectorAll<HTMLElement>(focusableSelector)).filter(visible) : [])];
+      }));
     };
 
     const onKeyDown = (e: KeyboardEvent) => {
